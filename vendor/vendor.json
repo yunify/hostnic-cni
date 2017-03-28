@@ -10,6 +10,13 @@
 			"tree": true
 		},
 		{
+			"checksumSHA1": "8s6lHDs2cnGicy0zrJW4ybIYtgI=",
+			"path": "github.com/coreos/go-iptables/iptables",
+			"revision": "5463fbac3bcc6b990663941c2e12660d19f6b36d",
+			"revisionTime": "2016-09-07T22:01:51Z",
+			"tree": true
+		},
+		{
 			"checksumSHA1": "VBUXldVj4gWCHM0aBI2nuJslwJY=",
 			"path": "github.com/jolestar/go-commons-pool",
 			"revision": "4de6736e2fd35e7daf13eb26553ce56b490fbe70",
@@ -34,6 +41,13 @@
 			"path": "github.com/yunify/qingcloud-sdk-go",
 			"revision": "860836a6b93275ac10337e068d642b9d4d278361",
 			"revisionTime": "2017-03-28T04:14:12Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "+KwJYe1p4gXvKVaqpL0WTqk9uFk=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "afadfcc7779c1f4db0f6f6438afcb108d9c9c7cd",
+			"revisionTime": "2017-03-25T14:33:42Z",
 			"tree": true
 		}
 	],
