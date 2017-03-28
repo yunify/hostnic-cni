@@ -7,30 +7,30 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/containernetworking/cni/pkg/ip"
+	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/version"
-	"github.com/yunify/hostnic-cni/provider"
-	"github.com/containernetworking/cni/pkg/ns"
-	"github.com/containernetworking/cni/pkg/ipam"
 	"github.com/containernetworking/cni/pkg/types/current"
+	"github.com/containernetworking/cni/pkg/version"
 	"github.com/vishvananda/netlink"
+	"github.com/yunify/hostnic-cni/provider"
+	"net"
 )
 
 const defaultDataDir = "/var/lib/cni/hostnic"
 
 type NetConf struct {
 	types.NetConf
-	DataDir    string                 `json:"dataDir"`
-	Provider  string 	`json:"provider"`
-	ProviderConfigFile string	`json:"providerConfigFile"`
-	VxNets     []string              `json:"VxNets"`
-	InstanceID string `json:"instanceID"`
+	DataDir            string   `json:"dataDir"`
+	Provider           string   `json:"provider"`
+	ProviderConfigFile string   `json:"providerConfigFile"`
+	VxNets             []string `json:"vxNets"`
+	InstanceID         string   `json:"instanceID"`
 }
 
-
 func loadNetConf(bytes []byte) (*NetConf, error) {
-	netconf := &NetConf{DataDir:defaultDataDir}
+	netconf := &NetConf{DataDir: defaultDataDir}
 	if err := json.Unmarshal(bytes, netconf); err != nil {
 		return nil, fmt.Errorf("failed to load netconf: %v", err)
 	}
@@ -97,11 +97,30 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 	defer netns.Close()
-	netIF := &current.Interface{Name:args.IfName, Mac: nic.HardwareAddr, Sandbox: args.ContainerID}
-	ipConfig := &current.IPConfig{Address: nic.VxNet.Network, Interface:0, Version: "4", Gateway: nic.VxNet.GateWay}
-	result := &current.Result{Interfaces:[]*current.Interface{netIF}, IPs:[]*current.IPConfig{ipConfig}}
+
+	iface, err := linkByMacAddr(nic.HardwareAddr)
+	if err != nil {
+		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.HardwareAddr, err)
+	}
+
+	if err := netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
+		return fmt.Errorf("failed to set namespace on link %q: %v", nic.HardwareAddr, err)
+	}
+
+	srcName := iface.Attrs().Name
+
+	netIF := &current.Interface{Name: args.IfName, Mac: nic.HardwareAddr, Sandbox: args.ContainerID}
+	ipConfig := &current.IPConfig{Address: nic.VxNet.Network, Interface: 0, Version: "4", Gateway: nic.VxNet.GateWay}
+	result := &current.Result{Interfaces: []*current.Interface{netIF}, IPs: []*current.IPConfig{ipConfig}}
 	err = netns.Do(func(_ ns.NetNS) error {
-		return ipam.ConfigureIface(args.IfName, result)
+		nsIface, err := netlink.LinkByName(srcName)
+		if err != nil {
+			return fmt.Errorf("failed to get link by name %q: %v", srcName, err)
+		}
+		if err := netlink.LinkSetName(nsIface, args.IfName); err != nil {
+			return fmt.Errorf("set link %s to name %s err: %v", nsIface.Attrs().HardwareAddr.String(), srcName, args.IfName)
+		}
+		return configureIface(nsIface, result)
 	})
 	if err != nil {
 		return err
@@ -109,6 +128,75 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	result.DNS = n.DNS
 	return types.PrintResult(result, n.CNIVersion)
+}
+
+func configureIface(link netlink.Link, res *current.Result) error {
+	if len(res.Interfaces) == 0 {
+		return fmt.Errorf("no interfaces to configure")
+	}
+	ifName := link.Attrs().Name
+
+	// Down the interface before configuring
+	if err := netlink.LinkSetDown(link); err != nil {
+		return fmt.Errorf("failed to set link down: %v", err)
+	}
+
+	var v4gw, v6gw net.IP
+	for _, ipc := range res.IPs {
+		if int(ipc.Interface) >= len(res.Interfaces) || res.Interfaces[ipc.Interface].Name != ifName {
+			// IP address is for a different interface
+			return fmt.Errorf("failed to add IP addr %v to %q: invalid interface index", ipc, ifName)
+		}
+
+		addr := &netlink.Addr{IPNet: &ipc.Address, Label: ""}
+		if err := netlink.AddrAdd(link, addr); err != nil {
+			return fmt.Errorf("failed to add IP addr %v to %q: %v", ipc, ifName, err)
+		}
+
+		gwIsV4 := ipc.Gateway.To4() != nil
+		if gwIsV4 && v4gw == nil {
+			v4gw = ipc.Gateway
+		} else if !gwIsV4 && v6gw == nil {
+			v6gw = ipc.Gateway
+		}
+	}
+
+	for _, r := range res.Routes {
+		routeIsV4 := r.Dst.IP.To4() != nil
+		gw := r.GW
+		if gw == nil {
+			if routeIsV4 && v4gw != nil {
+				gw = v4gw
+			} else if !routeIsV4 && v6gw != nil {
+				gw = v6gw
+			}
+		}
+		if err := ip.AddRoute(&r.Dst, gw, link); err != nil {
+			// we skip over duplicate routes as we assume the first one wins
+			if !os.IsExist(err) {
+				return fmt.Errorf("failed to add route '%v via %v dev %v': %v", r.Dst, gw, ifName, err)
+			}
+		}
+	}
+
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("failed to set %q UP: %v", ifName, err)
+	}
+	return nil
+}
+
+func linkByMacAddr(macAddr string) (netlink.Link, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, err
+	}
+	for _, link := range links {
+		attr := link.Attrs()
+		if attr.HardwareAddr.String() == macAddr {
+			return link, nil
+		}
+	}
+	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
 }
 
 func cmdDel(args *skel.CmdArgs) error {
@@ -133,7 +221,7 @@ func cmdDel(args *skel.CmdArgs) error {
 			return fmt.Errorf("failed to delete %q: %v", ifName, err)
 		}
 		nicID := iface.Attrs().HardwareAddr.String()
-		if err = nicProvider.DeleteNic(nicID); err != nil{
+		if err = nicProvider.DeleteNic(nicID); err != nil {
 			return fmt.Errorf("failed to delete %q, nic: %s: %v", ifName, nicID, err)
 		}
 		return nil
