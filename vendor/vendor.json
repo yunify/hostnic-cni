@@ -17,13 +17,6 @@
 			"tree": true
 		},
 		{
-			"checksumSHA1": "VBUXldVj4gWCHM0aBI2nuJslwJY=",
-			"path": "github.com/jolestar/go-commons-pool",
-			"revision": "4de6736e2fd35e7daf13eb26553ce56b490fbe70",
-			"revisionTime": "2017-03-17T03:53:24Z",
-			"tree": true
-		},
-		{
 			"checksumSHA1": "mOX67TmXjlZmKXd61odKTV3WoEM=",
 			"path": "github.com/vishvananda/netlink",
 			"revision": "6c782366d2d5d98d4a70eea226ec10beab397af0",
