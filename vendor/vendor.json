@@ -17,10 +17,11 @@
 			"tree": true
 		},
 		{
-			"checksumSHA1": "za9USB8saUAWhTBC1InRZx8XaNQ=",
+			"checksumSHA1": "mOX67TmXjlZmKXd61odKTV3WoEM=",
 			"path": "github.com/vishvananda/netlink",
 			"revision": "6c782366d2d5d98d4a70eea226ec10beab397af0",
-			"revisionTime": "2017-03-20T23:05:07Z"
+			"revisionTime": "2017-03-20T23:05:07Z",
+			"tree": true
 		},
 		{
 			"checksumSHA1": "wiewoKrYtsdwTTpviFI7UfZYnaQ=",
