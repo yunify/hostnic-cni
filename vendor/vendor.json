@@ -1,0 +1,28 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "VM8QSZBjatM68a9+DN5khn+4jAU=",
+			"path": "github.com/containernetworking/cni",
+			"revision": "b87126377a207a00ce32bcf67ea059ab8b9f6ba6",
+			"revisionTime": "2017-03-17T02:20:40Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "VBUXldVj4gWCHM0aBI2nuJslwJY=",
+			"path": "github.com/jolestar/go-commons-pool",
+			"revision": "4de6736e2fd35e7daf13eb26553ce56b490fbe70",
+			"revisionTime": "2017-03-17T03:53:24Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "CDTJZMY1PpqVCeO2QsuFMt3EcbM=",
+			"path": "github.com/yunify/qingcloud-sdk-go",
+			"revision": "860836a6b93275ac10337e068d642b9d4d278361",
+			"revisionTime": "2017-03-28T04:14:12Z",
+			"tree": true
+		}
+	],
+	"rootPath": "github.com/yunify/hostnic-cni"
+}

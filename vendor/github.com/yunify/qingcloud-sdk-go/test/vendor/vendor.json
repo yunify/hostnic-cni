@@ -1,0 +1,37 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "EarEYj58P8bra8tbbDtOwDFIqsM=",
+			"path": "github.com/DATA-DOG/godog",
+			"revision": "623ff9946e5c72834c19a019a153b8e3a338a52c",
+			"revisionTime": "2016-10-30T20:47:40Z",
+			"version": "v0.6.0",
+			"versionExact": "v0.6.0"
+		},
+		{
+			"checksumSHA1": "wbBy+PwuadGhTgX7IP05lwIR+Qs=",
+			"path": "github.com/DATA-DOG/godog/colors",
+			"revision": "623ff9946e5c72834c19a019a153b8e3a338a52c",
+			"revisionTime": "2016-10-30T20:47:40Z",
+			"version": "v0.6.0",
+			"versionExact": "v0.6.0"
+		},
+		{
+			"checksumSHA1": "LCu7pjQ5nMZ505XwUU7tQQ1hBuM=",
+			"path": "github.com/DATA-DOG/godog/gherkin",
+			"revision": "623ff9946e5c72834c19a019a153b8e3a338a52c",
+			"revisionTime": "2016-10-30T20:47:40Z",
+			"version": "v0.6.0",
+			"versionExact": "v0.6.0"
+		},
+		{
+			"checksumSHA1": "12GqsW8PiRPnezDDy0v4brZrndM=",
+			"path": "gopkg.in/yaml.v2",
+			"revision": "a5b47d31c556af34a302ce5d659e6fea44d90de0",
+			"revisionTime": "2016-09-28T15:37:09Z"
+		}
+	],
+	"rootPath": "github.com/yunify/snips/test/qingstor/go"
+}
