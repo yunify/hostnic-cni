@@ -110,7 +110,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	srcName := iface.Attrs().Name
 
 	netIF := &current.Interface{Name: args.IfName, Mac: nic.HardwareAddr, Sandbox: args.ContainerID}
-	ipConfig := &current.IPConfig{Address: nic.VxNet.Network, Interface: 0, Version: "4", Gateway: nic.VxNet.GateWay}
+	ipConfig := &current.IPConfig{Address: net.IPNet{IP: net.ParseIP(nic.Address), Mask: nic.VxNet.Network.Mask}, Interface: 0, Version: "4", Gateway: nic.VxNet.GateWay}
 	result := &current.Result{Interfaces: []*current.Interface{netIF}, IPs: []*current.IPConfig{ipConfig}}
 	err = netns.Do(func(_ ns.NetNS) error {
 		nsIface, err := netlink.LinkByName(srcName)
