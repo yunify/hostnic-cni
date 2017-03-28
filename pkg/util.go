@@ -2,17 +2,16 @@ package pkg
 
 import (
 	"fmt"
-	"os"
+	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/vishvananda/netlink"
 	"net"
-	"github.com/containernetworking/cni/pkg/ip"
+	"os"
 )
 
 func StringPtr(str string) *string {
 	return &str
 }
-
 
 func ConfigureIface(ifName string, res *current.Result) error {
 	if len(res.Interfaces) == 0 {

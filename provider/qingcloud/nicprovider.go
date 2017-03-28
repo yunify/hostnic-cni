@@ -1,14 +1,14 @@
 package qingcloud
 
 import (
-	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/qingcloud-sdk-go/service"
-	"fmt"
 	"errors"
+	"fmt"
+	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/qingcloud-sdk-go/client"
-	"time"
 	"github.com/yunify/qingcloud-sdk-go/config"
+	"github.com/yunify/qingcloud-sdk-go/service"
 	"math/rand"
+	"time"
 )
 
 func init() {
@@ -20,15 +20,14 @@ const (
 	defaultWaitInterval = 5 * time.Second
 )
 
-
-type QCNicProvider struct{
-	nicService *service.NicService
+type QCNicProvider struct {
+	nicService   *service.NicService
 	vxNetService *service.VxNetService
-	jobService *service.JobService
-	vxNets     []string
+	jobService   *service.JobService
+	vxNets       []string
 }
 
-func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error){
+func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error) {
 	if len(vxNets) == 0 {
 		return nil, errors.New("vxnets miss.")
 	}
@@ -63,10 +62,10 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 	}
 
 	p := &QCNicProvider{
-		nicService: nicService,
-		jobService: jobService,
+		nicService:   nicService,
+		jobService:   jobService,
 		vxNetService: vxNetService,
-		vxNets:     vxNets,
+		vxNets:       vxNets,
 	}
 	return p, nil
 }
@@ -75,7 +74,7 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 func (p *QCNicProvider) chooseVxNet() string {
 	if len(p.vxNets) == 1 {
 		return p.vxNets[0]
-	}else {
+	} else {
 		idx := rand.Intn(len(p.vxNets))
 		return p.vxNets[idx]
 	}
@@ -89,8 +88,8 @@ func (p *QCNicProvider) CreateNic(instanceID string) (*pkg.HostNic, error) {
 	}
 
 	input := &service.CreateNicsInput{
-		VxNet: &vxNetID,
-		NICName:pkg.StringPtr(fmt.Sprintf("hostnic_%s",instanceID))}
+		VxNet:   &vxNetID,
+		NICName: pkg.StringPtr(fmt.Sprintf("hostnic_%s", instanceID))}
 	output, err := p.nicService.CreateNics(input)
 	//TODO check too many nic in vxnet err, and retry with another vxnet.
 	if err != nil {
@@ -111,7 +110,7 @@ func (p *QCNicProvider) CreateNic(instanceID string) (*pkg.HostNic, error) {
 }
 
 func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error {
-	input := &service.AttachNicsInput{Nics:[]*string{&hostNic.HardwareAddr}, Instance: &instanceID}
+	input := &service.AttachNicsInput{Nics: []*string{&hostNic.HardwareAddr}, Instance: &instanceID}
 	output, err := p.nicService.AttachNics(input)
 	if err != nil {
 		return err
@@ -128,7 +127,7 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 }
 
 func (p *QCNicProvider) detachNic(nicID string) error {
-	input := &service.DetachNicsInput{Nics:[]*string{&nicID}}
+	input := &service.DetachNicsInput{Nics: []*string{&nicID}}
 	output, err := p.nicService.DetachNics(input)
 	if err != nil {
 		return err
@@ -144,13 +143,12 @@ func (p *QCNicProvider) detachNic(nicID string) error {
 	return errors.New(fmt.Sprintf("DetachNics output [%+v] error", *output))
 }
 
-
 func (p *QCNicProvider) DeleteNic(nicID string) error {
 	err := p.detachNic(nicID)
 	if err != nil {
 		return err
 	}
-	input := &service.DeleteNicsInput{Nics:[]*string{&nicID}}
+	input := &service.DeleteNicsInput{Nics: []*string{&nicID}}
 	output, err := p.nicService.DeleteNics(input)
 	if err != nil {
 		return err
@@ -161,8 +159,8 @@ func (p *QCNicProvider) DeleteNic(nicID string) error {
 	return errors.New(fmt.Sprintf("DeleteNics output [%+v] error", *output))
 }
 
-func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error){
-	input := &service.DescribeVxNetsInput{VxNets:[]*string{&vxNet}}
+func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
+	input := &service.DescribeVxNetsInput{VxNets: []*string{&vxNet}}
 	output, err := p.vxNetService.DescribeVxNets(input)
 	if err != nil {
 		return nil, err

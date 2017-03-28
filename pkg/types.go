@@ -1,7 +1,7 @@
 package pkg
 
 type HostNic struct {
-	ID           string  `json:"id"`
+	ID           string `json:"id"`
 	VxNet        *VxNet `json:"vxNet"`
 	HardwareAddr string `json:"hardwareAddr"`
 	Address      string `json:"address"`

@@ -13,9 +13,9 @@ import (
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/vishvananda/netlink"
+	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
 	"net"
-	"github.com/yunify/hostnic-cni/pkg"
 )
 
 const defaultDataDir = "/var/lib/cni/hostnic"
@@ -60,7 +60,7 @@ func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
 	path := filepath.Join(dataDir, containerID)
 	data, err := json.Marshal(nic)
 	if err != nil {
-		return fmt.Errorf("failed to marshal nic %++v : %v", *nic, err )
+		return fmt.Errorf("failed to marshal nic %++v : %v", *nic, err)
 	}
 	err = ioutil.WriteFile(path, data, 0600)
 	if err != nil {
@@ -81,7 +81,7 @@ func consumeScratchNetConf(containerID, dataDir string) (*pkg.HostNic, error) {
 	hostNic := &pkg.HostNic{}
 	err = json.Unmarshal(data, hostNic)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal nic data in the path(%q): %v", path, err )
+		return nil, fmt.Errorf("failed to unmarshal nic data in the path(%q): %v", path, err)
 	}
 	return hostNic, err
 }
@@ -159,7 +159,6 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 	}
 	return nil
 }
-
 
 func cmdDel(args *skel.CmdArgs) error {
 	n, err := loadNetConf(args.StdinData)
