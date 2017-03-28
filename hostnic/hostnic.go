@@ -215,7 +215,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return nil
 	}
 	//netns, err := ns.GetNS(args.Netns)
-	hostNS, err := ns.GetCurrentNS()
+	//hostNS, err := ns.GetCurrentNS()
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
@@ -237,9 +237,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		//TODO set link name to origin name.
 
 		// move link to default ns
-		if err := netlink.LinkSetNsFd(iface, int(hostNS.Fd())); err != nil {
-			return fmt.Errorf("failed to set namespace on link %q: %v", iface.Attrs().HardwareAddr.String(), err)
-		}
+		//if err := netlink.LinkSetNsFd(iface, int(hostNS.Fd())); err != nil {
+		//	return fmt.Errorf("failed to set namespace on link %q: %v", iface.Attrs().HardwareAddr.String(), err)
+		//}
 
 		nicID := iface.Attrs().HardwareAddr.String()
 		if err = nicProvider.DeleteNic(nicID); err != nil {
