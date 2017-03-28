@@ -9,7 +9,6 @@ import (
 	"time"
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"math/rand"
-	"net"
 )
 
 func init() {
@@ -170,11 +169,7 @@ func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error){
 	}
 	if *output.RetCode == 0 {
 		qcVxNet := output.VxNetSet[0]
-		_, ipNet, err := net.ParseCIDR(*qcVxNet.Router.IPNetwork)
-		if err != nil {
-			return nil, err
-		}
-		vxNet := &pkg.VxNet{ID: *qcVxNet.VxNetID, GateWay: net.ParseIP(*qcVxNet.Router.ManagerIP), Network: *ipNet}
+		vxNet := &pkg.VxNet{ID: *qcVxNet.VxNetID, GateWay: *qcVxNet.Router.ManagerIP, Network: *qcVxNet.Router.IPNetwork}
 		return vxNet, nil
 	}
 	return nil, fmt.Errorf("DescribeVxNets invalid output [%+v]", *output)

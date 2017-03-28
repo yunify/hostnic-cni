@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -16,6 +15,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/provider"
 	"net"
+	"github.com/yunify/hostnic-cni/pkg"
 )
 
 const defaultDataDir = "/var/lib/cni/hostnic"
@@ -52,14 +52,17 @@ func loadInstanceID() (string, error) {
 	return string(content), nil
 }
 
-func saveScratchNetConf(containerID, dataDir string, netconf []byte) error {
+func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return fmt.Errorf("failed to create the multus data directory(%q): %v", dataDir, err)
 	}
 
 	path := filepath.Join(dataDir, containerID)
-
-	err := ioutil.WriteFile(path, netconf, 0600)
+	data, err := json.Marshal(nic)
+	if err != nil {
+		return fmt.Errorf("failed to marshal nic %++v : %v", *nic, err )
+	}
+	err = ioutil.WriteFile(path, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write container data in the path(%q): %v", path, err)
 	}
@@ -67,7 +70,7 @@ func saveScratchNetConf(containerID, dataDir string, netconf []byte) error {
 	return err
 }
 
-func consumeScratchNetConf(containerID, dataDir string) ([]byte, error) {
+func consumeScratchNetConf(containerID, dataDir string) (*pkg.HostNic, error) {
 	path := filepath.Join(dataDir, containerID)
 	defer os.Remove(path)
 
@@ -75,8 +78,12 @@ func consumeScratchNetConf(containerID, dataDir string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read container data in the path(%q): %v", path, err)
 	}
-
-	return data, err
+	hostNic := &pkg.HostNic{}
+	err = json.Unmarshal(data, hostNic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nic data in the path(%q): %v", path, err )
+	}
+	return hostNic, err
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -94,25 +101,33 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {
+		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 	defer netns.Close()
 
-	iface, err := linkByMacAddr(nic.HardwareAddr)
+	iface, err := pkg.LinkByMacAddr(nic.HardwareAddr)
 	if err != nil {
+		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.HardwareAddr, err)
 	}
 
 	if err := netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
+		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to set namespace on link %q: %v", nic.HardwareAddr, err)
 	}
 
 	srcName := iface.Attrs().Name
-
+	_, ipNet, err := net.ParseCIDR(nic.VxNet.Network)
+	if err != nil {
+		deleteNic(nic.ID, nicProvider)
+		return fmt.Errorf("failed to parse vxnet %q network %q: %v", nic.VxNet.ID, nic.VxNet.Network, err)
+	}
+	gateWay := net.ParseIP(nic.VxNet.GateWay)
 	netIF := &current.Interface{Name: args.IfName, Mac: nic.HardwareAddr, Sandbox: args.ContainerID}
-	ipConfig := &current.IPConfig{Address: net.IPNet{IP: net.ParseIP(nic.Address), Mask: nic.VxNet.Network.Mask}, Interface: 0, Version: "4", Gateway: nic.VxNet.GateWay}
+	ipConfig := &current.IPConfig{Address: net.IPNet{IP: net.ParseIP(nic.Address), Mask: ipNet.Mask}, Interface: 0, Version: "4", Gateway: gateWay}
 	//TODO support ipv6
-	route := &types.Route{Dst: net.IPNet{IP: net.IPv4zero, Mask: net.IPMask(net.IPv4zero)}, GW: nic.VxNet.GateWay}
+	route := &types.Route{Dst: net.IPNet{IP: net.IPv4zero, Mask: net.IPMask(net.IPv4zero)}, GW: gateWay}
 	result := &current.Result{Interfaces: []*current.Interface{netIF}, IPs: []*current.IPConfig{ipConfig}, Routes: []*types.Route{route}}
 	err = netns.Do(func(_ ns.NetNS) error {
 		nsIface, err := netlink.LinkByName(srcName)
@@ -122,89 +137,29 @@ func cmdAdd(args *skel.CmdArgs) error {
 		if err := netlink.LinkSetName(nsIface, args.IfName); err != nil {
 			return fmt.Errorf("set link %s to name %s err: %v", nsIface.Attrs().HardwareAddr.String(), srcName, args.IfName)
 		}
-		//return ipam.ConfigureIface(args.IfName, result)
-		return configureIface(args.IfName, result)
+		return pkg.ConfigureIface(args.IfName, result)
 	})
 	if err != nil {
+		deleteNic(nic.ID, nicProvider)
 		return err
 	}
 
-	result.DNS = n.DNS
+	err = saveScratchNetConf(args.ContainerID, n.DataDir, nic)
+	if err != nil {
+		deleteNic(nic.ID, nicProvider)
+		return err
+	}
+
 	return types.PrintResult(result, n.CNIVersion)
 }
 
-func configureIface(ifName string, res *current.Result) error {
-	if len(res.Interfaces) == 0 {
-		return fmt.Errorf("no interfaces to configure")
+func deleteNic(nicID string, nicProvider provider.NicProvider) error {
+	if err := nicProvider.DeleteNic(nicID); err != nil {
+		return fmt.Errorf("failed to delete nic %q : %v", nicID, err)
 	}
-	link, err := netlink.LinkByName(ifName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup %q: %v", ifName, err)
-	}
-
-	// Down the interface before configuring
-	if err := netlink.LinkSetDown(link); err != nil {
-		return fmt.Errorf("failed to set link down: %v", err)
-	}
-
-	var v4gw, v6gw net.IP
-	for _, ipc := range res.IPs {
-		if int(ipc.Interface) >= len(res.Interfaces) || res.Interfaces[ipc.Interface].Name != ifName {
-			// IP address is for a different interface
-			return fmt.Errorf("failed to add IP addr %v to %q: invalid interface index", ipc, ifName)
-		}
-
-		addr := &netlink.Addr{IPNet: &ipc.Address, Label: ""}
-		if err := netlink.AddrAdd(link, addr); err != nil {
-			return fmt.Errorf("failed to add IP addr %v to %q: %v", ipc, ifName, err)
-		}
-
-		gwIsV4 := ipc.Gateway.To4() != nil
-		if gwIsV4 && v4gw == nil {
-			v4gw = ipc.Gateway
-		} else if !gwIsV4 && v6gw == nil {
-			v6gw = ipc.Gateway
-		}
-	}
-	// setup before set routes
-	if err := netlink.LinkSetUp(link); err != nil {
-		return fmt.Errorf("failed to set %q UP: %v", ifName, err)
-	}
-
-	for _, r := range res.Routes {
-		routeIsV4 := r.Dst.IP.To4() != nil
-		gw := r.GW
-		if gw == nil {
-			if routeIsV4 && v4gw != nil {
-				gw = v4gw
-			} else if !routeIsV4 && v6gw != nil {
-				gw = v6gw
-			}
-		}
-		if err := ip.AddRoute(&r.Dst, gw, link); err != nil {
-			// we skip over duplicate routes as we assume the first one wins
-			if !os.IsExist(err) {
-				return fmt.Errorf("failed to add route '%v via %v dev %v': %v", r.Dst, gw, ifName, err)
-			}
-		}
-	}
-
 	return nil
 }
 
-func linkByMacAddr(macAddr string) (netlink.Link, error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return nil, err
-	}
-	for _, link := range links {
-		attr := link.Attrs()
-		if attr.HardwareAddr.String() == macAddr {
-			return link, nil
-		}
-	}
-	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
-}
 
 func cmdDel(args *skel.CmdArgs) error {
 	n, err := loadNetConf(args.StdinData)
@@ -214,8 +169,6 @@ func cmdDel(args *skel.CmdArgs) error {
 	if args.Netns == "" {
 		return nil
 	}
-	//netns, err := ns.GetNS(args.Netns)
-	//hostNS, err := ns.GetCurrentNS()
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
@@ -224,8 +177,11 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-
-	return ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
+	nic, err := consumeScratchNetConf(args.ContainerID, n.DataDir)
+	if err != nil {
+		return err
+	}
+	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
 		ifName := args.IfName
 		iface, err := netlink.LinkByName(ifName)
 		if err != nil {
@@ -234,19 +190,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err := netlink.LinkSetDown(iface); err != nil {
 			return err
 		}
-		//TODO set link name to origin name.
-
-		// move link to default ns
-		//if err := netlink.LinkSetNsFd(iface, int(hostNS.Fd())); err != nil {
-		//	return fmt.Errorf("failed to set namespace on link %q: %v", iface.Attrs().HardwareAddr.String(), err)
-		//}
-
-		nicID := iface.Attrs().HardwareAddr.String()
-		if err = nicProvider.DeleteNic(nicID); err != nil {
-			return fmt.Errorf("failed to delete %q, nic: %s: %v", ifName, nicID, err)
-		}
 		return nil
 	})
+	return deleteNic(nic.ID, nicProvider)
 }
 
 func main() {
