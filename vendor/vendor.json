@@ -17,6 +17,18 @@
 			"tree": true
 		},
 		{
+			"checksumSHA1": "za9USB8saUAWhTBC1InRZx8XaNQ=",
+			"path": "github.com/vishvananda/netlink",
+			"revision": "6c782366d2d5d98d4a70eea226ec10beab397af0",
+			"revisionTime": "2017-03-20T23:05:07Z"
+		},
+		{
+			"checksumSHA1": "wiewoKrYtsdwTTpviFI7UfZYnaQ=",
+			"path": "github.com/vishvananda/netns",
+			"revision": "54f0e4339ce73702a0607f49922aaa1e749b418d",
+			"revisionTime": "2017-02-14T06:09:35Z"
+		},
+		{
 			"checksumSHA1": "CDTJZMY1PpqVCeO2QsuFMt3EcbM=",
 			"path": "github.com/yunify/qingcloud-sdk-go",
 			"revision": "860836a6b93275ac10337e068d642b9d4d278361",
