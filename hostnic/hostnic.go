@@ -166,6 +166,10 @@ func configureIface(ifName string, res *current.Result) error {
 			v6gw = ipc.Gateway
 		}
 	}
+	// setup before set routes
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("failed to set %q UP: %v", ifName, err)
+	}
 
 	for _, r := range res.Routes {
 		routeIsV4 := r.Dst.IP.To4() != nil
@@ -185,9 +189,6 @@ func configureIface(ifName string, res *current.Result) error {
 		}
 	}
 
-	if err := netlink.LinkSetUp(link); err != nil {
-		return fmt.Errorf("failed to set %q UP: %v", ifName, err)
-	}
 	return nil
 }
 
