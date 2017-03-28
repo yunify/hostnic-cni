@@ -120,7 +120,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 		if err := netlink.LinkSetName(nsIface, args.IfName); err != nil {
 			return fmt.Errorf("set link %s to name %s err: %v", nsIface.Attrs().HardwareAddr.String(), srcName, args.IfName)
 		}
-		return configureIface(nsIface, result)
+		//return ipam.ConfigureIface(args.IfName, result)
+		return configureIface(args.IfName, result)
 	})
 	if err != nil {
 		return err
@@ -130,11 +131,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	return types.PrintResult(result, n.CNIVersion)
 }
 
-func configureIface(link netlink.Link, res *current.Result) error {
+func configureIface(ifName string, res *current.Result) error {
 	if len(res.Interfaces) == 0 {
 		return fmt.Errorf("no interfaces to configure")
 	}
-	ifName := link.Attrs().Name
+	link, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("failed to lookup %q: %v", ifName, err)
+	}
 
 	// Down the interface before configuring
 	if err := netlink.LinkSetDown(link); err != nil {
