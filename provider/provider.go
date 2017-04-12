@@ -8,7 +8,7 @@ import (
 )
 
 type NicProvider interface {
-	CreateNic(instanceID string) (*pkg.HostNic, error)
+	CreateNic() (*pkg.HostNic, error)
 	DeleteNic(nicID string) error
 	//GetVxNet(vxNet string) (*pkg.VxNet, error)
 }

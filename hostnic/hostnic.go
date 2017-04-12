@@ -26,7 +26,6 @@ type NetConf struct {
 	Provider           string   `json:"provider"`
 	ProviderConfigFile string   `json:"providerConfigFile"`
 	VxNets             []string `json:"vxNets"`
-	InstanceID         string   `json:"instanceID"`
 }
 
 func loadNetConf(bytes []byte) (*NetConf, error) {
@@ -34,22 +33,7 @@ func loadNetConf(bytes []byte) (*NetConf, error) {
 	if err := json.Unmarshal(bytes, netconf); err != nil {
 		return nil, fmt.Errorf("failed to load netconf: %v", err)
 	}
-	if netconf.InstanceID == "" {
-		instanceID, err := loadInstanceID()
-		if err != nil {
-			return nil, err
-		}
-		netconf.InstanceID = instanceID
-	}
 	return netconf, nil
-}
-
-func loadInstanceID() (string, error) {
-	content, err := ioutil.ReadFile("/etc/qingcloud/instance-id")
-	if err != nil {
-		return "", err
-	}
-	return string(content), nil
 }
 
 func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
@@ -95,7 +79,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	nic, err := nicProvider.CreateNic(n.InstanceID)
+	nic, err := nicProvider.CreateNic()
 	if err != nil {
 		return err
 	}

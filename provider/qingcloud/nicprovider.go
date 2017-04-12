@@ -7,8 +7,13 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/service"
+	"io/ioutil"
 	"math/rand"
 	"time"
+)
+
+const (
+	INSTANCE_ID_FILE = "/etc/qingcloud/instance-id"
 )
 
 func init() {
@@ -80,7 +85,12 @@ func (p *QCNicProvider) chooseVxNet() string {
 	}
 }
 
-func (p *QCNicProvider) CreateNic(instanceID string) (*pkg.HostNic, error) {
+func (p *QCNicProvider) CreateNic() (*pkg.HostNic, error) {
+	instanceID, err := loadInstanceID()
+	if err != nil {
+		return nil, err
+	}
+
 	vxNetID := p.chooseVxNet()
 	vxNet, err := p.getVxNet(vxNetID)
 	if err != nil {
@@ -171,4 +181,12 @@ func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
 		return vxNet, nil
 	}
 	return nil, fmt.Errorf("DescribeVxNets invalid output [%+v]", *output)
+}
+
+func loadInstanceID() (string, error) {
+	content, err := ioutil.ReadFile(INSTANCE_ID_FILE)
+	if err != nil {
+		return "", fmt.Errorf("Load instance-id from %s error: %v", INSTANCE_ID_FILE, err)
+	}
+	return string(content), nil
 }
