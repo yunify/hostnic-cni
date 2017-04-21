@@ -34,7 +34,7 @@ type QCNicProvider struct {
 
 func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error) {
 	if len(vxNets) == 0 {
-		return nil, errors.New("vxnets miss.")
+		return nil, errors.New("vxNets miss")
 	}
 
 	config, err := config.NewDefault()
