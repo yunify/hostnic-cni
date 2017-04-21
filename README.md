@@ -8,7 +8,7 @@ English|[中文](README_zh.md)
 
 ### Usage
 
-1. Download hostnic from release page, and put to /opt/cni/bin/
+1. Download hostnic from  [release page](https://github.com/yunify/hostnic-cni/releases) , and put to /opt/cni/bin/
 2. Add cni config
 
 ```bash

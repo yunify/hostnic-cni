@@ -6,7 +6,7 @@
 
 ### 使用说明
 
-1. 下载 hostnic 放置到 /opt/cni/bin/ 路径下。
+1. 从 [release 页面](https://github.com/yunify/hostnic-cni/releases) 下载 hostnic 放置到 /opt/cni/bin/ 路径下。
 2. 增加 cni 的配置
 
 ```bash
