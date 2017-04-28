@@ -6,8 +6,9 @@
 
 ### 使用说明
 
-1. 从 [release 页面](https://github.com/yunify/hostnic-cni/releases) 下载 hostnic 放置到 /opt/cni/bin/ 路径下。
-2. 增加 cni 的配置
+1. 从 [CNI release 页面](https://github.com/containernetworking/cni/releases)  下载 CNI 包，解压到 /opt/cni/bin 下。
+2. 从 [release 页面](https://github.com/yunify/hostnic-cni/releases) 下载 hostnic 放置到 /opt/cni/bin/ 路径下。
+3. 增加 cni 的配置
 
 ```bash
 
@@ -20,6 +21,13 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "providerConfigFile":"/etc/qingcloud/client.yaml",
     "vxNets":["vxnet-xxxxx","vxnet-xxxx"],
     "isGateway": true
+}
+EOF
+
+cat >/etc/cni/net.d/99-loopback.conf <<EOF
+{
+	"cniVersion": "0.2.0",
+	"type": "loopback"
 }
 EOF
 ```

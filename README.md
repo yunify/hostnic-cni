@@ -8,8 +8,9 @@ English|[中文](README_zh.md)
 
 ### Usage
 
-1. Download hostnic from  [release page](https://github.com/yunify/hostnic-cni/releases) , and put to /opt/cni/bin/
-2. Add cni config
+1. Download CNI package from [CNI release page](https://github.com/containernetworking/cni/releases) and extract to /opt/cni/bin/.
+2. Download hostnic from  [release page](https://github.com/yunify/hostnic-cni/releases) , and put to /opt/cni/bin/
+3. Add cni config
 
 ```bash
 
@@ -22,6 +23,13 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "providerConfigFile":"/etc/qingcloud/client.yaml",
     "vxNets":["vxnet-xxxxx","vxnet-xxxx"],
     "isGateway": true
+}
+EOF
+
+cat >/etc/cni/net.d/99-loopback.conf <<EOF
+{
+	"cniVersion": "0.2.0",
+	"type": "loopback"
 }
 EOF
 ```
