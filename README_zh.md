@@ -18,10 +18,15 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "name": "hostnic",
     "type": "hostnic",
     "provider": "qingcloud",
-    "providerConfigFile":"/etc/qingcloud/client.yaml",
-    "vxNets":["vxnet-xxxxx","vxnet-xxxx"],
-    "isGateway": true
+    "args": {
+      "QyAccessKeyID": "TZKPBMMIPQITZSWTECKD",
+      "QySecretAccessKey": "biST961HwPb5ZL7KdWTMeHmIf1v02VjTsK33hytB",
+      "zone": "pek3a",
+      "vxNets":["vxnet-oilq879"],
+      "isGateway": true
+    }
 }
+
 EOF
 
 cat >/etc/cni/net.d/99-loopback.conf <<EOF
@@ -31,18 +36,6 @@ cat >/etc/cni/net.d/99-loopback.conf <<EOF
 }
 EOF
 ```
-3. 增加 IaaS 的 sdk 配置文件
-
-```bash
-cat >/etc/qingcloud/client.yaml <<EOF
-qy_access_key_id: "Your access key id"
-qy_secret_access_key: "Your secret access key"
-# your instance zone
-zone: "pek3a"
-EOF
-```
-### 配置说明 
+### 配置说明
 * **provider** IaaS 的提供方，当前只支持 qingcloud，未来会支持更多。
-* **providerConfigFile** IaaS 提供方的配置文件
 * **vxNets** nic 所在的私有网络，数组格式，支持多个，多个私有网络必须在同一个 vpc 下。
-

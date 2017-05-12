@@ -3,10 +3,13 @@ package qingcloud
 import (
 	"errors"
 	"fmt"
+
 	"github.com/yunify/hostnic-cni/pkg"
+	"github.com/yunify/hostnic-cni/provider"
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/service"
+
 	"io/ioutil"
 	"math/rand"
 	"time"
@@ -18,6 +21,7 @@ const (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	provider.Register("qingcloud", New)
 }
 
 const (
@@ -25,6 +29,7 @@ const (
 	defaultWaitInterval = 5 * time.Second
 )
 
+//QCNicProvider QingCloud Nic provider object
 type QCNicProvider struct {
 	nicService   *service.NicService
 	vxNetService *service.VxNetService
@@ -32,36 +37,30 @@ type QCNicProvider struct {
 	vxNets       []string
 }
 
-func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error) {
-	if len(vxNets) == 0 {
-		return nil, errors.New("vxNets miss")
-	}
-
-	config, err := config.NewDefault()
+// New create new nic provider object
+func New(configmap map[string]interface{}) (provider.NicProvider, error) {
+	qcniconfig, err := DecodeConfiguration(configmap)
 	if err != nil {
 		return nil, err
 	}
-
-	if configFile != "" {
-		err := config.LoadConfigFromFilepath(configFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	qcService, err := service.Init(config)
+	qsdkconfig, err := config.New(qcniconfig.QyAccessKeyID, qcniconfig.QySecretAccessKey)
 	if err != nil {
 		return nil, err
 	}
-	nicService, err := qcService.Nic(config.Zone)
+	qsdkconfig.Zone = qcniconfig.Zone
+	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
 		return nil, err
 	}
-	jobService, err := qcService.Job(config.Zone)
+	nicService, err := qcService.Nic(qsdkconfig.Zone)
 	if err != nil {
 		return nil, err
 	}
-	vxNetService, err := qcService.VxNet(config.Zone)
+	jobService, err := qcService.Job(qsdkconfig.Zone)
+	if err != nil {
+		return nil, err
+	}
+	vxNetService, err := qcService.VxNet(qsdkconfig.Zone)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +69,7 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 		nicService:   nicService,
 		jobService:   jobService,
 		vxNetService: vxNetService,
-		vxNets:       vxNets,
+		vxNets:       qcniconfig.VxNets,
 	}
 	return p, nil
 }
@@ -79,10 +78,9 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 func (p *QCNicProvider) chooseVxNet() string {
 	if len(p.vxNets) == 1 {
 		return p.vxNets[0]
-	} else {
-		idx := rand.Intn(len(p.vxNets))
-		return p.vxNets[idx]
 	}
+	idx := rand.Intn(len(p.vxNets))
+	return p.vxNets[idx]
 }
 
 func (p *QCNicProvider) CreateNic() (*pkg.HostNic, error) {
