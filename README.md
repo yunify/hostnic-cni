@@ -20,10 +20,15 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "name": "hostnic",
     "type": "hostnic",
     "provider": "qingcloud",
-    "providerConfigFile":"/etc/qingcloud/client.yaml",
-    "vxNets":["vxnet-xxxxx","vxnet-xxxx"],
-    "isGateway": true
+    "args": {
+      "QyAccessKeyID": "TZKPBMMIPQITZSWTECKD",
+      "QySecretAccessKey": "biST961HwPb5ZL7KdWTMeHmIf1v02VjTsK33hytB",
+      "zone": "pek3a",
+      "vxNets":["vxnet-oilq879"],
+      "isGateway": true
+    }
 }
+
 EOF
 
 cat >/etc/cni/net.d/99-loopback.conf <<EOF
@@ -43,8 +48,7 @@ qy_secret_access_key: "Your secret access key"
 zone: "pek3a"
 EOF
 ```
-### CNI config Description 
+### CNI config Description
 * **provider** IaaS provider, current only support qingcloud
 * **providerConfigFile** IaaS provider api config
 * **vxNets** nic vxnet, support multi, all vxnet should in same vpc.
-
