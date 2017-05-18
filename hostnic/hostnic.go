@@ -1,3 +1,21 @@
+//
+// =========================================================================
+// Copyright (C) 2017 by Yunify, Inc...
+// -------------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this work except in compliance with the License.
+// You may obtain a copy of the License in the LICENSE file, or at:
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =========================================================================
+//
+
 package main
 
 import (
@@ -7,6 +25,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"net"
+
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -15,26 +35,10 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
-	"net"
+	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
 const defaultDataDir = "/var/lib/cni/hostnic"
-
-type NetConf struct {
-	types.NetConf
-	DataDir            string   `json:"dataDir"`
-	Provider           string   `json:"provider"`
-	ProviderConfigFile string   `json:"providerConfigFile"`
-	VxNets             []string `json:"vxNets"`
-}
-
-func loadNetConf(bytes []byte) (*NetConf, error) {
-	netconf := &NetConf{DataDir: defaultDataDir}
-	if err := json.Unmarshal(bytes, netconf); err != nil {
-		return nil, fmt.Errorf("failed to load netconf: %v", err)
-	}
-	return netconf, nil
-}
 
 func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -75,7 +79,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	nicProvider, err := provider.CreateNicProvider(n.Provider, n.ProviderConfigFile, n.VxNets)
+	nicProvider, err := provider.New(n.Provider, n.Args)
 	if err != nil {
 		return err
 	}
@@ -96,7 +100,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.HardwareAddr, err)
 	}
 
-	if err := netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
+	if err = netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
 		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to set namespace on link %q: %v", nic.HardwareAddr, err)
 	}
@@ -156,7 +160,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 
-	nicProvider, err := provider.CreateNicProvider(n.Provider, n.ProviderConfigFile, n.VxNets)
+	nicProvider, err := provider.New(n.Provider, n.Args)
 	if err != nil {
 		return err
 	}
@@ -175,6 +179,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 	return deleteNic(nic.ID, nicProvider)
 }
 

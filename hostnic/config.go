@@ -16,28 +16,34 @@
 // =========================================================================
 //
 
-package pkg
+package main
 
 import (
 	"encoding/json"
-	"reflect"
-	"testing"
+	"errors"
+	"fmt"
+
+	"github.com/containernetworking/cni/pkg/types"
 )
 
-func TestTypesJson(t *testing.T) {
-	hostnic := &HostNic{ID: "test", Address: "192.168.1.10", HardwareAddr: "52:54:72:46:81:51",
-		VxNet: &VxNet{ID: "testvxnet", GateWay: "192.168.1.1",
-			Network: "192.168.1.0/24"}}
-	bytes, err := json.Marshal(hostnic)
-	if err != nil {
-		t.Error(err)
+//NetConf nic plugin configuration
+type NetConf struct {
+	types.NetConf
+	DataDir  string                 `json:"dataDir"`
+	Provider string                 `json:"provider"`
+	Args     map[string]interface{} `json:"args"`
+}
+
+func loadNetConf(bytes []byte) (*NetConf, error) {
+	netconf := &NetConf{DataDir: defaultDataDir}
+	if err := json.Unmarshal(bytes, netconf); err != nil {
+		return nil, fmt.Errorf("failed to load netconf: %v", err)
 	}
-	hostnic2 := &HostNic{}
-	err = json.Unmarshal(bytes, hostnic2)
-	if err != nil {
-		t.Error(err)
+	if netconf.DataDir == "" {
+		return nil, errors.New("Data dir is empty")
 	}
-	if !reflect.DeepEqual(hostnic, hostnic2) {
-		t.Errorf(" %++v != %++v", hostnic, hostnic2)
+	if netconf.Provider == "" {
+		return nil, errors.New("Provider name is empty")
 	}
+	return netconf, nil
 }

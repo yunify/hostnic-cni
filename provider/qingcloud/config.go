@@ -16,28 +16,32 @@
 // =========================================================================
 //
 
-package pkg
+package qingcloud
 
 import (
-	"encoding/json"
-	"reflect"
-	"testing"
+	"errors"
+
+	"github.com/mitchellh/mapstructure"
 )
 
-func TestTypesJson(t *testing.T) {
-	hostnic := &HostNic{ID: "test", Address: "192.168.1.10", HardwareAddr: "52:54:72:46:81:51",
-		VxNet: &VxNet{ID: "testvxnet", GateWay: "192.168.1.1",
-			Network: "192.168.1.0/24"}}
-	bytes, err := json.Marshal(hostnic)
+//Config QingCloud nic provider configuration
+type Config struct {
+	ProviderConfigFile string   `json:"providerConfigFile"`
+	VxNets             []string `json:"vxNets"`
+}
+
+//DecodeConfiguration decode configuration from map
+func DecodeConfiguration(config map[string]interface{}) (*Config, error) {
+	var qingconfig Config
+	err := mapstructure.Decode(config, &qingconfig)
 	if err != nil {
-		t.Error(err)
+		return nil, err
 	}
-	hostnic2 := &HostNic{}
-	err = json.Unmarshal(bytes, hostnic2)
-	if err != nil {
-		t.Error(err)
+	if len(qingconfig.VxNets) == 0 {
+		return nil, errors.New("vxNets list is emtpy")
 	}
-	if !reflect.DeepEqual(hostnic, hostnic2) {
-		t.Errorf(" %++v != %++v", hostnic, hostnic2)
+	if qingconfig.ProviderConfigFile == "" {
+		return nil, errors.New("qingcloud sdk config file path is emtpy")
 	}
+	return &qingconfig, nil
 }
