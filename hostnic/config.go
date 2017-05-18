@@ -26,12 +26,18 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 )
 
+//IPAMConfig routing rules configuratioins
+type IPAMConfig struct {
+	Routes []*types.Route `json:"routes"`
+}
+
 //NetConf nic plugin configuration
 type NetConf struct {
 	types.NetConf
 	DataDir  string                 `json:"dataDir"`
 	Provider string                 `json:"provider"`
 	Args     map[string]interface{} `json:"args"`
+	IPAM     *IPAMConfig            `json:"ipam"`
 }
 
 func loadNetConf(bytes []byte) (*NetConf, error) {

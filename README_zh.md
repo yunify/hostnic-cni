@@ -21,7 +21,10 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "args": {
       "providerConfigFile":"/etc/qingcloud/client.yaml",
       "vxNets":["vxnet-xxxxx","vxnet-xxxx"]
-    },
+    },    
+    "ipam":{
+          "routes":[{"dst":"kubernetes service cidr","gw":"hostip"}]
+  　},
     "isGateway": true
 }
 EOF
@@ -47,3 +50,4 @@ EOF
 * **provider** IaaS 的提供方，当前只支持 qingcloud，未来会支持更多。
 * **providerConfigFile** IaaS 提供方的配置文件
 * **vxNets** nic 所在的私有网络，数组格式，支持多个，多个私有网络必须在同一个 vpc 下。
+* **ipam** 给nic设置路由条目。（可选）

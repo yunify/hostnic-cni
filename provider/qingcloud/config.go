@@ -40,8 +40,5 @@ func DecodeConfiguration(config map[string]interface{}) (*Config, error) {
 	if len(qingconfig.VxNets) == 0 {
 		return nil, errors.New("vxNets list is emtpy")
 	}
-	if qingconfig.ProviderConfigFile == "" {
-		return nil, errors.New("qingcloud sdk config file path is emtpy")
-	}
 	return &qingconfig, nil
 }

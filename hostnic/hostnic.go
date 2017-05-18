@@ -116,7 +116,11 @@ func cmdAdd(args *skel.CmdArgs) error {
 	ipConfig := &current.IPConfig{Address: net.IPNet{IP: net.ParseIP(nic.Address), Mask: ipNet.Mask}, Interface: 0, Version: "4", Gateway: gateWay}
 	//TODO support ipv6
 	route := &types.Route{Dst: net.IPNet{IP: net.IPv4zero, Mask: net.IPMask(net.IPv4zero)}, GW: gateWay}
-	result := &current.Result{Interfaces: []*current.Interface{netIF}, IPs: []*current.IPConfig{ipConfig}, Routes: []*types.Route{route}}
+	var routeTable = []*types.Route{route}
+	if n.IPAM != nil {
+		routeTable = append(routeTable, n.IPAM.Routes...)
+	}
+	result := &current.Result{Interfaces: []*current.Interface{netIF}, IPs: []*current.IPConfig{ipConfig}, Routes: routeTable}
 	err = netns.Do(func(_ ns.NetNS) error {
 		nsIface, err := netlink.LinkByName(srcName)
 		if err != nil {

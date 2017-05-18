@@ -63,9 +63,10 @@ func New(configmap map[string]interface{}) (provider.NicProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = qsdkconfig.LoadConfigFromFilepath(qcniconfig.ProviderConfigFile)
-	if err != nil {
-		return nil, err
+	if qcniconfig.ProviderConfigFile != "" {
+		if err = qsdkconfig.LoadConfigFromFilepath(qcniconfig.ProviderConfigFile); err != nil {
+			return nil, err
+		}
 	}
 	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
