@@ -1,23 +1,43 @@
+//
+// =========================================================================
+// Copyright (C) 2017 by Yunify, Inc...
+// -------------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this work except in compliance with the License.
+// You may obtain a copy of the License in the LICENSE file, or at:
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =========================================================================
+//
+
 package qingcloud
 
 import (
-	"errors"
 	"fmt"
-	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/qingcloud-sdk-go/client"
-	"github.com/yunify/qingcloud-sdk-go/config"
-	"github.com/yunify/qingcloud-sdk-go/service"
 	"io/ioutil"
 	"math/rand"
 	"time"
+
+	"github.com/yunify/hostnic-cni/pkg"
+	"github.com/yunify/hostnic-cni/provider"
+	"github.com/yunify/qingcloud-sdk-go/client"
+	"github.com/yunify/qingcloud-sdk-go/config"
+	"github.com/yunify/qingcloud-sdk-go/service"
 )
 
 const (
-	INSTANCE_ID_FILE = "/etc/qingcloud/instance-id"
+	instanceIDFile = "/etc/qingcloud/instance-id"
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	provider.Register("qingcloud", New)
 }
 
 const (
@@ -25,6 +45,7 @@ const (
 	defaultWaitInterval = 5 * time.Second
 )
 
+//QCNicProvider QingCloud Nic provider object
 type QCNicProvider struct {
 	nicService   *service.NicService
 	vxNetService *service.VxNetService
@@ -32,36 +53,34 @@ type QCNicProvider struct {
 	vxNets       []string
 }
 
-func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error) {
-	if len(vxNets) == 0 {
-		return nil, errors.New("vxNets miss")
-	}
-
-	config, err := config.NewDefault()
+// New create new nic provider object
+func New(configmap map[string]interface{}) (provider.NicProvider, error) {
+	qcniconfig, err := DecodeConfiguration(configmap)
 	if err != nil {
 		return nil, err
 	}
-
-	if configFile != "" {
-		err := config.LoadConfigFromFilepath(configFile)
-		if err != nil {
+	qsdkconfig, err := config.NewDefault()
+	if err != nil {
+		return nil, err
+	}
+	if qcniconfig.ProviderConfigFile != "" {
+		if err = qsdkconfig.LoadConfigFromFilepath(qcniconfig.ProviderConfigFile); err != nil {
 			return nil, err
 		}
 	}
-
-	qcService, err := service.Init(config)
+	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
 		return nil, err
 	}
-	nicService, err := qcService.Nic(config.Zone)
+	nicService, err := qcService.Nic(qsdkconfig.Zone)
 	if err != nil {
 		return nil, err
 	}
-	jobService, err := qcService.Job(config.Zone)
+	jobService, err := qcService.Job(qsdkconfig.Zone)
 	if err != nil {
 		return nil, err
 	}
-	vxNetService, err := qcService.VxNet(config.Zone)
+	vxNetService, err := qcService.VxNet(qsdkconfig.Zone)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +89,7 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 		nicService:   nicService,
 		jobService:   jobService,
 		vxNetService: vxNetService,
-		vxNets:       vxNets,
+		vxNets:       qcniconfig.VxNets,
 	}
 	return p, nil
 }
@@ -79,12 +98,12 @@ func NewQCNicProvider(configFile string, vxNets []string) (*QCNicProvider, error
 func (p *QCNicProvider) chooseVxNet() string {
 	if len(p.vxNets) == 1 {
 		return p.vxNets[0]
-	} else {
-		idx := rand.Intn(len(p.vxNets))
-		return p.vxNets[idx]
 	}
+	idx := rand.Intn(len(p.vxNets))
+	return p.vxNets[idx]
 }
 
+//CreateNic create network interface card and attach to host machine
 func (p *QCNicProvider) CreateNic() (*pkg.HostNic, error) {
 	instanceID, err := loadInstanceID()
 	if err != nil {
@@ -116,7 +135,7 @@ func (p *QCNicProvider) CreateNic() (*pkg.HostNic, error) {
 		hostNic.VxNet = vxNet
 		return hostNic, nil
 	}
-	return nil, errors.New(fmt.Sprintf("CreateNic output [%+v] error", *output))
+	return nil, fmt.Errorf("CreateNic output [%+v] error", *output)
 }
 
 func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error {
@@ -133,7 +152,7 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 		}
 		return nil
 	}
-	return errors.New(fmt.Sprintf("AttachNics output [%+v] error", *output))
+	return fmt.Errorf("AttachNics output [%+v] error", *output)
 }
 
 func (p *QCNicProvider) detachNic(nicID string) error {
@@ -150,9 +169,10 @@ func (p *QCNicProvider) detachNic(nicID string) error {
 		}
 		return nil
 	}
-	return errors.New(fmt.Sprintf("DetachNics output [%+v] error", *output))
+	return fmt.Errorf("DetachNics output [%+v] error", *output)
 }
 
+//DeleteNic delete nic from host
 func (p *QCNicProvider) DeleteNic(nicID string) error {
 	err := p.detachNic(nicID)
 	if err != nil {
@@ -166,7 +186,7 @@ func (p *QCNicProvider) DeleteNic(nicID string) error {
 	if *output.RetCode == 0 {
 		return nil
 	}
-	return errors.New(fmt.Sprintf("DeleteNics output [%+v] error", *output))
+	return fmt.Errorf("DeleteNics output [%+v] error", *output)
 }
 
 func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
@@ -184,9 +204,9 @@ func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
 }
 
 func loadInstanceID() (string, error) {
-	content, err := ioutil.ReadFile(INSTANCE_ID_FILE)
+	content, err := ioutil.ReadFile(instanceIDFile)
 	if err != nil {
-		return "", fmt.Errorf("Load instance-id from %s error: %v", INSTANCE_ID_FILE, err)
+		return "", fmt.Errorf("Load instance-id from %s error: %v", instanceIDFile, err)
 	}
 	return string(content), nil
 }

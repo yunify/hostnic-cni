@@ -20,8 +20,13 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
     "name": "hostnic",
     "type": "hostnic",
     "provider": "qingcloud",
-    "providerConfigFile":"/etc/qingcloud/client.yaml",
-    "vxNets":["vxnet-xxxxx","vxnet-xxxx"],
+    "args": {
+      "providerConfigFile":"/etc/qingcloud/client.yaml",
+      "vxNets":["vxnet-xxxxx","vxnet-xxxx"]
+    },
+    "ipam":{
+      "routes":[{"dst":"kubernetes service cidr","gw":"hostip"}]
+    },
     "isGateway": true
 }
 EOF
@@ -43,8 +48,8 @@ qy_secret_access_key: "Your secret access key"
 zone: "pek3a"
 EOF
 ```
-### CNI config Description 
+### CNI config Description
 * **provider** IaaS provider, current only support qingcloud
 * **providerConfigFile** IaaS provider api config
 * **vxNets** nic vxnet, support multi, all vxnet should in same vpc.
-
+* **ipam** add custom routing rules for nic, (optional) 
