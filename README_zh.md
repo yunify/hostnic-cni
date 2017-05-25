@@ -23,7 +23,7 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
       "vxNets":["vxnet-xxxxx","vxnet-xxxx"]
     },    
     "ipam":{
-          "routes":[{"dst":"kubernetes service cidr","gw":"hostip"}]
+          "routes":[{"dst":"kubernetes service cidr","gw":"hostip or 0.0.0.0"}]
   　},
     "isGateway": true
 }

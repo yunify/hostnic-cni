@@ -25,7 +25,7 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
       "vxNets":["vxnet-xxxxx","vxnet-xxxx"]
     },
     "ipam":{
-      "routes":[{"dst":"kubernetes service cidr","gw":"hostip"}]
+      "routes":[{"dst":"kubernetes service cidr","gw":"hostip or 0.0.0.0"}]
     },
     "isGateway": true
 }
@@ -52,4 +52,4 @@ EOF
 * **provider** IaaS provider, current only support qingcloud
 * **providerConfigFile** IaaS provider api config
 * **vxNets** nic vxnet, support multi, all vxnet should in same vpc.
-* **ipam** add custom routing rules for nic, (optional) 
+* **ipam** add custom routing rules for nic, (optional)
