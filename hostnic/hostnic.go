@@ -94,12 +94,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if n.IPAM != nil {
 		for _, route := range n.IPAM.Routes {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
-				niclist, err := getAvailabeNicsOnHost(nicProvider, &nic.VxNet.ID)
+				gateway, err := getOrAllocateNicAsGateway(nicProvider, &nic.VxNet.ID)
 				if err != nil {
 					deleteNic(nic.ID, nicProvider)
 					return err
 				}
-				route.GW = net.ParseIP(niclist[0].Address)
+				route.GW = net.ParseIP(gateway.Address)
 			}
 		}
 	}
@@ -169,9 +169,8 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 	return nil
 }
 
-//getAvailabeNicsList
-func getAvailabeNicsOnHost(nicProvider provider.NicProvider, vxnetid *string) ([]*pkg.HostNic, error) {
-	// start to create default gateway
+//getOrAllocateNicAsGateway
+func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, vxnetid *string) (nic *pkg.HostNic, err error) {
 	// get process lock first
 	processLock, err := os.Create(processLockFile)
 	if err != nil {
@@ -220,9 +219,9 @@ func getAvailabeNicsOnHost(nicProvider provider.NicProvider, vxnetid *string) ([
 			return nil, err
 		}
 
-		niclist = append(niclist, gateway)
+		return gateway, nil
 	}
-	return niclist, nil
+	return niclist[0], nil
 }
 
 func cmdDel(args *skel.CmdArgs) error {
