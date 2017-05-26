@@ -27,7 +27,8 @@ type NicProvider interface {
 	CreateNic() (*pkg.HostNic, error)
 	CreateNicInVxnet(vxnet string) (*pkg.HostNic, error)
 	DeleteNic(nicID string) error
-	GetNics(vxnet *string) ([]*pkg.HostNic, error)
+
+	GetNicsUnderCurNamesp(vxnet *string) ([]*pkg.HostNic, error)
 	//GetVxNet(vxNet string) (*pkg.VxNet, error)
 }
 

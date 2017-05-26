@@ -195,7 +195,7 @@ func (p *QCNicProvider) DeleteNic(nicID string) error {
 }
 
 //GetNics get a list of nics on current host machine
-func (p *QCNicProvider) GetNics(vxNet *string) ([]*pkg.HostNic, error) {
+func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNet *string) ([]*pkg.HostNic, error) {
 	localnicmap := make(map[string]net.Interface)
 	localnics, err := net.Interfaces()
 	if err != nil {

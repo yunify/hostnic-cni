@@ -40,7 +40,7 @@ import (
 )
 
 const defaultDataDir = "/var/lib/cni/hostnic"
-const processLockFile = "/var/lib/cni/hostnic/pid"
+const processLockFile = defaultDataDir + "/lock"
 
 func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -94,68 +94,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if n.IPAM != nil {
 		for _, route := range n.IPAM.Routes {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
-
-				// start to create default gateway
-				// get process lock first
-				processLock, err := os.Create(processLockFile)
+				niclist, err := getAvailabeNicsOnHost(nicProvider, &nic.VxNet.ID)
 				if err != nil {
 					deleteNic(nic.ID, nicProvider)
 					return err
-				}
-				if err = syscall.Flock(int(processLock.Fd()), syscall.LOCK_EX); err != nil {
-					deleteNic(nic.ID, nicProvider)
-					return err
-				}
-				// get a list of nics in current vxnet
-				niclist, err := nicProvider.GetNics(&nic.VxNet.ID)
-				if err != nil {
-					deleteNic(nic.ID, nicProvider)
-					return err
-				}
-				if niclist == nil {
-					gateway, err := nicProvider.CreateNicInVxnet(nic.VxNet.ID)
-					if err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-					iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
-					if err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-					_, ipNet, err := net.ParseCIDR(nic.VxNet.Network)
-					if err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-					if err := netlink.LinkSetDown(iface); err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-					//start to configure ip
-					net.ParseCIDR(gateway.VxNet.Network)
-					addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
-					if err := netlink.AddrAdd(iface, addr); err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-					//bring up interface
-					if err := netlink.LinkSetUp(iface); err != nil {
-						deleteNic(gateway.ID, nicProvider)
-						deleteNic(nic.ID, nicProvider)
-						return err
-					}
-
-					//release the file lock
-					syscall.Flock(int(processLock.Fd()), syscall.LOCK_UN)
-					processLock.Close()
-
-					niclist = append(niclist, gateway)
 				}
 				route.GW = net.ParseIP(niclist[0].Address)
 			}
@@ -225,6 +167,62 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 		return fmt.Errorf("failed to delete nic %q : %v", nicID, err)
 	}
 	return nil
+}
+
+//getAvailabeNicsList
+func getAvailabeNicsOnHost(nicProvider provider.NicProvider, vxnetid *string) ([]*pkg.HostNic, error) {
+	// start to create default gateway
+	// get process lock first
+	processLock, err := os.Create(processLockFile)
+	if err != nil {
+		return nil, err
+	}
+	defer processLock.Close()
+	if err = syscall.Flock(int(processLock.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, err
+	}
+	defer syscall.Flock(int(processLock.Fd()), syscall.LOCK_UN)
+
+	// get a list of nics in current vxnet
+	niclist, err := nicProvider.GetNicsUnderCurNamesp(vxnetid)
+	if err != nil {
+		return nil, err
+	}
+	if niclist == nil {
+		gateway, err := nicProvider.CreateNicInVxnet(*vxnetid)
+		if err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+		iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
+		if err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+		_, ipNet, err := net.ParseCIDR(gateway.VxNet.Network)
+		if err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+		if err := netlink.LinkSetDown(iface); err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+		//start to configure ip
+		addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
+		if err := netlink.AddrAdd(iface, addr); err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+		//bring up interface
+		if err := netlink.LinkSetUp(iface); err != nil {
+			deleteNic(gateway.ID, nicProvider)
+			return nil, err
+		}
+
+		niclist = append(niclist, gateway)
+	}
+	return niclist, nil
 }
 
 func cmdDel(args *skel.CmdArgs) error {
