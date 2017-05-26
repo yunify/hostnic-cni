@@ -25,7 +25,7 @@ cat >/etc/cni/net.d/10-hostnic.conf <<EOF
       "vxNets":["vxnet-xxxxx","vxnet-xxxx"]
     },
     "ipam":{
-      "routes":[{"dst":"kubernetes service cidr","gw":"hostip"}]
+      "routes":[{"dst":"kubernetes service cidr","gw":"hostip or 0.0.0.0"}]
     },
     "isGateway": true
 }
@@ -52,4 +52,11 @@ EOF
 * **provider** IaaS provider, current only support qingcloud
 * **providerConfigFile** IaaS provider api config
 * **vxNets** nic vxnet, support multi, all vxnet should in same vpc.
-* **ipam** add custom routing rules for nic, (optional) 
+* **ipam** add custom routing rules for nic, (optional)
+
+### Special notes for Kubernetes users
+Hostnic may not work as expected when it is used with Kubernetes framework due to the constrains in the design of kubernetes. However, we've provided a work around to help users setup kubernetes cluster.
+
+When a new service is defined in kubernetes cluster, it will get a cluster ip. And kube-proxy will maintain a port mapping tables on host machine to redirect service request to corresponding pod. And all of the network payload will be routed to host machine before it is sent to router and the service request will be handled correctly. In this way, kubernetes helps user achieve high availability of service. However, when the pod is attached to network directly(this is what hostnic did), Service ip is not recognied by router and service requests will not be processed.
+
+So we need to find a way to redirect service request to host machine through vpc. Here we implemented a feature to write routing rules defined in network configuration to newly created network interface. And if the host machine doesn't have a nic which is under pod's subnet, you can just set gateway to 0.0.0.0 and network plugin will allocate a new nic which will be used as a gateway, and replace 0.0.0.0 with gateway's ip address automatically.

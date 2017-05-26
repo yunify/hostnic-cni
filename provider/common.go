@@ -25,7 +25,10 @@ import (
 //NicProvider network interface provider which attach new nic for container
 type NicProvider interface {
 	CreateNic() (*pkg.HostNic, error)
+	CreateNicInVxnet(vxnet string) (*pkg.HostNic, error)
 	DeleteNic(nicID string) error
+
+	GetNicsUnderCurNamesp(vxnet *string) ([]*pkg.HostNic, error)
 	//GetVxNet(vxNet string) (*pkg.VxNet, error)
 }
 
