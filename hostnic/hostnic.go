@@ -94,9 +94,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if n.IPAM != nil {
 		for _, route := range n.IPAM.Routes {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
-				gateway, err := getOrAllocateNicAsGateway(nicProvider, &nic.VxNet.ID)
+				gateway, err := getOrAllocateNicAsGateway(nicProvider, nic)
 				if err != nil {
-					deleteNic(nic.ID, nicProvider)
 					return err
 				}
 				route.GW = net.ParseIP(gateway.Address)
@@ -170,7 +169,7 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 }
 
 //getOrAllocateNicAsGateway
-func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, vxnetid *string) (nic *pkg.HostNic, err error) {
+func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *pkg.HostNic) (nic *pkg.HostNic, err error) {
 	// get process lock first
 	processLock, err := os.Create(processLockFile)
 	if err != nil {
@@ -183,45 +182,49 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, vxnetid *string
 	defer syscall.Flock(int(processLock.Fd()), syscall.LOCK_UN)
 
 	// get a list of nics in current vxnet
-	niclist, err := nicProvider.GetNicsUnderCurNamesp(vxnetid)
+	niclist, err := nicProvider.GetNicsUnderCurNamesp(&containernic.VxNet.ID)
 	if err != nil {
 		return nil, err
 	}
-	if niclist == nil {
-		gateway, err := nicProvider.CreateNicInVxnet(*vxnetid)
-		if err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
+	if niclist != nil {
+		for _, nic := range niclist {
+			if nic.HardwareAddr != containernic.HardwareAddr {
+				return nic, nil
+			}
 		}
-		iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
-		if err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
-		}
-		_, ipNet, err := net.ParseCIDR(gateway.VxNet.Network)
-		if err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
-		}
-		if err := netlink.LinkSetDown(iface); err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
-		}
-		//start to configure ip
-		addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
-		if err := netlink.AddrAdd(iface, addr); err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
-		}
-		//bring up interface
-		if err := netlink.LinkSetUp(iface); err != nil {
-			deleteNic(gateway.ID, nicProvider)
-			return nil, err
-		}
-
-		return gateway, nil
 	}
-	return niclist[0], nil
+	gateway, err := nicProvider.CreateNicInVxnet(containernic.VxNet.ID)
+	if err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+	iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
+	if err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+	_, ipNet, err := net.ParseCIDR(gateway.VxNet.Network)
+	if err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+	if err := netlink.LinkSetDown(iface); err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+	//start to configure ip
+	addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
+	if err := netlink.AddrAdd(iface, addr); err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+	//bring up interface
+	if err := netlink.LinkSetUp(iface); err != nil {
+		deleteNic(gateway.ID, nicProvider)
+		return nil, err
+	}
+
+	return gateway, nil
 }
 
 func cmdDel(args *skel.CmdArgs) error {
