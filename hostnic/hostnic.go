@@ -96,6 +96,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
 				gateway, err := getOrAllocateNicAsGateway(nicProvider, nic)
 				if err != nil {
+					deleteNic(nic.ID, nicProvider)
 					return err
 				}
 				route.GW = net.ParseIP(gateway.Address)
