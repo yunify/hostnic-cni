@@ -39,7 +39,7 @@ import (
 	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
-const defaultDataDir = "/var/lib/cni/hostnic"
+const defaultDataDir = "/var/run/cni/hostnic"
 const processLockFile = defaultDataDir + "/lock"
 
 func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
@@ -96,6 +96,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
 				gateway, err := getOrAllocateNicAsGateway(nicProvider, nic)
 				if err != nil {
+					deleteNic(nic.ID, nicProvider)
 					return err
 				}
 				route.GW = net.ParseIP(gateway.Address)
@@ -171,6 +172,10 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 //getOrAllocateNicAsGateway
 func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *pkg.HostNic) (nic *pkg.HostNic, err error) {
 	// get process lock first
+	err = os.MkdirAll(defaultDataDir, os.ModeDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the multus data directory(%q): %v", defaultDataDir, err)
+	}
 	processLock, err := os.Create(processLockFile)
 	if err != nil {
 		return nil, err
