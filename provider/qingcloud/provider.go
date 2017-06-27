@@ -194,65 +194,51 @@ func (p *QCNicProvider) DeleteNic(nicID string) error {
 	return fmt.Errorf("DeleteNics output [%+v] error", *output)
 }
 
-//GetNics get a list of nics on current host machine
-func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNet *string) ([]*pkg.HostNic, error) {
-	localnicmap := make(map[string]net.Interface)
+//GetNicsUnderCurNamesp get a list of nics on current host machine
+func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNetID *string) (result []*pkg.HostNic, err error) {
+	//get a list of nic
 	localnics, err := net.Interfaces()
+
 	if err != nil {
 		return nil, err
 	}
-	for _, localnic := range localnics {
-		if localnic.Flags&net.FlagUp == 1 {
-			localnicmap[localnic.HardwareAddr.String()] = localnic
-		}
-	}
 
-	input := &service.DescribeNicsInput{
-		VxNets: []*string{vxNet},
-	}
-
-	output, err := p.nicService.DescribeNics(input)
+	vxnet, err := p.getVxNet(*vxNetID)
 	if err != nil {
 		return nil, err
 	}
-	if *output.RetCode == 0 {
 
-		qcNics := output.NICSet
-		var nics []*pkg.HostNic
-		for _, nic := range qcNics {
-			vxnet, err := p.getVxNet(*nic.VxNetID)
-			if err != nil {
-				return nil, err
-			}
-			localnic, exists := localnicmap[*nic.NICID]
-			if exists == false {
-				continue
-			}
-			var ipv4addr string
-			addrs, err := localnic.Addrs()
+	//get vxnet info
+	_, network, err := net.ParseCIDR(vxnet.Network)
+	if err != nil {
+		return nil, err
+	}
+	for _, nic := range localnics {
+
+		if nic.Flags&net.FlagUp != 0 && nic.Flags&net.FlagLoopback == 0 {
+
+			addrs, err := nic.Addrs()
 			if err != nil {
 				return nil, err
 			}
 			for _, addr := range addrs {
-				switch addr.(type) {
-				case *net.IPNet:
-					ipv4 := addr.(*net.IPNet).IP.To4()
-					if ipv4 != nil {
-						ipv4addr = ipv4.String()
-					}
+				ip, _, err := net.ParseCIDR(addr.String())
+
+				if err != nil {
+					return nil, err
+				}
+				if network.Contains(ip) {
+					result = append(result, &pkg.HostNic{
+						ID:           nic.HardwareAddr.String(),
+						VxNet:        vxnet,
+						HardwareAddr: nic.HardwareAddr.String(),
+						Address:      ip.String(),
+					})
 				}
 			}
-
-			nics = append(nics, &pkg.HostNic{
-				ID:           *nic.NICID,
-				VxNet:        vxnet,
-				HardwareAddr: *nic.NICID,
-				Address:      ipv4addr,
-			})
 		}
-		return nics, nil
 	}
-	return nil, fmt.Errorf("%v,%d", *output.Message, *output.RetCode)
+	return result, err
 }
 
 func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
