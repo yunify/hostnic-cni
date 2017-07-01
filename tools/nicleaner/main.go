@@ -6,7 +6,6 @@ import (
 	"os"
 	"fmt"
 	"github.com/yunify/hostnic-cni/provider"
-	"net"
 	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
