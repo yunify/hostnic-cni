@@ -138,7 +138,8 @@ func ScanNicsByNetwork(network *net.IPNet, up bool)([]string, error){
 		return nil, err
 	}
 	for _, nic := range localnics {
-		fmt.Printf("Find nic %+v", nic)
+		//TODO log
+		fmt.Printf("Find nic %+v \n", nic)
 		if nic.Flags&net.FlagLoopback == 0 {
 			continue
 		}
@@ -153,9 +154,9 @@ func ScanNicsByNetwork(network *net.IPNet, up bool)([]string, error){
 				return nil, err
 			}
 			if network.Contains(ip) {
-				if up && nic.Flags&net.FlagUp != 0 {
-					result = append(result, nic.HardwareAddr.String())
-				}else if !up && nic.Flags&net.FlagUp == 0{
+				match := (up && nic.Flags&net.FlagUp != 0) || (!up && nic.Flags&net.FlagUp == 0)
+				if match {
+					fmt.Printf("Match nic %s \n", nic.Name)
 					result = append(result, nic.HardwareAddr.String())
 				}else {
 					continue
