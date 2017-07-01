@@ -26,20 +26,12 @@ func clean(n *pkg.NetConf) (error){
 		return err
 	}
 	for _, vxnetID := range nicProvider.GetVxNets(){
-		vxnet, err := nicProvider.GetVxNet(vxnetID)
-		if err != nil {
-			return err
-		}
-		_, network, err := net.ParseCIDR(vxnet.Network)
-		if err != nil {
-			return err
-		}
-		nics, err := pkg.ScanNicsByNetwork(network,onlyUpNic)
+		nics, err := nicProvider.GetNicsUnderCurNamesp(&vxnetID)
 		if err != nil {
 			return err
 		}
 		for _, nic := range nics {
-			err := nicProvider.DeleteNic(nic)
+			err := nicProvider.DeleteNic(nic.ID)
 			if err != nil {
 				fmt.Printf("Delete nic %s error: %s\n", nic, err)
 			}
