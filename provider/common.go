@@ -29,7 +29,8 @@ type NicProvider interface {
 	DeleteNic(nicID string) error
 
 	GetNicsUnderCurNamesp(vxnet *string) ([]*pkg.HostNic, error)
-	//GetVxNet(vxNet string) (*pkg.VxNet, error)
+	GetVxNet(vxNet string) (*pkg.VxNet, error)
+	GetVxNets()([]string)
 }
 
 //Initializer initialization function of provider

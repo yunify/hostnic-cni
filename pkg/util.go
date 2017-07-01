@@ -26,6 +26,9 @@ import (
 	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/vishvananda/netlink"
+	"encoding/json"
+	"errors"
+	"io/ioutil"
 )
 
 func StringPtr(str string) *string {
@@ -103,4 +106,62 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 		}
 	}
 	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
+}
+
+func LoadNetConf(bytes []byte) (*NetConf, error) {
+	netconf := &NetConf{DataDir: DefaultDataDir}
+	if err := json.Unmarshal(bytes, netconf); err != nil {
+		return nil, fmt.Errorf("failed to load netconf: %v", err)
+	}
+	if netconf.DataDir == "" {
+		return nil, errors.New("Data dir is empty")
+	}
+	if netconf.Provider == "" {
+		return nil, errors.New("Provider name is empty")
+	}
+	return netconf, nil
+}
+
+func LoadNetConfFromFile(file string) (*NetConf, error){
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	return LoadNetConf(b)
+}
+
+// ScanNetworkNics scan nic by network
+func ScanNicsByNetwork(network *net.IPNet, up bool)([]string, error){
+	var result []string
+	localnics, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, nic := range localnics {
+		fmt.Printf("Find nic %+v", nic)
+		if nic.Flags&net.FlagLoopback == 0 {
+			continue
+		}
+		addrs, err := nic.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			ip, _, err := net.ParseCIDR(addr.String())
+
+			if err != nil {
+				return nil, err
+			}
+			if network.Contains(ip) {
+				if up && nic.Flags&net.FlagUp != 0 {
+					result = append(result, nic.HardwareAddr.String())
+				}else if !up && nic.Flags&net.FlagUp == 0{
+					result = append(result, nic.HardwareAddr.String())
+				}else {
+					continue
+				}
+			}
+		}
+	}
+	return result, nil
 }

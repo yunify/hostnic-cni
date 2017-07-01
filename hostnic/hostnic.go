@@ -39,8 +39,8 @@ import (
 	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
-const defaultDataDir = "/var/run/cni/hostnic"
-const processLockFile = defaultDataDir + "/lock"
+
+const processLockFile = pkg.DefaultDataDir + "/lock"
 
 func saveScratchNetConf(containerID, dataDir string, nic *pkg.HostNic) error {
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -77,7 +77,7 @@ func consumeScratchNetConf(containerID, dataDir string) (*pkg.HostNic, error) {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	n, err := loadNetConf(args.StdinData)
+	n, err := pkg.LoadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -172,9 +172,9 @@ func deleteNic(nicID string, nicProvider provider.NicProvider) error {
 //getOrAllocateNicAsGateway
 func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *pkg.HostNic) (nic *pkg.HostNic, err error) {
 	// get process lock first
-	err = os.MkdirAll(defaultDataDir, os.ModeDir)
+	err = os.MkdirAll(pkg.DefaultDataDir, os.ModeDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create the multus data directory(%q): %v", defaultDataDir, err)
+		return nil, fmt.Errorf("failed to create the multus data directory(%q): %v", pkg.DefaultDataDir, err)
 	}
 	processLock, err := os.Create(processLockFile)
 	if err != nil {
@@ -233,7 +233,7 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *p
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	n, err := loadNetConf(args.StdinData)
+	n, err := pkg.LoadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
