@@ -44,7 +44,7 @@ func clean(n *pkg.NetConf) (error){
 			}
 		}
 	}
-
+	return nil
 }
 
 func main() {
