@@ -2,14 +2,14 @@ package main
 
 import (
 	"flag"
-	"github.com/yunify/hostnic-cni/pkg"
-	"os"
 	"fmt"
+	"os"
+
+	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
-	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
-var(
+var (
 	cniConfig = "/etc/cni/net.d/10-hostnic.conf"
 	onlyUpNic = true
 )
@@ -19,12 +19,12 @@ func init() {
 	flag.BoolVar(&onlyUpNic, "only_up", onlyUpNic, "only clean up nic.")
 }
 
-func clean(n *pkg.NetConf) (error){
+func clean(n *pkg.NetConf) error {
 	nicProvider, err := provider.New(n.Provider, n.Args)
 	if err != nil {
 		return err
 	}
-	for _, vxnetID := range nicProvider.GetVxNets(){
+	for _, vxnetID := range nicProvider.GetVxNets() {
 		nics, err := nicProvider.GetNicsUnderCurNamesp(&vxnetID)
 		if err != nil {
 			return err
