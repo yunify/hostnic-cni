@@ -1,5 +1,5 @@
 package implementation
 
 import (
-	_ "github.com/yunify/hostnic-cni/provider/Implementation/qingcloud"
+	_ "github.com/yunify/hostnic-cni/provider/implementation/qingcloud"
 )

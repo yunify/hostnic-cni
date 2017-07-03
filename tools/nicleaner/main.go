@@ -11,12 +11,10 @@ import (
 
 var (
 	cniConfig = "/etc/cni/net.d/10-hostnic.conf"
-	onlyUpNic = true
 )
 
 func init() {
 	flag.StringVar(&cniConfig, "cni_config", cniConfig, "the hostnic cni config file.")
-	flag.BoolVar(&onlyUpNic, "only_up", onlyUpNic, "only clean up nic.")
 }
 
 func clean(n *pkg.NetConf) error {
