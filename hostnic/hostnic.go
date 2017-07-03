@@ -36,7 +36,9 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
+	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
+
 
 const processLockFile = pkg.DefaultDataDir + "/lock"
 

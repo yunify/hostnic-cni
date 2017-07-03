@@ -2,14 +2,14 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"os"
-
 	"github.com/yunify/hostnic-cni/pkg"
+	"os"
+	"fmt"
 	"github.com/yunify/hostnic-cni/provider"
+	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
 )
 
-var (
+var(
 	cniConfig = "/etc/cni/net.d/10-hostnic.conf"
 )
 
@@ -17,12 +17,12 @@ func init() {
 	flag.StringVar(&cniConfig, "cni_config", cniConfig, "the hostnic cni config file.")
 }
 
-func clean(n *pkg.NetConf) error {
+func clean(n *pkg.NetConf) (error){
 	nicProvider, err := provider.New(n.Provider, n.Args)
 	if err != nil {
 		return err
 	}
-	for _, vxnetID := range nicProvider.GetVxNets() {
+	for _, vxnetID := range nicProvider.GetVxNets(){
 		nics, err := nicProvider.GetNicsUnderCurNamesp(&vxnetID)
 		if err != nil {
 			return err
