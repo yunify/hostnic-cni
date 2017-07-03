@@ -117,7 +117,7 @@ func (p *QCNicProvider) CreateNicInVxnet(vxNetID string) (*pkg.HostNic, error) {
 		return nil, err
 	}
 
-	vxNet, err := p.getVxNet(vxNetID)
+	vxNet, err := p.GetVxNet(vxNetID)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNetID *string) (result []*pkg.Ho
 		return nil, err
 	}
 
-	vxnet, err := p.getVxNet(*vxNetID)
+	vxnet, err := p.GetVxNet(*vxNetID)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,11 @@ func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNetID *string) (result []*pkg.Ho
 	return result, err
 }
 
-func (p *QCNicProvider) getVxNet(vxNet string) (*pkg.VxNet, error) {
+func (p *QCNicProvider) GetVxNets()([]string){
+	return p.vxNets
+}
+
+func (p *QCNicProvider) GetVxNet(vxNet string) (*pkg.VxNet, error) {
 	input := &service.DescribeVxNetsInput{VxNets: []*string{&vxNet}}
 	output, err := p.vxNetService.DescribeVxNets(input)
 	if err != nil {

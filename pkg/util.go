@@ -26,6 +26,9 @@ import (
 	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/vishvananda/netlink"
+	"encoding/json"
+	"errors"
+	"io/ioutil"
 )
 
 func StringPtr(str string) *string {
@@ -103,4 +106,26 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 		}
 	}
 	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
+}
+
+func LoadNetConf(bytes []byte) (*NetConf, error) {
+	netconf := &NetConf{DataDir: DefaultDataDir}
+	if err := json.Unmarshal(bytes, netconf); err != nil {
+		return nil, fmt.Errorf("failed to load netconf: %v", err)
+	}
+	if netconf.DataDir == "" {
+		return nil, errors.New("Data dir is empty")
+	}
+	if netconf.Provider == "" {
+		return nil, errors.New("Provider name is empty")
+	}
+	return netconf, nil
+}
+
+func LoadNetConfFromFile(file string) (*NetConf, error){
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	return LoadNetConf(b)
 }
