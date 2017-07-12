@@ -29,7 +29,7 @@ func clean(n *pkg.NetConf) error {
 		if err == nil {
 			wg.Add(len(nics))
 			for _, nic := range nics {
-				deleteNic(nicProvider, nic, wg)
+				go deleteNic(nicProvider, nic, wg)
 			}
 		}
 	}
