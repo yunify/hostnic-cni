@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
 	"time"
 
 	"github.com/yunify/hostnic-cni/pkg"
@@ -154,7 +155,7 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 	}
 	if *output.RetCode == 0 {
 		jobID := *output.JobID
-		err := p.waitNic(hostNic, jobID)
+		err := p.waitNic(hostNic.ID, jobID, true)
 		if err != nil {
 			return err
 		}
@@ -163,18 +164,20 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 	return fmt.Errorf("AttachNics output [%+v] error", *output)
 }
 
-func (p *QCNicProvider) waitNic(hostNic *pkg.HostNic, jobID string) error {
+func (p *QCNicProvider) waitNic(nicID string, jobID string, attach bool) error {
+	fmt.Fprintf(os.Stderr, "wait for nic %s %s %v\n", nicID, "attach:", attach)
 	err := qcutil.WaitForSpecific(func() bool {
-		_, err := pkg.LinkByMacAddr(hostNic.HardwareAddr)
+		link, err := pkg.LinkByMacAddr(nicID)
 		if err != nil {
-			return false
+			return !attach
 		}
-		return true
+		fmt.Fprintln(os.Stderr, "find link", link.Attrs().Name, nicID)
+		return attach
 	}, waitNicLocalTimeout, waitNicLocalInterval)
-	if err != nil {
-		return err
+	if _, ok := err.(*qcutil.TimeoutError); ok {
+		err = client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
 	}
-	return client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
+	return err
 }
 
 func (p *QCNicProvider) detachNic(nicID string) error {
@@ -185,6 +188,7 @@ func (p *QCNicProvider) detachNic(nicID string) error {
 	}
 	if *output.RetCode == 0 {
 		jobID := *output.JobID
+		//TODO optimize detachNic wait
 		err := client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
 		if err != nil {
 			return err
