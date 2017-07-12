@@ -5,6 +5,18 @@ import (
 	"time"
 )
 
+// An Error represents a timeout error.
+type TimeoutError struct {
+	timeout time.Duration
+}
+
+func (e *TimeoutError) Error() string          { return fmt.Sprintf("Wait timeout [%s] ", e.timeout) }
+func (e *TimeoutError) Timeout() time.Duration { return e.timeout }
+
+func NewTimeoutError(timeout time.Duration) *TimeoutError {
+	return &TimeoutError{timeout: timeout}
+}
+
 // WaitForSpecificOrError wait a function return true or error.
 func WaitForSpecificOrError(f func() (bool, error), timeout time.Duration, waitInterval time.Duration) error {
 	ticker := time.NewTicker(waitInterval)
@@ -23,7 +35,7 @@ func WaitForSpecificOrError(f func() (bool, error), timeout time.Duration, waitI
 				return nil
 			}
 		case <-timer.C:
-			return fmt.Errorf("Wait timeout [%s] ", timeout)
+			return NewTimeoutError(timeout)
 		}
 	}
 }

@@ -262,7 +262,7 @@ type DescribeVolumesInput struct {
 	// Verbose's available values: 0, 1
 	Verbose *int `json:"verbose" name:"verbose" default:"0" location:"params"`
 	// VolumeType's available values: 0, 1, 2, 3
-	VolumeType *int      `json:"volume_type" name:"volume_type" default:"0" location:"params"`
+	VolumeType *int      `json:"volume_type" name:"volume_type" location:"params"`
 	Volumes    []*string `json:"volumes" name:"volumes" location:"params"`
 }
 

@@ -561,10 +561,10 @@ func (v *DeleteLoadBalancerBackendsInput) Validate() error {
 }
 
 type DeleteLoadBalancerBackendsOutput struct {
-	Message              *string `json:"message" name:"message"`
-	Action               *string `json:"action" name:"action" location:"elements"`
-	LoadBalancerBackends *string `json:"loadbalancer_backends" name:"loadbalancer_backends" location:"elements"`
-	RetCode              *int    `json:"ret_code" name:"ret_code" location:"elements"`
+	Message              *string   `json:"message" name:"message"`
+	Action               *string   `json:"action" name:"action" location:"elements"`
+	LoadBalancerBackends []*string `json:"loadbalancer_backends" name:"loadbalancer_backends" location:"elements"`
+	RetCode              *int      `json:"ret_code" name:"ret_code" location:"elements"`
 }
 
 // Documentation URL: https://docs.qingcloud.com/api/lb/delete_loadbalancer_listeners.html

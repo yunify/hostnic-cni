@@ -15,7 +15,8 @@ func WaitJob(jobService *service.JobService, jobID string, timeout time.Duration
 		input := &service.DescribeJobsInput{Jobs: []*string{&jobID}}
 		output, err := jobService.DescribeJobs(input)
 		if err != nil {
-			return false, err
+			//network or api error, not considered job fail.
+			return false, nil
 		}
 		if len(output.JobSet) == 0 {
 			return false, fmt.Errorf("Can not find job [%s]", jobID)
