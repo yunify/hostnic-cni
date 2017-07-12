@@ -122,6 +122,7 @@ type DescribeInstancesInput struct {
 	InstanceClass *int      `json:"instance_class" name:"instance_class" location:"params"`
 	InstanceType  []*string `json:"instance_type" name:"instance_type" location:"params"`
 	Instances     []*string `json:"instances" name:"instances" location:"params"`
+	IsClusterNode *int      `json:"is_cluster_node" name:"is_cluster_node" default:"0" location:"params"`
 	Limit         *int      `json:"limit" name:"limit" default:"20" location:"params"`
 	Offset        *int      `json:"offset" name:"offset" default:"0" location:"params"`
 	SearchWord    *string   `json:"search_word" name:"search_word" location:"params"`
