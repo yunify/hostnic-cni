@@ -30,6 +30,7 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/service"
+	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
 )
 
 const (
@@ -42,8 +43,10 @@ func init() {
 }
 
 const (
-	defaultOpTimeout    = 180 * time.Second
-	defaultWaitInterval = 5 * time.Second
+	defaultOpTimeout     = 180 * time.Second
+	defaultWaitInterval  = 10 * time.Second
+	waitNicLocalTimeout  = 20 * time.Second
+	waitNicLocalInterval = 2 * time.Second
 )
 
 //QCNicProvider QingCloud Nic provider object
@@ -151,13 +154,27 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 	}
 	if *output.RetCode == 0 {
 		jobID := *output.JobID
-		err := client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
+		err := p.waitNic(hostNic, jobID)
 		if err != nil {
 			return err
 		}
 		return nil
 	}
 	return fmt.Errorf("AttachNics output [%+v] error", *output)
+}
+
+func (p *QCNicProvider) waitNic(hostNic *pkg.HostNic, jobID string) error {
+	err := qcutil.WaitForSpecific(func() bool {
+		_, err := pkg.LinkByMacAddr(hostNic.HardwareAddr)
+		if err != nil {
+			return false
+		}
+		return true
+	}, waitNicLocalTimeout, waitNicLocalInterval)
+	if err != nil {
+		return err
+	}
+	return client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
 }
 
 func (p *QCNicProvider) detachNic(nicID string) error {
@@ -241,7 +258,7 @@ func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNetID *string) (result []*pkg.Ho
 	return result, err
 }
 
-func (p *QCNicProvider) GetVxNets()([]string){
+func (p *QCNicProvider) GetVxNets() []string {
 	return p.vxNets
 }
 
