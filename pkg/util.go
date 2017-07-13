@@ -29,6 +29,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"syscall"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 )
 
 func StringPtr(str string) *string {
@@ -48,7 +50,7 @@ func ConfigureIface(ifName string, res *current.Result) error {
 	if err := netlink.LinkSetDown(link); err != nil {
 		return fmt.Errorf("failed to set link down: %v", err)
 	}
-
+	ClearLinkAddr(link)
 	var v4gw, v6gw net.IP
 	for _, ipc := range res.IPs {
 		if int(ipc.Interface) >= len(res.Interfaces) || res.Interfaces[ipc.Interface].Name != ifName {
@@ -128,4 +130,18 @@ func LoadNetConfFromFile(file string) (*NetConf, error){
 		return nil, err
 	}
 	return LoadNetConf(b)
+}
+
+func ClearLinkAddr(iface netlink.Link){
+	//clear old addr. os possible bind ip to nic before hostnic.
+	addrs, err := netlink.AddrList(iface, syscall.AF_INET)
+	if err == nil && len(addrs) >0 {
+		logger.Info("Del Nic exists addrs: %+v, Nic %s", addrs, iface.Attrs().HardwareAddr)
+		for _,addr := range addrs {
+			err := netlink.AddrDel(iface, &addr)
+			if err != nil {
+				logger.Error("AddrDel err %s addr:%+v, Nic %s", err.Error(), addr, iface.Attrs().HardwareAddr)
+			}
+		}
+	}
 }

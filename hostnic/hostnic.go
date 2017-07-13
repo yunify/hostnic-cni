@@ -37,8 +37,8 @@ import (
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
 	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 )
-
 
 const processLockFile = pkg.DefaultDataDir + "/lock"
 
@@ -82,6 +82,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
+	netns, err := ns.GetNS(args.Netns)
+	if err != nil {
+		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
+	}
+	defer netns.Close()
+
 	nicProvider, err := provider.New(n.Provider, n.Args)
 	if err != nil {
 		return err
@@ -96,6 +102,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
 				gateway, err := getOrAllocateNicAsGateway(nicProvider, nic)
 				if err != nil {
+					logger.Error("getOrAllocateNicAsGateway err %s, delete Nic %s", err.Error(), nic.ID)
 					deleteNic(nic.ID, nicProvider)
 					return err
 				}
@@ -104,20 +111,15 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 	}
 
-	netns, err := ns.GetNS(args.Netns)
-	if err != nil {
-		deleteNic(nic.ID, nicProvider)
-		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
-	}
-	defer netns.Close()
-
 	iface, err := pkg.LinkByMacAddr(nic.HardwareAddr)
 	if err != nil {
+		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.ID)
 		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.HardwareAddr, err)
 	}
 
 	if err = netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
+		logger.Error("LinkSetNsFd err %s, delete Nic %s", err.Error(), nic.ID)
 		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to set namespace on link %q: %v", nic.HardwareAddr, err)
 	}
@@ -125,6 +127,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	srcName := iface.Attrs().Name
 	_, ipNet, err := net.ParseCIDR(nic.VxNet.Network)
 	if err != nil {
+		logger.Error("ParseCIDR err %s, delete Nic %s", err.Error(), nic.ID)
 		deleteNic(nic.ID, nicProvider)
 		return fmt.Errorf("failed to parse vxnet %q network %q: %v", nic.VxNet.ID, nic.VxNet.Network, err)
 	}
@@ -155,6 +158,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	err = saveScratchNetConf(args.ContainerID, n.DataDir, nic)
 	if err != nil {
+		logger.Error("saveScratchNetConf err %s, delete Nic %s", err.Error(), nic.ID)
 		deleteNic(nic.ID, nicProvider)
 		return err
 	}
@@ -200,31 +204,39 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *p
 	}
 	gateway, err := nicProvider.CreateNicInVxnet(containernic.VxNet.ID)
 	if err != nil {
+		logger.Error("CreateNicInVxnet err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
+	//TODO refactor to  use pkg.ConfigureIface
 	iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
 	if err != nil {
+		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	_, ipNet, err := net.ParseCIDR(gateway.VxNet.Network)
 	if err != nil {
+		logger.Error("ParseCIDR err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	if err := netlink.LinkSetDown(iface); err != nil {
+		logger.Error("LinkSetDown err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	//start to configure ip
+	pkg.ClearLinkAddr(iface)
 	addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
 	if err := netlink.AddrAdd(iface, addr); err != nil {
+		logger.Error("AddrAdd err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	//bring up interface
 	if err := netlink.LinkSetUp(iface); err != nil {
+		logger.Error("LinkSetUp err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
