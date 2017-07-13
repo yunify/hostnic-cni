@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net"
-	"os"
 	"time"
 
 	"github.com/yunify/hostnic-cni/pkg"
@@ -32,6 +31,7 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/service"
 	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
+	"github.com/yunify/qingstor-sdk-go/logger"
 )
 
 const (
@@ -155,7 +155,7 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 	}
 	if *output.RetCode == 0 {
 		jobID := *output.JobID
-		err := p.waitNic(hostNic.ID, jobID, true)
+		err := p.waitNic(hostNic.ID, jobID)
 		if err != nil {
 			return err
 		}
@@ -164,17 +164,18 @@ func (p *QCNicProvider) attachNic(hostNic *pkg.HostNic, instanceID string) error
 	return fmt.Errorf("AttachNics output [%+v] error", *output)
 }
 
-func (p *QCNicProvider) waitNic(nicID string, jobID string, attach bool) error {
-	fmt.Fprintf(os.Stderr, "wait for nic %s %s %v\n", nicID, "attach:", attach)
+func (p *QCNicProvider) waitNic(nicID string, jobID string) error {
+	logger.Debug("Wait for nic %v", nicID)
 	err := qcutil.WaitForSpecific(func() bool {
 		link, err := pkg.LinkByMacAddr(nicID)
 		if err != nil {
-			return !attach
+			return false
 		}
-		fmt.Fprintln(os.Stderr, "find link", link.Attrs().Name, nicID)
-		return attach
+		logger.Debug("Find link %s %s", link.Attrs().Name, nicID)
+		return true
 	}, waitNicLocalTimeout, waitNicLocalInterval)
 	if _, ok := err.(*qcutil.TimeoutError); ok {
+		logger.Info("Wait nic %s by local timeout", nicID)
 		err = client.WaitJob(p.jobService, jobID, defaultOpTimeout, defaultWaitInterval)
 	}
 	return err
