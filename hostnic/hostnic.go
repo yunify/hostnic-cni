@@ -204,37 +204,37 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *p
 	}
 	gateway, err := nicProvider.CreateNicInVxnet(containernic.VxNet.ID)
 	if err != nil {
-		logger.Error("CreateNicInVxnet err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("CreateNicInVxnet err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
 	if err != nil {
-		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	_, ipNet, err := net.ParseCIDR(gateway.VxNet.Network)
 	if err != nil {
-		logger.Error("ParseCIDR err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("ParseCIDR err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	if err := netlink.LinkSetDown(iface); err != nil {
-		logger.Error("LinkSetDown err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("LinkSetDown err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	//start to configure ip
 	addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
 	if err := netlink.AddrAdd(iface, addr); err != nil {
-		logger.Error("AddrAdd err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("AddrAdd err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
 	//bring up interface
 	if err := netlink.LinkSetUp(iface); err != nil {
-		logger.Error("LinkSetUp err %s, delete Nic %s", err.Error(), nic.ID)
+		logger.Error("LinkSetUp err %s, delete Nic %s", err.Error(), gateway.ID)
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
