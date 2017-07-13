@@ -208,6 +208,7 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *p
 		deleteNic(gateway.ID, nicProvider)
 		return nil, err
 	}
+	//TODO refactor to  use pkg.ConfigureIface
 	iface, err := pkg.LinkByMacAddr(gateway.HardwareAddr)
 	if err != nil {
 		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), gateway.ID)
@@ -226,6 +227,7 @@ func getOrAllocateNicAsGateway(nicProvider provider.NicProvider, containernic *p
 		return nil, err
 	}
 	//start to configure ip
+	pkg.ClearLinkAddr(iface)
 	addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(gateway.Address), Mask: ipNet.Mask}, Label: ""}
 	if err := netlink.AddrAdd(iface, addr); err != nil {
 		logger.Error("AddrAdd err %s, delete Nic %s", err.Error(), gateway.ID)
