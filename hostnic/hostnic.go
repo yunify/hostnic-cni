@@ -37,7 +37,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/provider"
 	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
-	"github.com/yunify/qingstor-sdk-go/logger"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 )
 
 const processLockFile = pkg.DefaultDataDir + "/lock"

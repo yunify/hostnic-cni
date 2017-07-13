@@ -31,7 +31,7 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/service"
 	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
-	"github.com/yunify/qingstor-sdk-go/logger"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 )
 
 const (
