@@ -29,6 +29,7 @@ import (
 	"net"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -150,7 +151,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		if err := netlink.LinkSetName(nsIface, args.IfName); err != nil {
 			return fmt.Errorf("set link %s to name %s err: %v", nsIface.Attrs().HardwareAddr.String(), srcName, args.IfName)
 		}
-		return pkg.ConfigureIface(args.IfName, result)
+		return ipam.ConfigureIface(args.IfName, result)
 	})
 	if err != nil {
 		deleteNic(nic.ID, nicProvider)

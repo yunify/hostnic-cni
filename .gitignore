@@ -2,3 +2,4 @@ bin
 
 .glide/
 .idea/
+glide.lock
