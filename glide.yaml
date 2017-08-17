@@ -11,8 +11,11 @@ import:
   version: ~0.6.0-rc2
   subpackages:
   - pkg/ip
+  - pkg/ipam
   - pkg/ns
 - package: github.com/mitchellh/mapstructure
+- package: github.com/sirupsen/logrus
+  version: ~1.0.3
 - package: github.com/vishvananda/netlink
 - package: github.com/yunify/qingcloud-sdk-go
   version: ~2.0.0-alpha.8
