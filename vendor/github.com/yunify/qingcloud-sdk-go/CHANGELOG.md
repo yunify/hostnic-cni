@@ -1,6 +1,27 @@
 # Change Log
 All notable changes to QingCloud SDK for Go will be documented in this file.
 
+## [v2.0.0-alpha.8] - 2017-08-13
+
+### Added
+
+- Add missing parameter for describenic
+- Add vxnet parms for instances
+
+## [v2.0.0-alpha.7] - 2017-08-02
+
+### Added
+
+- Add timeout parameter for http client
+- Add missing parameters in nic, router and security groups
+
+## [v2.0.0-alpha.6] - 2017-07-17
+
+### Added
+
+- Update advanced client. [@jolestar]
+- Fix several APIs. [@jolestar]
+
 ## [v2.0.0-alpha.5] - 2017-03-27
 
 ### Added
@@ -40,7 +61,8 @@ All notable changes to QingCloud SDK for Go will be documented in this file.
 ### Added
 
 - QingCloud SDK for the Go programming language.
-
+[v2.0.0-alpha.7]: https://github.com/yunify/qingcloud-sdk-go/compare/v2.0.0-alpha.6...v2.0.0-alpha.7
+[v2.0.0-alpha.6]: https://github.com/yunify/qingcloud-sdk-go/compare/v2.0.0-alpha.5...v2.0.0-alpha.6
 [v2.0.0-alpha.5]: https://github.com/yunify/qingcloud-sdk-go/compare/v2.0.0-alpha.4...v2.0.0-alpha.5
 [v2.0.0-alpha.4]: https://github.com/yunify/qingcloud-sdk-go/compare/v2.0.0-alpha.3...v2.0.0-alpha.4
 [v2.0.0-alpha.3]: https://github.com/yunify/qingcloud-sdk-go/compare/v2.0.0-alpha.2...v2.0.0-alpha.3
