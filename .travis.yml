@@ -1,7 +1,7 @@
 sudo: false
 language: go
 go:
-- 1.7
+- stable
 before_install: 
 install:
 - make

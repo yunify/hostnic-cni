@@ -40,3 +40,8 @@
 2017-08-17 18:19:02 INFO     connecting gopkg.in:443 from 127.0.0.1:40536
 2017-08-17 18:19:45 INFO     connecting gopkg.in:443 from 127.0.0.1:40544
 2017-08-17 18:19:45 INFO     connecting golang.org:443 from 127.0.0.1:40548
+2017-08-17 18:26:47 INFO     connecting github.com:443 from 127.0.0.1:40552
+2017-08-17 18:27:51 INFO     connecting github.com:443 from 127.0.0.1:40556
+2017-08-17 18:27:55 INFO     connecting github.com:443 from 127.0.0.1:40560
+2017-08-17 18:28:03 INFO     connecting github.com:443 from 127.0.0.1:40564
+2017-08-17 18:28:05 INFO     connecting github.com:443 from 127.0.0.1:40568
