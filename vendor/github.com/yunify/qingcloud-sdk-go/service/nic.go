@@ -231,10 +231,11 @@ func (s *NicService) DescribeNics(i *DescribeNicsInput) (*DescribeNicsOutput, er
 }
 
 type DescribeNicsInput struct {
-	Limit   *int      `json:"limit" name:"limit" default:"20" location:"params"`
-	NICName *string   `json:"nic_name" name:"nic_name" location:"params"`
-	Nics    []*string `json:"nics" name:"nics" location:"params"`
-	Offset  *int      `json:"offset" name:"offset" default:"0" location:"params"`
+	Instances []*string `json:"instances" name:"instances" location:"params"`
+	Limit     *int      `json:"limit" name:"limit" default:"20" location:"params"`
+	NICName   *string   `json:"nic_name" name:"nic_name" location:"params"`
+	Nics      []*string `json:"nics" name:"nics" location:"params"`
+	Offset    *int      `json:"offset" name:"offset" default:"0" location:"params"`
 	// Status's available values: available, in-use
 	Status *string `json:"status" name:"status" location:"params"`
 	// VxNetType's available values: 0, 1

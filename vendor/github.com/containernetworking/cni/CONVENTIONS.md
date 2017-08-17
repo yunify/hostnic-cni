@@ -58,7 +58,7 @@ But the runtime would fill in the mappings so the plugin itself would receive so
 ```
 
 ## "args" in network config
-`args` in [network config](https://github.com/containernetworking/cni/blob/master/SPEC.md#network-configuration) were introduced as an optional field into the `0.1.0` CNI spec. The first CNI code release that it appeared in was `v0.4.0`. 
+`args` in [network config](https://github.com/containernetworking/cni/blob/master/SPEC.md#network-configuration) were introduced as an optional field into the `0.2.0` release of the CNI spec. The first CNI code release that it appeared in was `v0.4.0`. 
 > args (dictionary): Optional additional arguments provided by the container runtime. For example a dictionary of labels could be passed to CNI plugins by adding them to a labels field under args.
 
 `args` provide a way of providing more structured data than the flat strings that CNI_ARGS can support.
@@ -99,4 +99,10 @@ The use of `CNI_ARGS` is deprecated and "args" should be used instead.
 | Field  | Purpose| Spec and Example | Runtime implementations | Plugin Implementations |
 | ------ | ------ | ---------------- | ----------------------- | ---------------------- |
 | IP     | Request a specific IP from IPAM plugins | IP=192.168.10.4 | *rkt* supports passing additional arguments to plugins and the [documentation](https://coreos.com/rkt/docs/latest/networking/overriding-defaults.html) suggests IP can be used. | host-local (since version v0.2.0) supports the field for IPv4 only - [documentation](https://github.com/containernetworking/cni/blob/master/Documentation/host-local.md#supported-arguments).|
-                                                                                                                  
+
+## Chained Plugins
+If plugins are agnostic about the type of interface created, they SHOULD work in a chained mode and configure existing interfaces. Plugins MAY also create the desired interface when not run in a chain.
+
+For example, the `bridge` plugin adds the host-side interface to a bridge. So, it should accept any previous result that includes a host-side interface, including `tap` devices. If not called as a chained plugin, it creates a `veth` pair first.
+
+Plugins that meet this convention are usable by a larger set of runtimes and interfaces, including hypervisors and DPDK providers.

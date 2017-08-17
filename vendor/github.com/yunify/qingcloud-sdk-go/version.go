@@ -20,4 +20,4 @@
 package sdk
 
 // Version number.
-const Version = "2.0.0-alpha.5"
+const Version = "2.0.0-alpha.8"

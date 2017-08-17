@@ -35,6 +35,7 @@ port: 443
 protocol: 'https'
 uri: '/iaas'
 connection_retries: 3
+connection_timeout: 30
 
 # Valid log levels are "debug", "info", "warn", "error", and "fatal".
 log_level: 'warn'

@@ -23,7 +23,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/containernetworking/cni/pkg/ip"
+	"github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/vishvananda/netlink"
 	"encoding/json"
@@ -53,7 +53,7 @@ func ConfigureIface(ifName string, res *current.Result) error {
 	ClearLinkAddr(link)
 	var v4gw, v6gw net.IP
 	for _, ipc := range res.IPs {
-		if int(ipc.Interface) >= len(res.Interfaces) || res.Interfaces[ipc.Interface].Name != ifName {
+		if int(*ipc.Interface) >= len(res.Interfaces) || res.Interfaces[*ipc.Interface].Name != ifName {
 			// IP address is for a different interface
 			return fmt.Errorf("failed to add IP addr %v to %q: invalid interface index", ipc, ifName)
 		}

@@ -36,8 +36,19 @@ const (
 	//LoadBalancerStatusCeased ceased
 	LoadBalancerStatusCeased = "ceased"
 
+	//JobStatusUnknown unknown
+	JobStatusUnknown = "unknown"
+	//JobStatusSuccessful successful
+	JobStatusSuccessful = "successful"
+	//JobStatusFailed failed
+	JobStatusFailed = "failed"
+	//JobStatusPending pending
+	JobStatusPending = "pending"
+	//JobStatusWorking working
+	JobStatusWorking = "working"
+
 	defaultOpTimeout    = 180 * time.Second
-	defaultWaitInterval = 5 * time.Second
+	defaultWaitInterval = 10 * time.Second
 )
 
 // QingCloudClient QingCloud IaaS Advanced Client

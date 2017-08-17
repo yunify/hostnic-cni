@@ -1,10 +1,10 @@
 sudo: false
 language: go
 go:
-- 1.7
+- 1.8
 before_install: 
 install:
-- go build -o bin/hostnic ./hostnic/
+- make
 script:
 - echo "test skip"
 before_deploy:

@@ -1,0 +1,56 @@
+hash: 4dd16bd6791361b20582b8809454ed2404c8968c682658dbd9860a01315b6aca
+updated: 2017-08-17T18:19:46.180509445+08:00
+imports:
+- name: github.com/containernetworking/cni
+  version: a7885cb6f8ab03fba07852ded351e4f5e7a112bf
+  subpackages:
+  - pkg/invoke
+  - pkg/skel
+  - pkg/types
+  - pkg/types/020
+  - pkg/types/current
+  - pkg/version
+- name: github.com/containernetworking/plugins
+  version: 7480240de9749f9a0a5c8614b17f1f03e0c06ab9
+  subpackages:
+  - pkg/ip
+  - pkg/ipam
+  - pkg/ns
+  - pkg/utils/hwaddr
+- name: github.com/coreos/go-iptables
+  version: f2ede9c85e2fac4d72d5a9af0af59c0858d7a3bd
+  subpackages:
+  - iptables
+- name: github.com/mitchellh/mapstructure
+  version: d0303fe809921458f417bcf828397a65db30a7e4
+- name: github.com/sirupsen/logrus
+  version: f006c2ac4710855cf0f916dd6b77acf6b048dc6e
+- name: github.com/vishvananda/netlink
+  version: f5a6f697a596c788d474984a38a0ac4ba0719e93
+  subpackages:
+  - nl
+- name: github.com/vishvananda/netns
+  version: 86bef332bfc3b59b7624a600bd53009ce91a9829
+- name: github.com/yunify/qingcloud-sdk-go
+  version: e11223f05644bb8582818889f6e5ff1df3686215
+  subpackages:
+  - client
+  - config
+  - logger
+  - request
+  - request/data
+  - request/errors
+  - service
+  - utils
+- name: golang.org/x/crypto
+  version: b176d7def5d71bdd214203491f89843ed217f420
+  subpackages:
+  - ssh/terminal
+- name: golang.org/x/sys
+  version: 9f7170bcd8e9f4d3691c06401119c46a769a1e03
+  subpackages:
+  - unix
+  - windows
+- name: gopkg.in/yaml.v2
+  version: eb3733d160e74a9c7e442f435eb3bea458e1d19f
+testImports: []
