@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PREFIX=qingcloud-sdk-go
 VERSION=$(shell cat version.go | grep "Version\ =" | sed -e s/^.*\ //g | sed -e s/\"//g)
 DIRS_TO_CHECK=$(shell ls -d */ | grep -vE "vendor|test")
-PKGS_TO_CHECK=$(shell go list ./... | grep -v "/vendor/")
+PKGS_TO_CHECK=$(shell go list ./... | grep -vE "vendor|test")
 PKGS_TO_RELEASE=$(shell go list ./... | grep -vE "/vendor/|/test")
 FILES_TO_RELEASE=$(shell find . -name "*.go" | grep -vE "/vendor/|/test|.*_test.go")
 FILES_TO_RELEASE_WITH_VENDOR=$(shell find . -name "*.go" | grep -vE "/test|.*_test.go")
@@ -141,7 +141,7 @@ unit-runtime-go-1.5:
 	@echo "ok"
 
 test:
-	pushd "./test"; go run *.go; popd
+	pushd "./test"; go test ; popd
 	@echo "ok"
 
 release: release-source release-source-with-vendor
