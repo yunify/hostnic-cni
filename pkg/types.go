@@ -30,12 +30,10 @@ type IPAMConfig struct {
 //NetConf nic plugin configuration
 type NetConf struct {
 	types.NetConf
-	DataDir  string                 `json:"dataDir"`
-	Provider string                 `json:"provider"`
-	Args     map[string]interface{} `json:"args"`
-	IPAM     *IPAMConfig            `json:"ipam"`
+	Provider string      `json:"provider"`
+	BindAddr string      `json:"bindaddr"`
+	IPAM     *IPAMConfig `json:"ipam"`
 }
-
 
 type HostNic struct {
 	ID           string `json:"id"`
@@ -51,4 +49,3 @@ type VxNet struct {
 	//Network eg: 192.168.1.0/24
 	Network string `json:"network"`
 }
-

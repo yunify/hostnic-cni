@@ -30,7 +30,7 @@ type NicProvider interface {
 
 	GetNicsUnderCurNamesp(vxnet *string) ([]*pkg.HostNic, error)
 	GetVxNet(vxNet string) (*pkg.VxNet, error)
-	GetVxNets()([]string)
+	GetVxNets() []string
 }
 
 //Initializer initialization function of provider

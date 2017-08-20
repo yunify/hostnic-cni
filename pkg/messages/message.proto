@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package messages;
+
+service Nicservices {
+    rpc AllocateNic (AllocateNicRequest) returns (AllocateNicResponse);
+    rpc FreeNic(FreeNicRequest) returns (FreeNicResponse);
+}
+
+message AllocateNicRequest {
+    bool autoAssignGateway =1;
+}
+
+message AllocateNicResponse{
+    string nicid =1 ;
+    string nicip =2 ;
+    string niccidr =3;
+    string nicgateway =4;
+}
+
+message FreeNicRequest {
+    string nicid =1 ;
+}
+
+message FreeNicResponse {
+
+}

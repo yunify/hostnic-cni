@@ -470,11 +470,25 @@ func Sysctl(name string) (string, error) {
 }
 
 func SysctlArgs(name string, args ...int) (string, error) {
-	buf, err := SysctlRaw(name, args...)
+	mib, err := sysctlmib(name, args...)
 	if err != nil {
 		return "", err
 	}
-	n := len(buf)
+
+	// Find size.
+	n := uintptr(0)
+	if err := sysctl(mib, nil, &n, nil, 0); err != nil {
+		return "", err
+	}
+	if n == 0 {
+		return "", nil
+	}
+
+	// Read into buffer of that size.
+	buf := make([]byte, n)
+	if err := sysctl(mib, &buf[0], &n, nil, 0); err != nil {
+		return "", err
+	}
 
 	// Throw away terminating NUL.
 	if n > 0 && buf[n-1] == '\x00' {
@@ -561,18 +575,12 @@ func Utimes(path string, tv []Timeval) error {
 
 func UtimesNano(path string, ts []Timespec) error {
 	if ts == nil {
-		err := utimensat(AT_FDCWD, path, nil, 0)
-		if err != ENOSYS {
-			return err
-		}
 		return utimes(path, nil)
 	}
+	// TODO: The BSDs can do utimensat with SYS_UTIMENSAT but it
+	// isn't supported by darwin so this uses utimes instead
 	if len(ts) != 2 {
 		return EINVAL
-	}
-	err := utimensat(AT_FDCWD, path, (*[2]Timespec)(unsafe.Pointer(&ts[0])), 0)
-	if err != ENOSYS {
-		return err
 	}
 	// Not as efficient as it could be because Timespec and
 	// Timeval have different types in the different OSes
@@ -581,16 +589,6 @@ func UtimesNano(path string, ts []Timespec) error {
 		NsecToTimeval(TimespecToNsec(ts[1])),
 	}
 	return utimes(path, (*[2]Timeval)(unsafe.Pointer(&tv[0])))
-}
-
-func UtimesNanoAt(dirfd int, path string, ts []Timespec, flags int) error {
-	if ts == nil {
-		return utimensat(dirfd, path, nil, flags)
-	}
-	if len(ts) != 2 {
-		return EINVAL
-	}
-	return utimensat(dirfd, path, (*[2]Timespec)(unsafe.Pointer(&ts[0])), flags)
 }
 
 //sys	futimes(fd int, timeval *[2]Timeval) (err error)

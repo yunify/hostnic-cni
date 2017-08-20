@@ -29,9 +29,9 @@ import (
 	"github.com/yunify/hostnic-cni/provider"
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 	"github.com/yunify/qingcloud-sdk-go/service"
 	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
-	"github.com/yunify/qingcloud-sdk-go/logger"
 )
 
 const (

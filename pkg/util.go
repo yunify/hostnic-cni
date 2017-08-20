@@ -23,14 +23,14 @@ import (
 	"net"
 	"os"
 
-	"github.com/containernetworking/plugins/pkg/ip"
-	"github.com/containernetworking/cni/pkg/types/current"
-	"github.com/vishvananda/netlink"
 	"encoding/json"
 	"errors"
+	"github.com/containernetworking/cni/pkg/types/current"
+	"github.com/containernetworking/plugins/pkg/ip"
+	"github.com/vishvananda/netlink"
+	"github.com/yunify/qingcloud-sdk-go/logger"
 	"io/ioutil"
 	"syscall"
-	"github.com/yunify/qingcloud-sdk-go/logger"
 )
 
 func StringPtr(str string) *string {
@@ -111,20 +111,20 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 }
 
 func LoadNetConf(bytes []byte) (*NetConf, error) {
-	netconf := &NetConf{DataDir: DefaultDataDir}
+	netconf := &NetConf{}
 	if err := json.Unmarshal(bytes, netconf); err != nil {
 		return nil, fmt.Errorf("failed to load netconf: %v", err)
-	}
-	if netconf.DataDir == "" {
-		return nil, errors.New("Data dir is empty")
 	}
 	if netconf.Provider == "" {
 		return nil, errors.New("Provider name is empty")
 	}
+	if netconf.BindAddr == "" {
+		return nil, errors.New("BindAddr name is empty")
+	}
 	return netconf, nil
 }
 
-func LoadNetConfFromFile(file string) (*NetConf, error){
+func LoadNetConfFromFile(file string) (*NetConf, error) {
 	b, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
@@ -132,12 +132,12 @@ func LoadNetConfFromFile(file string) (*NetConf, error){
 	return LoadNetConf(b)
 }
 
-func ClearLinkAddr(iface netlink.Link){
+func ClearLinkAddr(iface netlink.Link) {
 	//clear old addr. os possible bind ip to nic before hostnic.
 	addrs, err := netlink.AddrList(iface, syscall.AF_INET)
-	if err == nil && len(addrs) >0 {
+	if err == nil && len(addrs) > 0 {
 		logger.Info("Del Nic exists addrs: %+v, Nic %s", addrs, iface.Attrs().HardwareAddr)
-		for _,addr := range addrs {
+		for _, addr := range addrs {
 			err := netlink.AddrDel(iface, &addr)
 			if err != nil {
 				logger.Error("AddrDel err %s addr:%+v, Nic %s", err.Error(), addr, iface.Attrs().HardwareAddr)

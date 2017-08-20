@@ -62,7 +62,6 @@ print-%							:
 # perform go build on project
 go-build						:
 								go build -o bin/hostnic $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/hostnic/
-								go build -o bin/nicclearner $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/niccleaner/
 								go build -o bin/daemon $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/daemon/
 
 
