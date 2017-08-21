@@ -17,11 +17,19 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/messages"
+	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"google.golang.org/grpc"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+const (
+	gracefulTimeout = 120 * time.Second
 )
 
 // startCmd represents the start command
@@ -35,16 +43,17 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-
-		//setup nic generator
-		nicGeneratorFunc := func() (*pkg.HostNic, error) {
-			return nil, nil
+		resourceProvider, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
+		if err != nil {
+			log.Errorf("Failed to initiate resource provider, %v", err)
 		}
+
 		//setup nic pool
-		nicpool := server.NewNicPool(viper.GetInt("PoolSize"), nicGeneratorFunc)
-
-		//setup
-
+		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), resourceProvider)
+		if err != nil {
+			log.Errorf("Failed to create pool. %v", err)
+			return
+		}
 		//start up server rpc routine
 		listener, err := net.Listen(viper.GetString("bindType"), viper.GetString("bindAddr"))
 		if err != nil {
@@ -52,9 +61,40 @@ to quickly create a Cobra application.`,
 			return
 		}
 		grpcServer := grpc.NewServer()
-		messages.RegisterNicservicesServer(grpcServer, server.NewDaemonServer(nicpool))
-		grpcServer.Serve(listener)
+		messages.RegisterNicservicesServer(grpcServer, server.NewDaemonServerHandler(nicpool))
+		go grpcServer.Serve(listener)
 
+		signalCh := make(chan os.Signal, 4)
+		signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+		var sig os.Signal
+
+	WAIT:
+		select {
+		case s := <-signalCh:
+			sig = s
+		}
+
+		if sig == syscall.SIGHUP {
+			//TODO implement refresh config logic
+			goto WAIT
+		}
+		//Attempt a graceful shutdown
+
+		gracefulCh := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			nicpool.ShutdownNicPool()
+			close(gracefulCh)
+		}()
+
+		select {
+		case <-signalCh:
+			return
+		case <-time.After(gracefulTimeout):
+			return
+		case <-gracefulCh:
+			return
+		}
 	},
 }
 
@@ -77,6 +117,7 @@ func init() {
 
 	//sdk properties
 	startCmd.Flags().String("QyAccessFilePath", "/etc/qingcloud/client.yaml", "Path of QingCloud Access file")
+	startCmd.Flags().StringSlice("vxnets", []string{}, "ids of vxnet")
 
 	//pool properties
 	startCmd.Flags().Int("PoolSize", 3, "The size of nic pool")

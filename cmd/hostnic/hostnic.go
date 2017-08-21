@@ -33,7 +33,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/messages"
-	_ "github.com/yunify/hostnic-cni/provider/qingcloud"
+	_ "github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"google.golang.org/grpc"
 )
 

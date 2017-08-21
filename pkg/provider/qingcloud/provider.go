@@ -22,11 +22,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"net"
 	"time"
 
+	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/hostnic-cni/provider"
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
 	"github.com/yunify/qingcloud-sdk-go/logger"
@@ -40,7 +39,6 @@ const (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	provider.Register("qingcloud", New)
 }
 
 const (
@@ -59,17 +57,13 @@ type QCNicProvider struct {
 }
 
 // New create new nic provider object
-func New(configmap map[string]interface{}) (provider.NicProvider, error) {
-	qcniconfig, err := DecodeConfiguration(configmap)
-	if err != nil {
-		return nil, err
-	}
+func NewQCNicProvider(qyAuthFilePath string, vxnets []string) (*QCNicProvider, error) {
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
 		return nil, err
 	}
-	if qcniconfig.ProviderConfigFile != "" {
-		if err = qsdkconfig.LoadConfigFromFilepath(qcniconfig.ProviderConfigFile); err != nil {
+	if qyAuthFilePath != "" {
+		if err = qsdkconfig.LoadConfigFromFilepath(qyAuthFilePath); err != nil {
 			return nil, err
 		}
 	}
@@ -94,7 +88,7 @@ func New(configmap map[string]interface{}) (provider.NicProvider, error) {
 		nicService:   nicService,
 		jobService:   jobService,
 		vxNetService: vxNetService,
-		vxNets:       qcniconfig.VxNets,
+		vxNets:       vxnets,
 	}
 	return p, nil
 }
@@ -141,6 +135,14 @@ func (p *QCNicProvider) CreateNicInVxnet(vxNetID string) (*pkg.HostNic, error) {
 		if err != nil {
 			return nil, err
 		}
+		niclink, err := pkg.LinkByMacAddr(*nic.NICID)
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.LinkSetDown(niclink)
+		if err != nil {
+			return nil, err
+		}
 		hostNic.VxNet = vxNet
 		return hostNic, nil
 	}
@@ -182,7 +184,11 @@ func (p *QCNicProvider) waitNic(nicID string, jobID string) error {
 }
 
 func (p *QCNicProvider) detachNic(nicID string) error {
-	input := &service.DetachNicsInput{Nics: []*string{&nicID}}
+	return p.detachNics([]*string{&nicID})
+}
+
+func (p *QCNicProvider) detachNics(nicIDs []*string) error {
+	input := &service.DetachNicsInput{Nics: nicIDs}
 	output, err := p.nicService.DetachNics(input)
 	if err != nil {
 		return err
@@ -199,13 +205,17 @@ func (p *QCNicProvider) detachNic(nicID string) error {
 	return fmt.Errorf("DetachNics output [%+v] error", *output)
 }
 
-//DeleteNic delete nic from host
 func (p *QCNicProvider) DeleteNic(nicID string) error {
-	err := p.detachNic(nicID)
+	return p.DeleteNics([]*string{&nicID})
+}
+
+//DeleteNic delete nic from host
+func (p *QCNicProvider) DeleteNics(nicIDs []*string) error {
+	err := p.detachNics(nicIDs)
 	if err != nil {
 		return err
 	}
-	input := &service.DeleteNicsInput{Nics: []*string{&nicID}}
+	input := &service.DeleteNicsInput{Nics: nicIDs}
 	output, err := p.nicService.DeleteNics(input)
 	if err != nil {
 		return err
@@ -214,53 +224,6 @@ func (p *QCNicProvider) DeleteNic(nicID string) error {
 		return nil
 	}
 	return fmt.Errorf("DeleteNics output [%+v] error", *output)
-}
-
-//GetNicsUnderCurNamesp get a list of nics on current host machine
-func (p *QCNicProvider) GetNicsUnderCurNamesp(vxNetID *string) (result []*pkg.HostNic, err error) {
-	//get a list of nic
-	localnics, err := net.Interfaces()
-
-	if err != nil {
-		return nil, err
-	}
-
-	vxnet, err := p.GetVxNet(*vxNetID)
-	if err != nil {
-		return nil, err
-	}
-
-	//get vxnet info
-	_, network, err := net.ParseCIDR(vxnet.Network)
-	if err != nil {
-		return nil, err
-	}
-	for _, nic := range localnics {
-
-		if nic.Flags&net.FlagUp != 0 && nic.Flags&net.FlagLoopback == 0 {
-
-			addrs, err := nic.Addrs()
-			if err != nil {
-				return nil, err
-			}
-			for _, addr := range addrs {
-				ip, _, err := net.ParseCIDR(addr.String())
-
-				if err != nil {
-					return nil, err
-				}
-				if network.Contains(ip) {
-					result = append(result, &pkg.HostNic{
-						ID:           nic.HardwareAddr.String(),
-						VxNet:        vxnet,
-						HardwareAddr: nic.HardwareAddr.String(),
-						Address:      ip.String(),
-					})
-				}
-			}
-		}
-	}
-	return result, err
 }
 
 func (p *QCNicProvider) GetVxNets() []string {
@@ -279,6 +242,45 @@ func (p *QCNicProvider) GetVxNet(vxNet string) (*pkg.VxNet, error) {
 		return vxNet, nil
 	}
 	return nil, fmt.Errorf("DescribeVxNets invalid output [%+v]", *output)
+}
+
+func (p *QCNicProvider) GetNics(idlist []*string) ([]*pkg.HostNic, error) {
+	if len(idlist) <= 0 {
+		return []*pkg.HostNic{}, nil
+	}
+
+	input := &service.DescribeNicsInput{
+		Nics: idlist,
+	}
+
+	output, err := p.nicService.DescribeNics(input)
+	if err != nil {
+		return nil, err
+	}
+	if *output.RetCode == 0 {
+		vxnetmap := make(map[string]*pkg.VxNet)
+		var niclist []*pkg.HostNic
+		for _, nic := range output.NICSet {
+			var vxnet *pkg.VxNet
+			if item, ok := vxnetmap[*nic.VxNetID]; ok {
+				vxnet = item
+			} else {
+				vxnet, err = p.GetVxNet(*nic.VxNetID)
+				if err != nil {
+					return []*pkg.HostNic{}, err
+				}
+				vxnetmap[*nic.VxNetID] = vxnet
+			}
+			niclist = append(niclist, &pkg.HostNic{
+				ID:           *nic.NICID,
+				VxNet:        vxnet,
+				HardwareAddr: *nic.NICID,
+				Address:      *nic.PrivateIP,
+			})
+		}
+		return niclist, nil
+	}
+	return nil, fmt.Errorf("DescribeNics Failed [%+v]", *output)
 }
 
 func loadInstanceID() (string, error) {

@@ -7,20 +7,20 @@ import (
 )
 
 //DaemonServer Daemon Server process which manages nics for nic plugin
-type DaemonServer struct {
+type DaemonServerHandler struct {
 	nicpool *NicPool
 }
 
-func NewDaemonServer(nicpool *NicPool) *DaemonServer {
+func NewDaemonServerHandler(nicpool *NicPool) *DaemonServerHandler {
 	if nicpool == nil {
 		return nil
 	}
-	return &DaemonServer{
+	return &DaemonServerHandler{
 		nicpool: nicpool,
 	}
 }
 
-func (daemon *DaemonServer) AllocateNic(context context.Context, request *messages.AllocateNicRequest) (*messages.AllocateNicResponse, error) {
+func (daemon *DaemonServerHandler) AllocateNic(context context.Context, request *messages.AllocateNicRequest) (*messages.AllocateNicResponse, error) {
 	nic, err := daemon.nicpool.BorrowNic(request.AutoAssignGateway)
 	if err != nil {
 		logrus.Errorf("Failed to borrow nic from pool,%v", err)
@@ -35,7 +35,7 @@ func (daemon *DaemonServer) AllocateNic(context context.Context, request *messag
 	return response, nil
 }
 
-func (daemon *DaemonServer) FreeNic(context context.Context, request *messages.FreeNicRequest) (*messages.FreeNicResponse, error) {
+func (daemon *DaemonServerHandler) FreeNic(context context.Context, request *messages.FreeNicRequest) (*messages.FreeNicResponse, error) {
 	err := daemon.nicpool.ReturnNic(request.Nicid)
 	return &messages.FreeNicResponse{}, err
 }

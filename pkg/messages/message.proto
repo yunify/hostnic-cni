@@ -5,6 +5,7 @@ package messages;
 service Nicservices {
     rpc AllocateNic (AllocateNicRequest) returns (AllocateNicResponse);
     rpc FreeNic(FreeNicRequest) returns (FreeNicResponse);
+    rpc GraceFulStop();
 }
 
 message AllocateNicRequest {
