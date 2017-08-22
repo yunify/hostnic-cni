@@ -71,9 +71,11 @@ func (pool *NicPool) init() error {
 	pool.nicValidator = func(nicid string) bool {
 		link, err := pkg.LinkByMacAddr(nicid)
 		if err != nil {
+			log.Errorf("Validation failed :%v",err)
 			return false
 		}
-		if link.Attrs().Flags|net.FlagUp != 0 {
+		if link.Attrs().Flags & net.FlagUp != 0 {
+			log.Errorf("Validation failed :Nic is up, not available")
 			return false
 		}
 		return true
@@ -84,12 +86,17 @@ func (pool *NicPool) init() error {
 }
 
 func (pool *NicPool) collectGatewayNic() error {
-
+	log.Infof("Collect existing nic as gateway cadidate")
 	var nicidList []*string
 	if linklist, err := netlink.LinkList(); err != nil {
+		return err
+	} else {
 		for _, link := range linklist {
-			nicid := link.Attrs().HardwareAddr.String()
-			nicidList = append(nicidList, &nicid)
+			if link.Attrs().Flags & net.FlagLoopback == 0 {
+				nicid := link.Attrs().HardwareAddr.String()
+				nicidList = append(nicidList, &nicid)
+				log.Debugf("Found nic %s on host",nicid)
+			}
 		}
 	}
 	niclist, err := pool.resoureStub.GetNics(nicidList)
@@ -102,7 +109,7 @@ func (pool *NicPool) collectGatewayNic() error {
 		if err != nil {
 			return err
 		}
-		if niclink.Attrs().Flags|net.FlagUp != 0 {
+		if niclink.Attrs().Flags&net.FlagUp != 0 {
 			if _, ok := pool.gatewayMgr[nic.VxNet.ID]; !ok {
 				pool.gatewayMgr[nic.VxNet.ID] = nic.Address
 				continue
@@ -110,16 +117,23 @@ func (pool *NicPool) collectGatewayNic() error {
 				netlink.LinkSetDown(niclink)
 			}
 		}
+		log.Debugf("nic %s is unused,status is %d",nic.ID,niclink.Attrs().Flags&net.FlagUp)
 		unusedList = append(unusedList, nic)
 	}
 
 	//move unused nics to nic pool
-	pool.Add(1)
-	go func() {
-		defer pool.Done()
-		pool.addNicsToPool(unusedList...)
-	}()
-
+	if len(unusedList) >0 {
+		pool.Add(1)
+		go func() {
+			defer pool.Done()
+			log.Debug("Found unused nics and put them to nic pool %v", unusedList)
+			pool.addNicsToPool(unusedList...)
+		}()
+	}
+	log.Infof("Found following nic as gateway")
+	for key,value :=range pool.gatewayMgr {
+		log.Infof("vxnet: %s gateway: %s",key,value)
+	}
 	return nil
 }
 
@@ -162,9 +176,9 @@ func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
 		pool.nicDict[nic.ID] = nic
 		pool.Unlock()
 
-		fmt.Println("start to wait until channel is not full.")
+		log.Debugln("start to wait until channel is not full.")
 		pool.nicpool <- nic.ID
-		fmt.Printf("put %s into channel", nic.ID)
+		log.Debugf("put %s into channel", nic.ID)
 	}
 }
 
@@ -187,32 +201,46 @@ func (pool *NicPool) StartEventloop() {
 				pool.addNicsToPool(nic)
 			}
 		}
+		log.Info("Event loop stopped")
 	}()
 }
 
 func (pool *NicPool) ShutdownNicPool() {
+	//send terminate signal
+	go func() {
+		log.Infoln("send kill pool event loop signal ")
+		pool.nicStopGeneratorChann <- struct{}{}
+	}()
+	//recollect nics
 	stopChannel := make(chan struct{})
 	go func(stopch chan struct{}) {
+		log.Infoln("start to delete nics")
 		var cachedlist []*string
 		for nic := range pool.nicpool {
-			cachedlist = append(cachedlist, &nic)
+			nicid := nic
+			cachedlist = append(cachedlist, &nicid)
+			log.Debugf("Got nic %s in nic pool",nic)
 		}
-		pool.resoureStub.DeleteNics(cachedlist)
+		err:= pool.resoureStub.DeleteNics(cachedlist)
+		log.Infof("clean up nic pool,delete nics %v: %v \n",cachedlist,err)
 		stopch <- struct{}{}
 		close(stopch)
 	}(stopChannel)
-	pool.Wait()
+	pool.Wait()// wait until all of requests are processed
+	close(pool.nicpool)
+	log.Infof("closed nic pool")
 	<-stopChannel
 }
 
 func (pool *NicPool) ReturnNic(nicid string) error {
+	log.Debugf("Return %s to nic pool",nicid)
 	pool.Add(1)
 	go func() {
 		defer pool.Done()
 		//check if nic is in dict
 		pool.RLock()
 		if _, ok := pool.nicDict[nicid]; ok {
-			defer pool.RUnlock()
+			pool.RUnlock()
 			pool.nicpool <- nicid
 		} else {
 			pool.RUnlock()
@@ -233,9 +261,9 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 	nicid := <-pool.nicpool
 	times := 0
-	for ; !pool.nicValidator(nicid) || times < AllocationRetryTimes; times++ {
-		nicid = <-pool.nicpool
+	for ; !pool.nicValidator(nicid) && times < AllocationRetryTimes; times++ {
 		log.Errorf("Validation Failed. retry allocation")
+		nicid = <-pool.nicpool
 	}
 	if times == AllocationRetryTimes {
 		return nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
@@ -261,5 +289,6 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 			},
 		}, nil
 	}
+	log.Debugf("Borrow nic from nic pool")
 	return nic, nil
 }

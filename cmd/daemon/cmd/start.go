@@ -55,7 +55,7 @@ to quickly create a Cobra application.`,
 			return
 		}
 		//start up server rpc routine
-		listener, err := net.Listen(viper.GetString("bindType"), viper.GetString("bindAddr"))
+		listener, err := net.Listen("tcp", viper.GetString("bindAddr"))
 		if err != nil {
 			log.Errorf("Failed to listen to assigned port, %v", err)
 			return
@@ -80,9 +80,12 @@ to quickly create a Cobra application.`,
 		}
 		//Attempt a graceful shutdown
 
+		log.Infof("Got interrupt call, graceful shutdown...")
 		gracefulCh := make(chan struct{})
 		go func() {
+			log.Infof("Shutdown grpc server")
 			grpcServer.GracefulStop()
+			log.Infof("Shutdown nic pool server")
 			nicpool.ShutdownNicPool()
 			close(gracefulCh)
 		}()
@@ -112,8 +115,7 @@ func init() {
 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	//server routine properties
-	startCmd.Flags().String("bindAddr", ":31080", "port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 unix port /var/run/daemon/port")
-	startCmd.Flags().String("bindType", "tcp", "Type of socket, tcp and unix are supported")
+	startCmd.Flags().String("bindAddr", ":31080", "port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )")
 
 	//sdk properties
 	startCmd.Flags().String("QyAccessFilePath", "/etc/qingcloud/client.yaml", "Path of QingCloud Access file")

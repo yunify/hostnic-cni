@@ -31,6 +31,7 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/logger"
 	"github.com/yunify/qingcloud-sdk-go/service"
 	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
+	"net"
 )
 
 const (
@@ -123,7 +124,7 @@ func (p *QCNicProvider) CreateNicInVxnet(vxNetID string) (*pkg.HostNic, error) {
 		VxNet:   &vxNetID,
 		NICName: pkg.StringPtr(fmt.Sprintf("hostnic_%s", instanceID))}
 	output, err := p.nicService.CreateNics(input)
-	//TODO check too many nic in vxnet err, and retry with another vxnet.
+	//TODO check too many nic in vDxnet err, and retry with another vxnet.
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +175,11 @@ func (p *QCNicProvider) waitNic(nicID string, jobID string) error {
 			return false
 		}
 		logger.Debug("Find link %s %s", link.Attrs().Name, nicID)
-		return true
+		if link.Attrs().Flags & net.FlagUp != 0 && link.Attrs().OperState & netlink.OperUp != 0{
+
+			return true
+		}
+		return false
 	}, waitNicLocalTimeout, waitNicLocalInterval)
 	if _, ok := err.(*qcutil.TimeoutError); ok {
 		logger.Info("Wait nic %s by local timeout", nicID)

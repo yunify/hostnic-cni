@@ -30,8 +30,8 @@ type IPAMConfig struct {
 //NetConf nic plugin configuration
 type NetConf struct {
 	types.NetConf
-	Provider string      `json:"provider"`
 	BindAddr string      `json:"bindaddr"`
+	BindType string      `json:"bindtype"`
 	IPAM     *IPAMConfig `json:"ipam"`
 }
 

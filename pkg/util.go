@@ -115,9 +115,7 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	if err := json.Unmarshal(bytes, netconf); err != nil {
 		return nil, fmt.Errorf("failed to load netconf: %v", err)
 	}
-	if netconf.Provider == "" {
-		return nil, errors.New("Provider name is empty")
-	}
+
 	if netconf.BindAddr == "" {
 		return nil, errors.New("BindAddr name is empty")
 	}
