@@ -31,3 +31,4 @@ import:
   version: ~1.5.2
 - package: github.com/yunify/qingcloud-sdk-go
   version: ~2.0.0-alpha.9
+- package: github.com/orcaman/concurrent-map

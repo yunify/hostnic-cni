@@ -1,5 +1,5 @@
-hash: dc9bfc3099c3d7442e6c8a42eda29cde04b7d025e0292aa9739baeab15767d30
-updated: 2017-08-23T20:01:05.078486917+08:00
+hash: c281c86001d517f4ff536195fc7780540f2c191e778e494204fd14100224a02a
+updated: 2017-08-24T01:17:23.651832424+08:00
 imports:
 - name: github.com/containernetworking/cni
   version: a7885cb6f8ab03fba07852ded351e4f5e7a112bf
@@ -47,6 +47,8 @@ imports:
   version: b8bc1bf767474819792c23f32d8286a45736f1c6
 - name: github.com/mitchellh/mapstructure
   version: d0303fe809921458f417bcf828397a65db30a7e4
+- name: github.com/orcaman/concurrent-map
+  version: 2ae17bc4c860c83513ee50feb9746f3e50d7515d
 - name: github.com/pelletier/go-toml
   version: 4692b8f9babfc93db58cc592ba2689d8736781de
 - name: github.com/sirupsen/logrus

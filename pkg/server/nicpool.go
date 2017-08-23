@@ -9,18 +9,21 @@ import (
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"net"
+	"github.com/orcaman/concurrent-map"
 )
 
 const (
 	AllocationRetryTimes = 3
+	ReadyPoolSize =2
 )
 
 //NicPool nic cached pool
 type NicPool struct {
-	sync.RWMutex
-	nicDict map[string]*pkg.HostNic
+	nicDict cmap.ConcurrentMap
 
 	nicpool chan string
+
+	nicReadyPool chan string
 
 	nicGenerator NICGenerator
 
@@ -28,22 +31,21 @@ type NicPool struct {
 
 	nicStopGeneratorChann chan struct{}
 
-	gatewayMgr map[string]string
+	gatewayMgr cmap.ConcurrentMap
 
 	resoureStub *qingcloud.QCNicProvider
 
 	sync.WaitGroup
-
-	gatewayLock sync.RWMutex
 }
 
 //NewNicPool new nic pool
 func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider) (*NicPool, error) {
 	pool := &NicPool{
-		nicDict:               make(map[string]*pkg.HostNic),
+		nicDict:               cmap.New(),
 		nicpool:               make(chan string, size),
+		nicReadyPool:          make(chan string,ReadyPoolSize),
 		nicStopGeneratorChann: make(chan struct{}),
-		gatewayMgr:            make(map[string]string),
+		gatewayMgr:            cmap.New(),
 		resoureStub:           resoureStub,
 	}
 	err := pool.init()
@@ -110,8 +112,8 @@ func (pool *NicPool) collectGatewayNic() error {
 			return err
 		}
 		if niclink.Attrs().Flags&net.FlagUp != 0 {
-			if _, ok := pool.gatewayMgr[nic.VxNet.ID]; !ok {
-				pool.gatewayMgr[nic.VxNet.ID] = nic.Address
+			if _, ok := pool.gatewayMgr.Get(nic.VxNet.ID); !ok {
+				pool.gatewayMgr.Set(nic.VxNet.ID, nic.Address)
 				continue
 			} else {
 				netlink.LinkSetDown(niclink)
@@ -139,14 +141,9 @@ func (pool *NicPool) collectGatewayNic() error {
 
 func (pool *NicPool) getOrAllocateGateway(vxnetid string) (string, error) {
 	var gatewayIp string
-	pool.gatewayLock.RLock()
-	var ok bool
-	if gatewayIp, ok = pool.gatewayMgr[vxnetid]; !ok {
-		pool.gatewayLock.RUnlock()
+	if item, ok := pool.gatewayMgr.Get(vxnetid); !ok {
 
 		//allocate nic
-		pool.gatewayLock.Lock()
-		defer pool.gatewayLock.Unlock()
 
 		nic, err := pool.resoureStub.CreateNicInVxnet(vxnetid)
 		if err != nil {
@@ -160,11 +157,11 @@ func (pool *NicPool) getOrAllocateGateway(vxnetid string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		pool.gatewayMgr[nic.VxNet.ID] = nic.Address
+		pool.gatewayMgr.Set(nic.VxNet.ID,nic.Address)
 
 		return nic.Address, nil
 	} else {
-		pool.gatewayLock.RUnlock()
+		gatewayIp = item.(string)
 		return gatewayIp, nil
 	}
 }
@@ -172,13 +169,11 @@ func (pool *NicPool) getOrAllocateGateway(vxnetid string) (string, error) {
 //addNicsToPool may block current process until channel is not empty
 func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
 	for _, nic := range nics {
-		pool.Lock()
-		pool.nicDict[nic.ID] = nic
-		pool.Unlock()
+		pool.nicDict.Set(nic.ID,nic)
 
-		log.Debugln("start to wait until channel is not full.")
-		pool.nicpool <- nic.ID
-		log.Debugf("put %s into channel", nic.ID)
+		log.Debugln("start to wait until ready pool is not full.")
+		pool.nicReadyPool <- nic.ID
+		log.Debugf("put %s into ready pool", nic.ID)
 	}
 }
 
@@ -191,6 +186,9 @@ func (pool *NicPool) StartEventloop() {
 			select {
 			case <-pool.nicStopGeneratorChann:
 				break CLEANUP
+
+			case nic :=<-pool.nicReadyPool:
+				pool.nicpool <-nic
 
 			default:
 				nic, err := pool.nicGenerator()
@@ -214,8 +212,13 @@ func (pool *NicPool) ShutdownNicPool() {
 	//recollect nics
 	stopChannel := make(chan struct{})
 	go func(stopch chan struct{}) {
-		log.Infoln("start to delete nics")
 		var cachedlist []*string
+		log.Infoln("start to delete nics in ready pool")
+		for nic := range pool.nicReadyPool {
+			cachedlist = append(cachedlist, pkg.StringPtr(nic))
+			log.Debugf("Got nic %s in nic pool", nic)
+		}
+		log.Infoln("start to delete nics in cache pool")
 		for nic := range pool.nicpool {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool", nic)
@@ -226,6 +229,7 @@ func (pool *NicPool) ShutdownNicPool() {
 		close(stopch)
 	}(stopChannel)
 	pool.Wait() // wait until all of requests are processed
+	close(pool.nicReadyPool)
 	close(pool.nicpool)
 	log.Infof("closed nic pool")
 	<-stopChannel
@@ -237,12 +241,9 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 	go func() {
 		defer pool.Done()
 		//check if nic is in dict
-		pool.RLock()
-		if _, ok := pool.nicDict[nicid]; ok {
-			pool.RUnlock()
-			pool.nicpool <- nicid
+		if _, ok := pool.nicDict.Get(nicid); ok {
+			pool.nicReadyPool <- nicid
 		} else {
-			pool.RUnlock()
 
 			nics, err := pool.resoureStub.GetNics([]*string{&nicid})
 			if err != nil {
@@ -268,9 +269,10 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 		return nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
 	}
 
-	pool.RLock()
-	nic := pool.nicDict[nicid]
-	pool.RUnlock()
+	var nic *pkg.HostNic
+	if item,ok := pool.nicDict.Get(nicid);ok {
+		nic = item.(*pkg.HostNic)
+	}
 
 	if autoAssignGateway {
 		gateway, err := pool.getOrAllocateGateway(nic.VxNet.ID)
