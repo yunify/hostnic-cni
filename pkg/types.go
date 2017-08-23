@@ -31,7 +31,6 @@ type IPAMConfig struct {
 type NetConf struct {
 	types.NetConf
 	BindAddr string      `json:"bindaddr"`
-	BindType string      `json:"bindtype"`
 	IPAM     *IPAMConfig `json:"ipam"`
 }
 
@@ -48,4 +47,12 @@ type VxNet struct {
 	GateWay string `json:"gateWay"`
 	//Network eg: 192.168.1.0/24
 	Network string `json:"network"`
+	//RouterId
+	RouterID string `json:"router_id"`
+}
+
+type HostInstance struct {
+	InstanceID string `json:"instance_id"`
+	Vxnets []*VxNet  `json:"vxnets"`
+	RouterID string
 }
