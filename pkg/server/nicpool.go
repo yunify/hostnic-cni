@@ -133,8 +133,8 @@ func (pool *NicPool) collectGatewayNic() error {
 		}()
 	}
 	log.Infof("Found following nic as gateway")
-	for key, value := range pool.gatewayMgr {
-		log.Infof("vxnet: %s gateway: %s", key, value)
+	for key, value := range pool.gatewayMgr.Items() {
+		log.Infof("vxnet: %s gateway: %s", key, value.(string))
 	}
 	return nil
 }
@@ -187,8 +187,9 @@ func (pool *NicPool) StartEventloop() {
 			case <-pool.nicStopGeneratorChann:
 				break CLEANUP
 
-			case nic :=<-pool.nicReadyPool:
-				pool.nicpool <-nic
+			case nic := <-pool.nicReadyPool:
+				log.Debugf("move %s from ready pool to nic pool", nic)
+				pool.nicpool <- nic
 
 			default:
 				nic, err := pool.nicGenerator()
@@ -196,7 +197,11 @@ func (pool *NicPool) StartEventloop() {
 					log.Errorf("Failed to get nic from generator", err)
 					continue
 				}
-				pool.addNicsToPool(nic)
+				pool.nicDict.Set(nic.ID, nic)
+
+				log.Debugln("start to wait until nic pool is not full.")
+				pool.nicpool <- nic.ID
+				log.Debugf("put %s into nic pool", nic.ID)
 			}
 		}
 		log.Info("Event loop stopped")
@@ -213,13 +218,14 @@ func (pool *NicPool) ShutdownNicPool() {
 	stopChannel := make(chan struct{})
 	go func(stopch chan struct{}) {
 		var cachedlist []*string
-		log.Infoln("start to delete nics in ready pool")
-		for nic := range pool.nicReadyPool {
+
+		log.Infoln("start to delete nics in cache pool")
+		for nic := range pool.nicpool {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool", nic)
 		}
-		log.Infoln("start to delete nics in cache pool")
-		for nic := range pool.nicpool {
+		log.Infoln("start to delete nics in ready pool")
+		for nic := range pool.nicReadyPool {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool", nic)
 		}
