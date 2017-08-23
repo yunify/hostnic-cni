@@ -94,7 +94,7 @@ func (pool *NicPool) collectGatewayNic() error {
 		for _, link := range linklist {
 			if link.Attrs().Flags & net.FlagLoopback == 0 {
 				nicid := link.Attrs().HardwareAddr.String()
-				nicidList = append(nicidList, &nicid)
+				nicidList = append(nicidList, pkg.StringPtr(nicid))
 				log.Debugf("Found nic %s on host",nicid)
 			}
 		}
@@ -217,8 +217,7 @@ func (pool *NicPool) ShutdownNicPool() {
 		log.Infoln("start to delete nics")
 		var cachedlist []*string
 		for nic := range pool.nicpool {
-			nicid := nic
-			cachedlist = append(cachedlist, &nicid)
+			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool",nic)
 		}
 		err:= pool.resoureStub.DeleteNics(cachedlist)
