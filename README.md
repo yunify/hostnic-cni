@@ -8,37 +8,48 @@ English|[中文](README_zh.md)
 
 1. Download CNI package from [CNI release page](https://github.com/containernetworking/cni/releases) and extract to /opt/cni/bin/.
 1. Download hostnic from  [release page](https://github.com/yunify/hostnic-cni/releases) , and put hostnic to /opt/cni/bin/
+1. Add cloud provider config
+
+    ```bash
+    cat >/etc/qingcloud/client.yaml <<EOF
+    qy_access_key_id: "Your access key id"
+    qy_secret_access_key: "Your secret access key"
+    # your instance zone
+    zone: "pek3a"
+    EOF
+    ```
+    
 1. Launch daemon process
-    
+
     Daemon process is used as a nic manager which allocates and destroys nics in the background. It serves requests from hostcni and maintain nic info and nic cache pool.
-    
+
     it accepts a few params. As listed below.
-    
+
     ```bash
     [root@i-zwa7jztl hostnic-cni]# bin/daemon help start
     hostnic-cni is a Container Network Interface plugin.
-    
+
     This plugin will create a new nic by IaaS api and attach to host,
     then move the nic to container network namespace
-    
+
     Usage:
       daemon start [flags]
-    
+
     Flags:
           --PoolSize int              The size of nic pool (default 3)
           --QyAccessFilePath string   Path of QingCloud Access file (default "/etc/qingcloud/client.yaml")
           --bindAddr string           port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
       -h, --help                      help for start
           --vxnets stringSlice        ids of vxnet
-    
+
     Global Flags:
           --config string     config file (default is $HOME/.daemon.yaml)
           --loglevel string   daemon process log level(debug,info,warn,error) (default "info")
 
     ```
-    
-    e.g. 
-    
+
+    e.g.
+
     ```bash
     ./bin/daemon start --bindAddr :31080 --vxnets vxnet-xxxxxxx,vxnet-xxxxxxx --PoolSize 3 --loglevel debug
     INFO[0000] Collect existing nic as gateway cadidate     
@@ -57,7 +68,7 @@ English|[中文](README_zh.md)
     DEBU[0011] put 52:54:d6:86:46:d6 into channel           
     DEBU[0015] start to wait until channel is not full.   
     ```
-    
+
     The daemon process would fill nic pool with pre-allocated nics and wait until new request comes
 
 1. Add cni config
@@ -75,23 +86,12 @@ English|[中文](README_zh.md)
         "isGateway": true
     }
     EOF
-    
+
     cat >/etc/cni/net.d/99-loopback.conf <<EOF
     {
         "cniVersion": "0.2.0",
         "type": "loopback"
     }
-    EOF
-    ```
-
-4. Add cloud provider config
-
-    ```bash
-    cat >/etc/qingcloud/client.yaml <<EOF
-    qy_access_key_id: "Your access key id"
-    qy_secret_access_key: "Your secret access key"
-    # your instance zone
-    zone: "pek3a"
     EOF
     ```
 
