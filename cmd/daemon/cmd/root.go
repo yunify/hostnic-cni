@@ -18,9 +18,9 @@ import (
 	"os"
 
 	homedir "github.com/mitchellh/go-homedir"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	log "github.com/sirupsen/logrus"
 )
 
 var cfgFile string
@@ -57,7 +57,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.daemon.yaml)")
-	RootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "info","daemon process log level(debug,info,warn,error)")
+	RootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "info", "daemon process log level(debug,info,warn,error)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

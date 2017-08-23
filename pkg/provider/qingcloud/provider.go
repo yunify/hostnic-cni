@@ -51,12 +51,12 @@ const (
 
 //QCNicProvider QingCloud Nic provider object
 type QCNicProvider struct {
-	nicService   *service.NicService
-	vxNetService *service.VxNetService
-	jobService   *service.JobService
+	nicService      *service.NicService
+	vxNetService    *service.VxNetService
+	jobService      *service.JobService
 	instanceService *service.InstanceService
-	vxNets       []string
-	Host         *pkg.HostInstance
+	vxNets          []string
+	Host            *pkg.HostInstance
 }
 
 // New create new nic provider object
@@ -93,40 +93,40 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string) (*QCNicProvider, e
 	}
 
 	p := &QCNicProvider{
-		nicService:   nicService,
-		jobService:   jobService,
-		vxNetService: vxNetService,
-		vxNets:       vxnets,
-		instanceService:instanceService,
+		nicService:      nicService,
+		jobService:      jobService,
+		vxNetService:    vxNetService,
+		vxNets:          vxnets,
+		instanceService: instanceService,
 	}
 
 	//describe instance to test if provider works
-	p.Host,err = p.getInstance()
-	if err != nil {
-		return nil,err
-	}
-
-	if p.Host.RouterID == "" {
-		return nil,fmt.Errorf("Instance is not managed by router, Please put instance under VPC's supervision")
-	}
-
-	var vxnetids []*string
-	for _,vxnet := range vxnets {
-		id := vxnet
-		vxnetids = append(vxnetids,&id)
-	}
-
-	vxnetItems,err:=p.GetVxNets(vxnetids)
+	p.Host, err = p.getInstance()
 	if err != nil {
 		return nil, err
 	}
 
-	for _,vxnetItem := range vxnetItems{
+	if p.Host.RouterID == "" {
+		return nil, fmt.Errorf("Instance is not managed by router, Please put instance under VPC's supervision")
+	}
+
+	var vxnetids []*string
+	for _, vxnet := range vxnets {
+		id := vxnet
+		vxnetids = append(vxnetids, &id)
+	}
+
+	vxnetItems, err := p.GetVxNets(vxnetids)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, vxnetItem := range vxnetItems {
 		if vxnetItem.RouterID == "" {
-			return nil, fmt.Errorf("vxnet %s is not managed by VPC",vxnetItem.ID)
+			return nil, fmt.Errorf("vxnet %s is not managed by VPC", vxnetItem.ID)
 		}
 		if vxnetItem.RouterID != p.Host.RouterID {
-			return nil, fmt.Errorf("vxnet %s is not managed by the very router where the instance resides.",vxnetItem.ID)
+			return nil, fmt.Errorf("vxnet %s is not managed by the very router where the instance resides.", vxnetItem.ID)
 		}
 	}
 
@@ -211,7 +211,7 @@ func (p *QCNicProvider) waitNic(nicID string, jobID string) error {
 			return false
 		}
 		logger.Debug("Find link %s %s", link.Attrs().Name, nicID)
-		if link.Attrs().Flags & net.FlagUp != 0 && link.Attrs().OperState & netlink.OperUp != 0{
+		if link.Attrs().Flags&net.FlagUp != 0 && link.Attrs().OperState&netlink.OperUp != 0 {
 
 			return true
 		}
@@ -268,49 +268,49 @@ func (p *QCNicProvider) DeleteNics(nicIDs []*string) error {
 }
 
 func (p *QCNicProvider) GetVxNet(vxNet string) (*pkg.VxNet, error) {
-	result,err := p.GetVxNets([]*string{&vxNet})
+	result, err := p.GetVxNets([]*string{&vxNet})
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
-	return result[0],nil
+	return result[0], nil
 }
 
-func (p *QCNicProvider) getInstance()(*pkg.HostInstance,error){
-	id,err:= loadInstanceID()
+func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
+	id, err := loadInstanceID()
 	if err != nil {
 		return nil, err
 	}
 	input := &service.DescribeInstancesInput{
-		Instances:[]*string{&id},
+		Instances: []*string{&id},
 	}
-	output, err:= p.instanceService.DescribeInstances(input)
+	output, err := p.instanceService.DescribeInstances(input)
 	if err != nil {
 		return nil, err
 	}
 	if *output.RetCode == 0 {
-		instanceItem:=output.InstanceSet[0]
+		instanceItem := output.InstanceSet[0]
 		var vxnetIds []*pkg.VxNet
 		var defaultRouterID string
-		for _,vxnetItem := range instanceItem.VxNets{
+		for _, vxnetItem := range instanceItem.VxNets {
 			var routerID string
-			if router:= vxnetItem.Router; router != nil {
+			if router := vxnetItem.Router; router != nil {
 				routerID = *router.RouterID
 			} else {
-				routerID =""
+				routerID = ""
 			}
-			vxnetIds = append(vxnetIds,&pkg.VxNet{ID: *vxnetItem.VxNetID, GateWay: *vxnetItem.Router.ManagerIP, Network: *vxnetItem.Router.IPNetwork,RouterID:routerID})
-			if routerID != "" && defaultRouterID == ""{
+			vxnetIds = append(vxnetIds, &pkg.VxNet{ID: *vxnetItem.VxNetID, GateWay: *vxnetItem.Router.ManagerIP, Network: *vxnetItem.Router.IPNetwork, RouterID: routerID})
+			if routerID != "" && defaultRouterID == "" {
 				defaultRouterID = routerID
 			}
 		}
 
-		return  &pkg.HostInstance{
-			InstanceID:id,
-			Vxnets: vxnetIds,
-			RouterID:defaultRouterID,
-		},nil
+		return &pkg.HostInstance{
+			InstanceID: id,
+			Vxnets:     vxnetIds,
+			RouterID:   defaultRouterID,
+		}, nil
 	}
-	return nil,fmt.Errorf("Failed to describe instance, %",*output.Message)
+	return nil, fmt.Errorf("Failed to describe instance, %", *output.Message)
 }
 
 func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
@@ -320,16 +320,16 @@ func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
 		return nil, err
 	}
 	if *output.RetCode == 0 {
-		var vxNets []*pkg.VxNet;
-		for _,qcVxNet := range output.VxNetSet {
+		var vxNets []*pkg.VxNet
+		for _, qcVxNet := range output.VxNetSet {
 			var routerID string
-			if router:= qcVxNet.Router; router != nil {
+			if router := qcVxNet.Router; router != nil {
 				routerID = *router.RouterID
 			} else {
-				routerID =""
+				routerID = ""
 			}
 
-			vxNets = append(vxNets,&pkg.VxNet{ID: *qcVxNet.VxNetID, GateWay: *qcVxNet.Router.ManagerIP, Network: *qcVxNet.Router.IPNetwork,RouterID:routerID})
+			vxNets = append(vxNets, &pkg.VxNet{ID: *qcVxNet.VxNetID, GateWay: *qcVxNet.Router.ManagerIP, Network: *qcVxNet.Router.IPNetwork, RouterID: routerID})
 		}
 		return vxNets, nil
 	}

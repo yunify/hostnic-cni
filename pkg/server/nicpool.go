@@ -71,10 +71,10 @@ func (pool *NicPool) init() error {
 	pool.nicValidator = func(nicid string) bool {
 		link, err := pkg.LinkByMacAddr(nicid)
 		if err != nil {
-			log.Errorf("Validation failed :%v",err)
+			log.Errorf("Validation failed :%v", err)
 			return false
 		}
-		if link.Attrs().Flags & net.FlagUp != 0 {
+		if link.Attrs().Flags&net.FlagUp != 0 {
 			log.Errorf("Validation failed :Nic is up, not available")
 			return false
 		}
@@ -92,10 +92,10 @@ func (pool *NicPool) collectGatewayNic() error {
 		return err
 	} else {
 		for _, link := range linklist {
-			if link.Attrs().Flags & net.FlagLoopback == 0 {
+			if link.Attrs().Flags&net.FlagLoopback == 0 {
 				nicid := link.Attrs().HardwareAddr.String()
 				nicidList = append(nicidList, pkg.StringPtr(nicid))
-				log.Debugf("Found nic %s on host",nicid)
+				log.Debugf("Found nic %s on host", nicid)
 			}
 		}
 	}
@@ -117,12 +117,12 @@ func (pool *NicPool) collectGatewayNic() error {
 				netlink.LinkSetDown(niclink)
 			}
 		}
-		log.Debugf("nic %s is unused,status is %d",nic.ID,niclink.Attrs().Flags&net.FlagUp)
+		log.Debugf("nic %s is unused,status is %d", nic.ID, niclink.Attrs().Flags&net.FlagUp)
 		unusedList = append(unusedList, nic)
 	}
 
 	//move unused nics to nic pool
-	if len(unusedList) >0 {
+	if len(unusedList) > 0 {
 		pool.Add(1)
 		go func() {
 			defer pool.Done()
@@ -131,8 +131,8 @@ func (pool *NicPool) collectGatewayNic() error {
 		}()
 	}
 	log.Infof("Found following nic as gateway")
-	for key,value :=range pool.gatewayMgr {
-		log.Infof("vxnet: %s gateway: %s",key,value)
+	for key, value := range pool.gatewayMgr {
+		log.Infof("vxnet: %s gateway: %s", key, value)
 	}
 	return nil
 }
@@ -218,21 +218,21 @@ func (pool *NicPool) ShutdownNicPool() {
 		var cachedlist []*string
 		for nic := range pool.nicpool {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
-			log.Debugf("Got nic %s in nic pool",nic)
+			log.Debugf("Got nic %s in nic pool", nic)
 		}
-		err:= pool.resoureStub.DeleteNics(cachedlist)
-		log.Infof("clean up nic pool,delete nics %v: %v \n",cachedlist,err)
+		err := pool.resoureStub.DeleteNics(cachedlist)
+		log.Infof("clean up nic pool,delete nics %v: %v \n", cachedlist, err)
 		stopch <- struct{}{}
 		close(stopch)
 	}(stopChannel)
-	pool.Wait()// wait until all of requests are processed
+	pool.Wait() // wait until all of requests are processed
 	close(pool.nicpool)
 	log.Infof("closed nic pool")
 	<-stopChannel
 }
 
 func (pool *NicPool) ReturnNic(nicid string) error {
-	log.Debugf("Return %s to nic pool",nicid)
+	log.Debugf("Return %s to nic pool", nicid)
 	pool.Add(1)
 	go func() {
 		defer pool.Done()

@@ -49,9 +49,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	defer netns.Close()
 
-	conn, err := grpc.Dial(conf.BindAddr,grpc.WithInsecure())
+	conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
 	if err != nil {
-		return fmt.Errorf("Failed to open socket %v",err)
+		return fmt.Errorf("Failed to open socket %v", err)
 	}
 	defer conn.Close()
 	client := messages.NewNicservicesClient(conn)
@@ -69,7 +69,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		if nic != nil {
 			client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		}
-		return fmt.Errorf("Failed to allocate nic :%v",err)
+		return fmt.Errorf("Failed to allocate nic :%v", err)
 	}
 	iface, err := pkg.LinkByMacAddr(nic.Nicid)
 	if err != nil {
@@ -132,9 +132,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 
-	conn, err := grpc.Dial(conf.BindAddr,grpc.WithInsecure())
+	conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
 	if err != nil {
-		return fmt.Errorf("Failed to open socket %v",err)
+		return fmt.Errorf("Failed to open socket %v", err)
 	}
 	defer conn.Close()
 	client := messages.NewNicservicesClient(conn)

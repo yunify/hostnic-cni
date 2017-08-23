@@ -55,4 +55,3 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	}
 	return netconf, nil
 }
-
