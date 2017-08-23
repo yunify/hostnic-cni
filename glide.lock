@@ -1,5 +1,5 @@
-hash: d92ada1a59a8137394ffb1a8c011652884506dad31867967c0655e09c491e588
-updated: 2017-08-20T19:27:45.270298401+08:00
+hash: dc9bfc3099c3d7442e6c8a42eda29cde04b7d025e0292aa9739baeab15767d30
+updated: 2017-08-23T20:01:05.078486917+08:00
 imports:
 - name: github.com/containernetworking/cni
   version: a7885cb6f8ab03fba07852ded351e4f5e7a112bf
@@ -58,7 +58,7 @@ imports:
 - name: github.com/spf13/cast
   version: acbeb36b902d72a7a4c18e8f3241075e7ab763e4
 - name: github.com/spf13/cobra
-  version: 4a7b7e65864c064d48dce82efbbfed2bdc0bf2aa
+  version: 2df9a531813370438a4d79bfc33e21f58063ed87
 - name: github.com/spf13/jwalterweatherman
   version: 0efa5202c04663c757d84f90f5219c1250baf94f
 - name: github.com/spf13/pflag
@@ -72,7 +72,7 @@ imports:
 - name: github.com/vishvananda/netns
   version: 54f0e4339ce73702a0607f49922aaa1e749b418d
 - name: github.com/yunify/qingcloud-sdk-go
-  version: e11223f05644bb8582818889f6e5ff1df3686215
+  version: 113ace4576c9e1c0b5f2277b17a5a21c88bce405
   subpackages:
   - client
   - config
