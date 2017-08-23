@@ -46,6 +46,7 @@ to quickly create a Cobra application.`,
 		resourceProvider, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
 		if err != nil {
 			log.Errorf("Failed to initiate resource provider, %v", err)
+			return
 		}
 
 		//setup nic pool

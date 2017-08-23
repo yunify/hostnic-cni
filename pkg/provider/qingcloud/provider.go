@@ -291,7 +291,7 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 		instanceItem := output.InstanceSet[0]
 		var vxnetIds []*string
 		for _, vxnetItem := range instanceItem.VxNets {
-			vxnetIds = append(vxnetIds,vxnetItem.NICID)
+			vxnetIds = append(vxnetIds,vxnetItem.VxNetID)
 		}
 
 		vxnets,err := p.GetVxNets(vxnetIds)
@@ -324,13 +324,17 @@ func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
 		var vxNets []*pkg.VxNet
 		for _, qcVxNet := range output.VxNetSet {
 			var routerID string
-			if router := qcVxNet.Router; router != nil {
-				routerID = *router.RouterID
+			if router := *qcVxNet.VpcRouterID; router != "" {
+				routerID = router
 			} else {
 				routerID = ""
 			}
-
-			vxNets = append(vxNets, &pkg.VxNet{ID: *qcVxNet.VxNetID, GateWay: *qcVxNet.Router.ManagerIP, Network: *qcVxNet.Router.IPNetwork, RouterID: routerID})
+			vxnetItem :=&pkg.VxNet{ID: *qcVxNet.VxNetID,  RouterID: routerID}
+			if qcVxNet.Router != nil {
+				vxnetItem.GateWay=*qcVxNet.Router.ManagerIP
+				vxnetItem.Network=*qcVxNet.Router.IPNetwork
+			}
+			vxNets = append(vxNets,vxnetItem)
 		}
 		return vxNets, nil
 	}
