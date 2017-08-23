@@ -35,13 +35,11 @@ const (
 // startCmd represents the start command
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Start daemon process",
+	Long: `hostnic-cni is a Container Network Interface plugin.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+This plugin will create a new nic by IaaS api and attach to host,
+then move the nic to container network namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
 		resourceProvider, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
 		if err != nil {
