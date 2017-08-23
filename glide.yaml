@@ -24,14 +24,10 @@ import:
 - package: github.com/spf13/viper
   version: ~1.0.0
 - package: github.com/vishvananda/netlink
-- package: github.com/yunify/qingcloud-sdk-go
-  version: ~2.0.0-alpha.8
+- package: golang.org/x/net
   subpackages:
-  - client
-  - config
-  - logger
-  - service
-  - utils
-- package: golang.org/x/net/context
+  - context
 - package: google.golang.org/grpc
   version: ~1.5.2
+- package: github.com/yunify/qingcloud-sdk-go
+  version: ~2.0.0-alpha.9

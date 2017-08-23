@@ -289,25 +289,26 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 	}
 	if *output.RetCode == 0 {
 		instanceItem := output.InstanceSet[0]
-		var vxnetIds []*pkg.VxNet
-		var defaultRouterID string
+		var vxnetIds []*string
 		for _, vxnetItem := range instanceItem.VxNets {
-			var routerID string
-			if router := vxnetItem.Router; router != nil {
-				routerID = *router.RouterID
-			} else {
-				routerID = ""
-			}
-			vxnetIds = append(vxnetIds, &pkg.VxNet{ID: *vxnetItem.VxNetID, GateWay: *vxnetItem.Router.ManagerIP, Network: *vxnetItem.Router.IPNetwork, RouterID: routerID})
-			if routerID != "" && defaultRouterID == "" {
-				defaultRouterID = routerID
-			}
+			vxnetIds = append(vxnetIds,vxnetItem.NICID)
 		}
 
+		vxnets,err := p.GetVxNets(vxnetIds)
+		if err != nil {
+			return nil,err
+		}
+		var routerID string
+		for _,vxnetItem := range vxnets{
+			if routerID == "" {
+				routerID = vxnetItem.RouterID
+			} else if routerID != vxnetItem.RouterID {
+				return nil,fmt.Errorf("Vxnet is not under the same VPC's management")
+			}
+		}
 		return &pkg.HostInstance{
 			InstanceID: id,
-			Vxnets:     vxnetIds,
-			RouterID:   defaultRouterID,
+			RouterID:   routerID,
 		}, nil
 	}
 	return nil, fmt.Errorf("Failed to describe instance, %", *output.Message)
