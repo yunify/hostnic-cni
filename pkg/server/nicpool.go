@@ -120,8 +120,9 @@ func (pool *NicPool) CleanUpReadyPool(){
 		err :=pool.nicProvider.ReclaimNic(niclist)
 		for _,item := range niclist {
 			nicids =nicids + "[" + *item+ "]"
+			pool.nicDict.Remove(*item)
 		}
-		log.Info("Deleted nic %s, error : %v",err)
+		log.Infof("Deleted nic %s , error : %v",nicids,err)
 	}
 }
 
@@ -198,7 +199,7 @@ func (pool *NicPool) ShutdownNicPool() {
 }
 
 func (pool *NicPool) ReturnNic(nicid string) error {
-	log.Debugf("Return %s to nic pool", nicid)
+	log.Debugf("Return %s to nic ready pool", nicid)
 	//check if nic is in dict
 	if _, ok := pool.nicDict.Get(nicid); ok {
 		pool.nicReadyPool <- nicid

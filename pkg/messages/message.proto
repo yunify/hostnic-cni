@@ -25,25 +25,3 @@ message FreeNicRequest {
 message FreeNicResponse {
 
 }
-
-service Management {
-    rpc CleanUpNic (CleanUpRequest) returns (CleanUpResponse);
-    rpc GraceFulStop(StopRequest) returns (StopResponse);
-
-}
-
-message CleanUpRequest {
-
-}
-
-message CleanUpResponse {
-
-}
-
-message StopRequest {
-
-}
-
-message StopResponse {
-
-}

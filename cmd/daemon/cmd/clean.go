@@ -19,15 +19,11 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
-	"github.com/yunify/hostnic-cni/pkg/messages"
-	"google.golang.org/grpc"
 	"github.com/spf13/viper"
+	"io/ioutil"
+	"net/http"
 	log "github.com/sirupsen/logrus"
-
-	"context"
 )
 
 // cleanCmd represents the clean command
@@ -39,14 +35,14 @@ var cleanCmd = &cobra.Command{
 This plugin will create a new nic by IaaS api and attach to host,
 then move the nic to container network namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		conn, err := grpc.Dial(viper.GetString("manageAddr"), grpc.WithInsecure())
+		resp, err := http.Get("http://"+viper.GetString("manageAddr")+"/clearcache")
 		if err != nil {
-			log.Error(fmt.Errorf("Failed to open socket %v", err))
+			log.Error(err)
 			return
 		}
-		defer conn.Close()
-		client := messages.NewManagementClient(conn)
-		client.CleanUpNic(context.Background(),&messages.CleanUpRequest{})
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		log.Info(body)
 	},
 }
 

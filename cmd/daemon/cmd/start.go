@@ -73,9 +73,19 @@ then move the nic to container network namespace`,
 		)
 		handlers:= server.NewDaemonServerHandler(nicpool)
 		messages.RegisterNicservicesServer(grpcServer,handlers)
-		messages.RegisterManagementServer(grpcServer,handlers)
 		grpc_prometheus.Register(grpcServer)
 		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/clearcache", func(writer http.ResponseWriter, request *http.Request) {
+			nicpool.CleanUpReadyPool()
+			writer.Header().Set("Content-Type", "text/plain")
+			writer.Write([]byte("Nic ready pool is cleared .\n"))
+		})
+		http.HandleFunc("/shutdown", func(writer http.ResponseWriter, request *http.Request) {
+			syscall.Kill(syscall.Getpid(),syscall.SIGTERM)
+			writer.Header().Set("Content-Type", "text/plain")
+			writer.Write([]byte("terminate signal is sent .\n"))
+		})
+
 
 		go grpcServer.Serve(listener)
 		go http.ListenAndServe(viper.GetString("manageAddr"),nil)
