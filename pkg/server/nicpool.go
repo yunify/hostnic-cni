@@ -39,7 +39,7 @@ func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider) (*NicPool, error
 		nicpool:               make(chan string, size),
 		nicReadyPool:          make(chan string, ReadyPoolSize),
 		nicStopGeneratorChann: make(chan struct{}),
-		nicProvider:           qingcloud.NewQingCloudNicProvider(resoureStub),
+		nicProvider:           NewQingCloudNicProvider(resoureStub),
 		gatewayMgr:            NewGatewayManager(resoureStub),
 	}
 	err := pool.init()

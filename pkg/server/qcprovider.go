@@ -1,21 +1,21 @@
-package qingcloud
+package server
 
 import (
 	"net"
 
 	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/hostnic-cni/pkg/server"
+	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 )
 
 type QingCloudNicProvider struct {
-	resourceStub *QCNicProvider
+	resourceStub *qingcloud.QCNicProvider
 }
 
 func (provider *QingCloudNicProvider) GetNicsInfo(nicids []*string) ([]*pkg.HostNic, error) {
 	return provider.resourceStub.GetNics(nicids)
 }
 
-func NewQingCloudNicProvider(provider *QCNicProvider) server.NicProvider {
+func NewQingCloudNicProvider(provider *qingcloud.QCNicProvider) NicProvider {
 	return &QingCloudNicProvider{resourceStub: provider}
 }
 
