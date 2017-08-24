@@ -8,11 +8,13 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
+	"time"
 )
 
 const (
 	AllocationRetryTimes = 3
-	ReadyPoolSize        = 2
+	ReadyPoolSize        = 64
+	DeleteWaitTimeout    = 5 * time.Second
 )
 
 //NicPool nic cached pool
@@ -29,11 +31,28 @@ type NicPool struct {
 
 	gatewayMgr *GatewayManager
 
+	config NicPoolConfig
+
 	sync.WaitGroup
 }
 
+type NicPoolConfig struct {
+	CleanUpCache bool
+}
+
+func NewNicPoolConfig() NicPoolConfig{
+	return NicPoolConfig{CleanUpCache:false}
+}
+
 //NewNicPool new nic pool
-func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider) (*NicPool, error) {
+func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider,option ...NicPoolConfig) (*NicPool, error) {
+	config := NewNicPoolConfig()
+	if len(option)> 1 {
+		return nil,fmt.Errorf("More than one option objects are found")
+	}
+	for _,item := range option{
+		config.CleanUpCache = item.CleanUpCache
+	}
 	pool := &NicPool{
 		nicDict:               cmap.New(),
 		nicpool:               make(chan string, size),
@@ -41,6 +60,7 @@ func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider) (*NicPool, error
 		nicStopGeneratorChann: make(chan struct{}),
 		nicProvider:           NewQingCloudNicProvider(resoureStub),
 		gatewayMgr:            NewGatewayManager(resoureStub),
+		config:config,
 	}
 	err := pool.init()
 	if err != nil {
@@ -73,6 +93,36 @@ func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
 			log.Debugf("put %s into ready pool", nic.ID)
 		}
 	}()
+}
+func (pool *NicPool) CleanUpReadyPool(){
+	log.Infoln("Start to clean up ready pool")
+	timer := time.NewTimer(DeleteWaitTimeout)
+	var niclist []*string
+	Cleanerloop:
+	for {
+		select {
+		case <-timer.C:
+			break Cleanerloop
+		case nicid,ok := <- pool.nicReadyPool:
+			if ok {
+				niclist = append(niclist, pkg.StringPtr(nicid))
+				timer.Reset(DeleteWaitTimeout)
+			} else {
+				break Cleanerloop
+			}
+		}
+	}
+	timer.Stop()
+	log.Infof("Cleaned up ready pool ")
+	if len(niclist) >0 {
+		log.Infof("Deleting reclaimed nics ...")
+		nicids := ""
+		err :=pool.nicProvider.ReclaimNic(niclist)
+		for _,item := range niclist {
+			nicids =nicids + "[" + *item+ "]"
+		}
+		log.Info("Deleted nic %s, error : %v",err)
+	}
 }
 
 func (pool *NicPool) StartEventloop() {
@@ -127,8 +177,16 @@ func (pool *NicPool) ShutdownNicPool() {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool", nic)
 		}
-		err := pool.nicProvider.ReclaimNic(cachedlist)
-		log.Infof("clean up nic pool,delete nics %v: %v \n", cachedlist, err)
+		log.Infof("clean up nic pool\n")
+		if pool.config.CleanUpCache {
+			log.Infof("Deleting cached nics...")
+			err := pool.nicProvider.ReclaimNic(cachedlist)
+			var niclist string
+			for _,nicitem := range cachedlist{
+				niclist = niclist + "["+*nicitem+"] "
+			}
+			log.Infof("Deleted nics %s,error:%v",niclist,err)
+		}
 		stopch <- struct{}{}
 		close(stopch)
 	}(stopChannel)

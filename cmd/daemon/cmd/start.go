@@ -49,7 +49,7 @@ then move the nic to container network namespace`,
 		}
 
 		//setup nic pool
-		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), resourceProvider)
+		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), resourceProvider,server.NicPoolConfig{CleanUpCache:viper.GetBool("CleanUpCacheOnExit")})
 		if err != nil {
 			log.Errorf("Failed to create pool. %v", err)
 			return
@@ -123,5 +123,6 @@ func init() {
 
 	//pool properties
 	startCmd.Flags().Int("PoolSize", 3, "The size of nic pool")
+	startCmd.Flags().Bool("CleanUpCacheOnExit",false,"Delete cached nic on exit")
 	viper.BindPFlags(startCmd.Flags())
 }
