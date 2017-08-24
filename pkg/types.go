@@ -18,22 +18,6 @@
 
 package pkg
 
-import "github.com/containernetworking/cni/pkg/types"
-
-const DefaultDataDir = "/var/run/cni/hostnic"
-
-//IPAMConfig routing rules configuratioins
-type IPAMConfig struct {
-	Routes []*types.Route `json:"routes"`
-}
-
-//NetConf nic plugin configuration
-type NetConf struct {
-	types.NetConf
-	BindAddr string      `json:"bindaddr"`
-	IPAM     *IPAMConfig `json:"ipam"`
-}
-
 type HostNic struct {
 	ID           string `json:"id"`
 	VxNet        *VxNet `json:"vxNet"`

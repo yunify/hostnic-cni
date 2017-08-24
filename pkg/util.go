@@ -21,9 +21,6 @@ package pkg
 import (
 	"fmt"
 
-	"encoding/json"
-	"errors"
-
 	"github.com/vishvananda/netlink"
 )
 
@@ -43,16 +40,4 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 		}
 	}
 	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
-}
-
-func LoadNetConf(bytes []byte) (*NetConf, error) {
-	netconf := &NetConf{}
-	if err := json.Unmarshal(bytes, netconf); err != nil {
-		return nil, fmt.Errorf("failed to load netconf: %v", err)
-	}
-
-	if netconf.BindAddr == "" {
-		return nil, errors.New("BindAddr name is empty")
-	}
-	return netconf, nil
 }

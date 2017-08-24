@@ -24,6 +24,8 @@ import (
 
 	"context"
 
+	"encoding/json"
+
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -38,8 +40,32 @@ import (
 	"google.golang.org/grpc"
 )
 
+//IPAMConfig routing rules configuratioins
+type IPAMConfig struct {
+	Routes []*types.Route `json:"routes"`
+}
+
+//NetConf nic plugin configuration
+type NetConf struct {
+	types.NetConf
+	BindAddr string      `json:"bindaddr"`
+	IPAM     *IPAMConfig `json:"ipam"`
+}
+
+func LoadNetConf(bytes []byte) (*NetConf, error) {
+	netconf := &NetConf{}
+	if err := json.Unmarshal(bytes, netconf); err != nil {
+		return nil, fmt.Errorf("failed to load netconf: %v", err)
+	}
+
+	if netconf.BindAddr == "" {
+		netconf.BindAddr = "127.0.0.1:31080"
+	}
+	return netconf, nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
-	conf, err := pkg.LoadNetConf(args.StdinData)
+	conf, err := LoadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -122,7 +148,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	conf, err := pkg.LoadNetConf(args.StdinData)
+	conf, err := LoadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
