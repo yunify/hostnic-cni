@@ -52,6 +52,6 @@ type VxNet struct {
 }
 
 type HostInstance struct {
-	InstanceID string   `json:"instance_id"`
-	RouterID   string   `json:"router_id"`
+	InstanceID string `json:"instance_id"`
+	RouterID   string `json:"router_id"`
 }

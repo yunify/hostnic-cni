@@ -291,19 +291,19 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 		instanceItem := output.InstanceSet[0]
 		var vxnetIds []*string
 		for _, vxnetItem := range instanceItem.VxNets {
-			vxnetIds = append(vxnetIds,vxnetItem.VxNetID)
+			vxnetIds = append(vxnetIds, vxnetItem.VxNetID)
 		}
 
-		vxnets,err := p.GetVxNets(vxnetIds)
+		vxnets, err := p.GetVxNets(vxnetIds)
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
 		var routerID string
-		for _,vxnetItem := range vxnets{
+		for _, vxnetItem := range vxnets {
 			if routerID == "" {
 				routerID = vxnetItem.RouterID
 			} else if routerID != vxnetItem.RouterID {
-				return nil,fmt.Errorf("Vxnet is not under the same VPC's management")
+				return nil, fmt.Errorf("Vxnet is not under the same VPC's management")
 			}
 		}
 		return &pkg.HostInstance{
@@ -329,12 +329,12 @@ func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
 			} else {
 				routerID = ""
 			}
-			vxnetItem :=&pkg.VxNet{ID: *qcVxNet.VxNetID,  RouterID: routerID}
+			vxnetItem := &pkg.VxNet{ID: *qcVxNet.VxNetID, RouterID: routerID}
 			if qcVxNet.Router != nil {
-				vxnetItem.GateWay=*qcVxNet.Router.ManagerIP
-				vxnetItem.Network=*qcVxNet.Router.IPNetwork
+				vxnetItem.GateWay = *qcVxNet.Router.ManagerIP
+				vxnetItem.Network = *qcVxNet.Router.IPNetwork
 			}
-			vxNets = append(vxNets,vxnetItem)
+			vxNets = append(vxNets, vxnetItem)
 		}
 		return vxNets, nil
 	}

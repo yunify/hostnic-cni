@@ -4,17 +4,17 @@ import (
 	"sync"
 
 	"fmt"
+	"github.com/orcaman/concurrent-map"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"net"
-	"github.com/orcaman/concurrent-map"
 )
 
 const (
 	AllocationRetryTimes = 3
-	ReadyPoolSize =2
+	ReadyPoolSize        = 2
 )
 
 //NicPool nic cached pool
@@ -43,7 +43,7 @@ func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider) (*NicPool, error
 	pool := &NicPool{
 		nicDict:               cmap.New(),
 		nicpool:               make(chan string, size),
-		nicReadyPool:          make(chan string,ReadyPoolSize),
+		nicReadyPool:          make(chan string, ReadyPoolSize),
 		nicStopGeneratorChann: make(chan struct{}),
 		gatewayMgr:            cmap.New(),
 		resoureStub:           resoureStub,
@@ -157,7 +157,7 @@ func (pool *NicPool) getOrAllocateGateway(vxnetid string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		pool.gatewayMgr.Set(nic.VxNet.ID,nic.Address)
+		pool.gatewayMgr.Set(nic.VxNet.ID, nic.Address)
 
 		return nic.Address, nil
 	} else {
@@ -169,7 +169,7 @@ func (pool *NicPool) getOrAllocateGateway(vxnetid string) (string, error) {
 //addNicsToPool may block current process until channel is not empty
 func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
 	for _, nic := range nics {
-		pool.nicDict.Set(nic.ID,nic)
+		pool.nicDict.Set(nic.ID, nic)
 
 		log.Debugln("start to wait until ready pool is not full.")
 		pool.nicReadyPool <- nic.ID
@@ -276,7 +276,7 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 	}
 
 	var nic *pkg.HostNic
-	if item,ok := pool.nicDict.Get(nicid);ok {
+	if item, ok := pool.nicDict.Get(nicid); ok {
 		nic = item.(*pkg.HostNic)
 	}
 
