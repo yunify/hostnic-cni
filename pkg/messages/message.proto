@@ -26,3 +26,15 @@ message FreeNicRequest {
 message FreeNicResponse {
 
 }
+
+service Management {
+    rpc CleanUpNic (CleanUpRequest) returns (CleanUpResponse)
+}
+
+message CleanUpNic {
+
+}
+
+message CleanUpResponse {
+
+}
