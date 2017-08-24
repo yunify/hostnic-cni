@@ -1,15 +1,20 @@
-// Copyright © 2017 NAME HERE <EMAIL ADDRESS>
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// =========================================================================
+// Copyright (C) 2017 by Yunify, Inc...
+// -------------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this work except in compliance with the License.
+// You may obtain a copy of the License in the LICENSE file, or at:
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+// =========================================================================
+//
 
 package cmd
 
@@ -23,10 +28,13 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/yunify/hostnic-cni/pkg/messages"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"google.golang.org/grpc"
+	"net/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -60,10 +68,17 @@ then move the nic to container network namespace`,
 			log.Errorf("Failed to listen to assigned port, %v", err)
 			return
 		}
-		grpcServer := grpc.NewServer()
-		messages.RegisterNicservicesServer(grpcServer, server.NewDaemonServerHandler(nicpool))
-		go grpcServer.Serve(listener)
+		grpcServer := grpc.NewServer(
+			grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+		)
+		handlers:= server.NewDaemonServerHandler(nicpool)
+		messages.RegisterNicservicesServer(grpcServer,handlers)
+		messages.RegisterManagementServer(grpcServer,handlers)
+		grpc_prometheus.Register(grpcServer)
+		http.Handle("/metrics", promhttp.Handler())
 
+		go grpcServer.Serve(listener)
+		go http.ListenAndServe(viper.GetString("manageAddr"),nil)
 		signalCh := make(chan os.Signal, 4)
 		signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		var sig os.Signal
@@ -114,8 +129,6 @@ func init() {
 	// is called directly, e.g.:
 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	//server routine properties
-	startCmd.Flags().String("bindAddr", ":31080", "port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )")
 
 	//sdk properties
 	startCmd.Flags().String("QyAccessFilePath", "/etc/qingcloud/client.yaml", "Path of QingCloud Access file")

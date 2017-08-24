@@ -4,11 +4,22 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/yunify/hostnic-cni/pkg/messages"
 	"golang.org/x/net/context"
+	"syscall"
 )
 
 //DaemonServer Daemon Server process which manages nics for nic plugin
 type DaemonServerHandler struct {
 	nicpool *NicPool
+}
+
+func (daemon *DaemonServerHandler) CleanUpNic(context.Context, *messages.CleanUpRequest) (*messages.CleanUpResponse, error) {
+	daemon.nicpool.CleanUpReadyPool()
+	return &messages.CleanUpResponse{},nil
+}
+
+func (daemon *DaemonServerHandler) GraceFulStop(context.Context, *messages.StopRequest) (*messages.StopResponse, error) {
+	syscall.Kill(syscall.Getpid(),syscall.SIGTERM)
+	return &messages.StopResponse{},nil
 }
 
 func NewDaemonServerHandler(nicpool *NicPool) *DaemonServerHandler {

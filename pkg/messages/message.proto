@@ -5,7 +5,6 @@ package messages;
 service Nicservices {
     rpc AllocateNic (AllocateNicRequest) returns (AllocateNicResponse);
     rpc FreeNic(FreeNicRequest) returns (FreeNicResponse);
-    rpc GraceFulStop();
 }
 
 message AllocateNicRequest {
@@ -28,13 +27,23 @@ message FreeNicResponse {
 }
 
 service Management {
-    rpc CleanUpNic (CleanUpRequest) returns (CleanUpResponse)
+    rpc CleanUpNic (CleanUpRequest) returns (CleanUpResponse);
+    rpc GraceFulStop(StopRequest) returns (StopResponse);
+
 }
 
-message CleanUpNic {
+message CleanUpRequest {
 
 }
 
 message CleanUpResponse {
+
+}
+
+message StopRequest {
+
+}
+
+message StopResponse {
 
 }

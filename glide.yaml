@@ -32,3 +32,7 @@ import:
 - package: github.com/yunify/qingcloud-sdk-go
   version: ~2.0.0-alpha.9
 - package: github.com/orcaman/concurrent-map
+- package: github.com/grpc-ecosystem/go-grpc-prometheus
+  version: ~1.1.0
+- package: github.com/prometheus/client_golang
+  version: ~0.8.0
