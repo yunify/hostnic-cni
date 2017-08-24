@@ -23,6 +23,7 @@ import (
 
 	"encoding/json"
 	"errors"
+
 	"github.com/vishvananda/netlink"
 )
 

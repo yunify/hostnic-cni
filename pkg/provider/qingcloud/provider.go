@@ -24,6 +24,8 @@ import (
 	"math/rand"
 	"time"
 
+	"net"
+
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/qingcloud-sdk-go/client"
@@ -31,7 +33,6 @@ import (
 	"github.com/yunify/qingcloud-sdk-go/logger"
 	"github.com/yunify/qingcloud-sdk-go/service"
 	qcutil "github.com/yunify/qingcloud-sdk-go/utils"
-	"net"
 )
 
 const (

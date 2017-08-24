@@ -14,6 +14,12 @@
 package cmd
 
 import (
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,11 +27,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"google.golang.org/grpc"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 const (
