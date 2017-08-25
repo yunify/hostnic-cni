@@ -9,6 +9,7 @@ import (
 	"time"
 	"math/rand"
 	"github.com/orcaman/concurrent-map"
+	"fmt"
 )
 
 type MockProviderInterface interface {
@@ -60,7 +61,13 @@ func (provider *MockProvider) ReclaimNic(ids[]*string) error {
 func (provider *MockProvider) GetNicsInfo(idlist []*string) ([]*pkg.HostNic, error) {
 	var result []*pkg.HostNic
 	for _,item := range idlist {
-		result = append(result,&pkg.HostNic{ID:*item})
+		rand.Seed(time.Now().UnixNano())
+		if rand.Intn(2) == 1 {
+			result = append(result, &pkg.HostNic{ID: *item})
+			provider.result.Set(*item, true)
+		} else {
+			return nil,fmt.Errorf("nic %s not found",*item)
+		}
 	}
 	return result,nil
 }
@@ -69,34 +76,55 @@ func (provider *MockProvider) GetNicsInfo(idlist []*string) ([]*pkg.HostNic, err
 
 
 func TestPoolRace(t *testing.T){
+	log.SetLevel(log.DebugLevel)
+	provider := NewMockProvider()
+	nicpool,err:=NewNicPool(3,provider,nil,NicPoolConfig{true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Run("group", func(t *testing.T) {
-		t.Parallel()
-		log.SetLevel(log.DebugLevel)
-		provider := NewMockProvider()
-		nicpool,err:=NewNicPool(3,provider,nil,NicPoolConfig{true})
-		if err != nil {
-			t.Fatal(err)
-		}
+
 		allocateReclaimTest := func(t *testing.T) {
+			t.Parallel()
+			var err error
+
 			nic,err:=nicpool.BorrowNic(false)
 			if err!= nil {
 				t.Fatal(err)
+				return
+			}
+			if nic == nil {
+				t.Fatal("Nic is nil")
+				return
 			}
 
 			err = nicpool.ReturnNic(nic.ID)
 			if err!= nil {
 				t.Fatal(err)
+				return
 			}
+		}
+		returnRecoverTest := func(t *testing.T) {
+			t.Parallel()
+			rand.Seed(time.Now().UnixNano())
+			result := 64+rand.Int()
+			nicid := strconv.Itoa(result)
+			nicpool.ReturnNic(nicid)
+			return
 		}
 		for i:=0 ;i < 64 ;i ++ {
 			t.Run("Allocate and Reclaim", allocateReclaimTest)
+			if i %10 ==0 {
+				t.Run("Return nic from old daemon", returnRecoverTest)
+			}
 		}
-		nicpool.ShutdownNicPool()
-		ok:=provider.CloseAndCheck()
-		if !ok {
-			t.Fatal("Provider check failed")
-		}
+
 	})
+	nicpool.ShutdownNicPool()
+	ok:=provider.CloseAndCheck()
+	if !ok {
+		t.Fatal("Provider check failed")
+	}
 }
 
 
