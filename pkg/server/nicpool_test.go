@@ -112,10 +112,17 @@ func TestPoolRace(t *testing.T){
 			nicpool.ReturnNic(nicid)
 			return
 		}
+		clearcacheTest := func(t *testing.T) {
+			t.Parallel()
+			nicpool.CleanUpReadyPool()
+		}
 		for i:=0 ;i < 64 ;i ++ {
 			t.Run("Allocate and Reclaim", allocateReclaimTest)
 			if i %10 ==0 {
 				t.Run("Return nic from old daemon", returnRecoverTest)
+			}
+			if i %20 ==0 {
+				t.Run("Clear cache",clearcacheTest)
 			}
 		}
 
