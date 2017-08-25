@@ -21,4 +21,4 @@
 echo "Build hostnic"
 mkdir -p bin/
 make
-tar -C bin/ -czf bin/hostnic.tar.gz hostnic
+tar -C bin/ -czf bin/hostnic.tar.gz daemon hostnic
