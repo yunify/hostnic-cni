@@ -42,7 +42,7 @@ then move the nic to container network namespace`,
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
-		log.Info(body)
+		log.Info(string(body))
 	},
 }
 

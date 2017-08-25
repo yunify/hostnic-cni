@@ -7,7 +7,6 @@ import (
 	"github.com/orcaman/concurrent-map"
 	log "github.com/sirupsen/logrus"
 	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"time"
 )
 
@@ -25,7 +24,8 @@ type NicPool struct {
 
 	nicReadyPool chan string
 
-	nicStopGeneratorChann chan struct{}
+	nicStopFlag bool
+	nicStopLock sync.RWMutex
 
 	nicProvider NicProvider
 
@@ -45,7 +45,7 @@ func NewNicPoolConfig() NicPoolConfig{
 }
 
 //NewNicPool new nic pool
-func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider,option ...NicPoolConfig) (*NicPool, error) {
+func NewNicPool(size int, nicProvider NicProvider,gatewayMgr *GatewayManager,option ...NicPoolConfig) (*NicPool, error) {
 	config := NewNicPoolConfig()
 	if len(option)> 1 {
 		return nil,fmt.Errorf("More than one option objects are found")
@@ -53,13 +53,16 @@ func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider,option ...NicPool
 	for _,item := range option{
 		config.CleanUpCache = item.CleanUpCache
 	}
+	if nicProvider == nil {
+		return nil,fmt.Errorf("NicProvider is nil, Please provide nic provider")
+	}
 	pool := &NicPool{
 		nicDict:               cmap.New(),
 		nicpool:               make(chan string, size),
 		nicReadyPool:          make(chan string, ReadyPoolSize),
-		nicStopGeneratorChann: make(chan struct{}),
-		nicProvider:           NewQingCloudNicProvider(resoureStub),
-		gatewayMgr:            NewGatewayManager(resoureStub),
+		nicStopFlag: false,
+		nicProvider:           nicProvider,
+		gatewayMgr:            gatewayMgr,
 		config:config,
 	}
 	err := pool.init()
@@ -70,13 +73,16 @@ func NewNicPool(size int, resoureStub *qingcloud.QCNicProvider,option ...NicPool
 }
 
 func (pool *NicPool) init() error {
-	nicids, err := pool.gatewayMgr.CollectGatewayNic()
-	if err != nil {
-		return err
+	if pool.gatewayMgr != nil {
+		log.Infoln("Initialize gateway manager")
+		nicids, err := pool.gatewayMgr.CollectGatewayNic()
+		if err != nil {
+			return err
+		}
+		pool.addNicsToPool(nicids...)
 	}
-	pool.addNicsToPool(nicids...)
-
 	//start eventloop
+	log.Infoln("Start nic pool event loop")
 	pool.StartEventloop()
 	return nil
 }
@@ -133,24 +139,30 @@ func (pool *NicPool) StartEventloop() {
 	CLEANUP:
 		for {
 			select {
-			case <-pool.nicStopGeneratorChann:
-				break CLEANUP
 
 			case nic := <-pool.nicReadyPool:
 				log.Debugf("move %s from ready pool to nic pool", nic)
 				pool.nicpool <- nic
 
 			default:
-				nic, err := pool.nicProvider.GenerateNic()
-				if err != nil {
-					log.Errorf("Failed to get nic from generator", err)
-					continue
-				}
-				pool.nicDict.Set(nic.ID, nic)
+				pool.nicStopLock.RLock()
+				stopFlag := pool.nicStopFlag
+				pool.nicStopLock.RUnlock()
+				if !stopFlag {
+					nic, err := pool.nicProvider.GenerateNic()
+					if err != nil {
+						log.Errorf("Failed to get nic from generator", err)
+						continue
+					}
+					pool.nicDict.Set(nic.ID, nic)
 
-				log.Debugln("start to wait until nic pool is not full.")
-				pool.nicpool <- nic.ID
-				log.Debugf("put %s into nic pool", nic.ID)
+					log.Debugln("start to wait until nic pool is not full.")
+					pool.nicpool <- nic.ID
+					log.Debugf("put %s into nic pool", nic.ID)
+				} else {
+					log.Debugln("Stopped generator")
+					break CLEANUP
+				}
 			}
 		}
 		log.Info("Event loop stopped")
@@ -158,14 +170,13 @@ func (pool *NicPool) StartEventloop() {
 }
 
 func (pool *NicPool) ShutdownNicPool() {
-	//send terminate signal
-	go func() {
-		log.Infoln("send kill pool event loop signal ")
-		pool.nicStopGeneratorChann <- struct{}{}
-	}()
+
 	//recollect nics
 	stopChannel := make(chan struct{})
 	go func(stopch chan struct{}) {
+		pool.nicStopLock.Lock()
+		pool.nicStopFlag=true
+		pool.nicStopLock.Unlock()
 		var cachedlist []*string
 
 		log.Infoln("start to delete nics in cache pool")
@@ -178,7 +189,7 @@ func (pool *NicPool) ShutdownNicPool() {
 			cachedlist = append(cachedlist, pkg.StringPtr(nic))
 			log.Debugf("Got nic %s in nic pool", nic)
 		}
-		log.Infof("clean up nic pool\n")
+		log.Infof("clean up nic pool")
 		if pool.config.CleanUpCache {
 			log.Infof("Deleting cached nics...")
 			err := pool.nicProvider.ReclaimNic(cachedlist)
@@ -230,7 +241,7 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 		nic = item.(*pkg.HostNic)
 	}
 
-	if autoAssignGateway {
+	if pool.gatewayMgr != nil &&autoAssignGateway {
 		gateway, err := pool.gatewayMgr.GetOrAllocateGateway(nic.VxNet.ID)
 		if err != nil {
 			return nil, err

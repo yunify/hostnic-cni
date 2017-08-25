@@ -50,14 +50,14 @@ var startCmd = &cobra.Command{
 This plugin will create a new nic by IaaS api and attach to host,
 then move the nic to container network namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		resourceProvider, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
+		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
 		if err != nil {
 			log.Errorf("Failed to initiate resource provider, %v", err)
 			return
 		}
 
 		//setup nic pool
-		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), resourceProvider,server.NicPoolConfig{CleanUpCache:viper.GetBool("CleanUpCacheOnExit")})
+		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), server.NewQingCloudNicProvider(resourceStub),server.NewGatewayManager(resourceStub),server.NicPoolConfig{CleanUpCache:viper.GetBool("CleanUpCacheOnExit")})
 		if err != nil {
 			log.Errorf("Failed to create pool. %v", err)
 			return
