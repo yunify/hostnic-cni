@@ -1,14 +1,16 @@
-sudo: false
+sudo: required
 language: go
+services:
+  - docker
 go:
-- 1.8
+- 1.8.x
 before_install: 
 install:
-- make
+- make release
 script:
 - echo "test skip"
 before_deploy:
-- "./release"
+- make install
 deploy:
   provider: releases
   api_key:
