@@ -25,7 +25,7 @@
     启动后台进程需要如下参数
 
     ```bash
-    [root@i-zwa7jztl hostnic-cni]# bin/daemon help start
+    [root@i-zwa7jztl bin]# ./daemon start -h
     hostnic-cni is a Container Network Interface plugin.
 
     This plugin will create a new nic by IaaS api and attach to host,
@@ -33,17 +33,19 @@
 
     Usage:
       daemon start [flags]
-
+    
     Flags:
-          --PoolSize int              网卡缓冲池大小(default 3)
-          --QyAccessFilePath string   青云api key配置文件 (default "/etc/qingcloud/client.yaml")
-          --bindAddr string           后台进程监听端口(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
+          --CleanUpCacheOnExit        Delete cached nic on exit
+          --PoolSize int              The size of nic pool (default 3)
+          --QyAccessFilePath string   Path of QingCloud Access file (default "/etc/qingcloud/client.yaml")
       -h, --help                      help for start
-          --vxnets stringSlice        网卡使用的私网id列表
-
+          --vxnets stringSlice        ids of vxnet
+    
     Global Flags:
-          --config string     config file (default is $HOME/.daemon.yaml)
-          --loglevel string   后台进程日志级别(debug,info,warn,error) (default "info")
+          --bindAddr string     port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
+          --config string       config file (default is $HOME/.daemon.yaml)
+          --loglevel string     daemon process log level(debug,info,warn,error) (default "info")
+          --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
 
     ```
 

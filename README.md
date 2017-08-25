@@ -26,7 +26,7 @@ English|[中文](README_zh.md)
     it accepts a few params. As listed below.
 
     ```bash
-    [root@i-zwa7jztl hostnic-cni]# bin/daemon help start
+    [root@i-zwa7jztl bin]# ./daemon start -h
     hostnic-cni is a Container Network Interface plugin.
 
     This plugin will create a new nic by IaaS api and attach to host,
@@ -34,17 +34,19 @@ English|[中文](README_zh.md)
 
     Usage:
       daemon start [flags]
-
+    
     Flags:
+          --CleanUpCacheOnExit        Delete cached nic on exit
           --PoolSize int              The size of nic pool (default 3)
           --QyAccessFilePath string   Path of QingCloud Access file (default "/etc/qingcloud/client.yaml")
-          --bindAddr string           port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
       -h, --help                      help for start
           --vxnets stringSlice        ids of vxnet
-
+    
     Global Flags:
-          --config string     config file (default is $HOME/.daemon.yaml)
-          --loglevel string   daemon process log level(debug,info,warn,error) (default "info")
+          --bindAddr string     port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
+          --config string       config file (default is $HOME/.daemon.yaml)
+          --loglevel string     daemon process log level(debug,info,warn,error) (default "info")
+          --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
 
     ```
 
@@ -70,7 +72,7 @@ English|[中文](README_zh.md)
     ```
 
     The daemon process would fill nic pool with pre-allocated nics and wait until new request comes
-
+    
 1. Add cni config
 
     ```bash
