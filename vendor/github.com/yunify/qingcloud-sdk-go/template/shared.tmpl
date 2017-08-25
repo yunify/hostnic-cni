@@ -20,6 +20,8 @@
 		interface{}
 	{{- else if eq $typeName "any" -}}
 		interface{}
+	{{- else if eq $typeName "" -}}
+		interface{}
 	{{- else -}}
 		*{{$typeName | camelCase}}
 	{{- end -}}
@@ -193,7 +195,7 @@
 			{{end}}
 		{{end}}
 
-		{{if eq $property.Type "object"}}
+		{{if and (eq $property.Type "object") (ne $property.ExtraType "") }}
 			if v.{{$property.ID | camelCase}} != nil {
 				if err := v.{{$property.ID | camelCase}}.Validate(); err != nil {
 					return err
@@ -221,7 +223,8 @@
 			{{$isNotString := ne $property.ExtraType "string"}}
 			{{$isNotInteger := ne $property.ExtraType "integer"}}
 			{{$isNotTimestamp := ne $property.ExtraType "timestamp"}}
-			{{if and $isNotString $isNotInteger $isNotTimestamp}}
+			{{$isNotInterface := ne $property.ExtraType "object"}}
+			{{if and $isNotString $isNotInteger $isNotTimestamp $isNotInterface}}
 				if len(v.{{$property.ID | camelCase}}) > 0 {
 					for _, property := range v.{{$property.ID | camelCase}} {
 						if err := property.Validate(); err != nil {

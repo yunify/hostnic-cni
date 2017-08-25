@@ -1,6 +1,16 @@
 # Change Log
 All notable changes to QingCloud SDK for Go will be documented in this file.
 
+## [v2.0.0-alpha.9] - 2017-08-23
+
+### Added
+
+- Add vxnetid and loadbalancertype parms for load balancer
+
+### Fixed
+
+- Fixed vxnet section in response of DescribeInstances
+
 ## [v2.0.0-alpha.8] - 2017-08-13
 
 ### Added

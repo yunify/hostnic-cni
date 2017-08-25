@@ -1,4 +1,5 @@
 package pkg
+
 var (
 	VERSION     string = "dev"
 	GIT_SHA1    string = "dev+git"

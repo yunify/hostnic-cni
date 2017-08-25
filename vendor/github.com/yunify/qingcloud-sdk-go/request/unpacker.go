@@ -19,11 +19,8 @@ package request
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"reflect"
-	"regexp"
-	"strings"
 
 	"github.com/yunify/qingcloud-sdk-go/logger"
 	"github.com/yunify/qingcloud-sdk-go/request/data"
@@ -45,13 +42,6 @@ func (u *Unpacker) UnpackHTTPRequest(o *data.Operation, r *http.Response, x *ref
 	u.httpResponse = r
 	u.output = x
 
-	if strings.Contains(o.APIName, "Monitor") {
-		err := u.preProcessMonitor(r)
-		if err != nil {
-			return err
-		}
-	}
-
 	err := u.parseResponse()
 	if err != nil {
 		return err
@@ -61,37 +51,6 @@ func (u *Unpacker) UnpackHTTPRequest(o *data.Operation, r *http.Response, x *ref
 	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (u *Unpacker) preProcessMonitor(r *http.Response) error {
-	buffer := bytes.Buffer{}
-	buffer.ReadFrom(r.Body)
-	r.Body.Close()
-
-	if !strings.Contains(buffer.String(), `"ret_code":0`) {
-		r.Body = ioutil.NopCloser(bytes.NewReader(buffer.Bytes()))
-
-		return nil
-	}
-
-	responseString := buffer.String()
-
-	for {
-		dataString := regexp.MustCompile(`"data":\[\[[^}]+`).FindString(responseString)
-		if dataString == "" {
-			break
-		}
-
-		dataValueString := regexp.MustCompile(`\[\[.+]`).FindString(dataString)
-		dataValueStringAfter := "\"" + strings.Replace(dataValueString, "\"", "\\\"", -1) + "\""
-		dataStringAfter := strings.Replace(dataString, dataValueString, dataValueStringAfter, -1)
-
-		responseString = strings.Replace(responseString, dataString, dataStringAfter, -1)
-	}
-
-	r.Body = ioutil.NopCloser(bytes.NewReader([]byte(responseString)))
 
 	return nil
 }
