@@ -79,7 +79,7 @@ bin/hostnic.tar.gz              : bin/hostnic
 bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go))
 								go build -o bin/daemon $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/daemon/
 
-bin/.docker-images-build-timestamp   : bin/daemon
+bin/.docker-images-build-timestamp   : bin/daemon Dockerfile
 								cp -u Dockerfile bin
 								docker build -q -t $(DOCKER_IMAGE_NAME):$(BUILD_LABEL) bin/ > bin/.docker-images-build-timestamp
 

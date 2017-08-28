@@ -1,7 +1,7 @@
 FROM alpine:latest
 MAINTAINER martinyunify <martinfan@yunify.com>
 
-RUN mkdir -p /opt/cni/bin/ && mkdir /etc/cni/net.d/
+RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/
 
 EXPOSE 31080 31081
 
