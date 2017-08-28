@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Define the project string to be used
 PROJECT=hostnic-cni
 

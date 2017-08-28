@@ -70,13 +70,13 @@ metadata:
   namespace: kube-system
   labels:
     tier: node
-    app: hostnic
+    app: kube-qingcloud-hostnic
 spec:
   template:
     metadata:
       labels:
         tier: node
-        app: flannel
+        app: kube-qingcloud-hostnic
     spec:
       hostNetwork: true
       nodeSelector:
@@ -85,7 +85,7 @@ spec:
       - key: node-role.kubernetes.io/master
         operator: Exists
         effect: NoSchedule
-      serviceAccountName: flannel
+      serviceAccountName: hostnic
       containers:
       - name: kube-qingcloud-hostnic
         image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:hostnic-cni-v0.8-1-g89dae0f
@@ -100,7 +100,7 @@ spec:
           value: "vxnet-2xj9lrp,vxnet-h00g66q"
 
         - name: POOLSIZE
-          value: 3
+          value: "3"
 
         volumeMounts:
         - name: hostnic-cfg
@@ -109,7 +109,7 @@ spec:
         - name: qingcloud-cfg
           mountPath: /etc/qingcloud/
 
-    volumes:
+      volumes:
       - name: hostnic-cfg
         configMap:
           name: kube-hostnic-cni-cfg
