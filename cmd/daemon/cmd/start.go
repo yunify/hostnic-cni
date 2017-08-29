@@ -25,16 +25,18 @@ import (
 	"syscall"
 	"time"
 
+	"net/http"
+
+	"github.com/coreos/go-systemd/daemon"
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/yunify/hostnic-cni/pkg/messages"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"google.golang.org/grpc"
-	"net/http"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -57,7 +59,7 @@ then move the nic to container network namespace`,
 		}
 
 		//setup nic pool
-		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), server.NewQingCloudNicProvider(resourceStub),server.NewGatewayManager(resourceStub),server.NicPoolConfig{CleanUpCache:viper.GetBool("CleanUpCacheOnExit")})
+		nicpool, err := server.NewNicPool(viper.GetInt("PoolSize"), server.NewQingCloudNicProvider(resourceStub), server.NewGatewayManager(resourceStub), server.NicPoolConfig{CleanUpCache: viper.GetBool("CleanUpCacheOnExit")})
 		if err != nil {
 			log.Errorf("Failed to create pool. %v", err)
 			return
@@ -71,8 +73,8 @@ then move the nic to container network namespace`,
 		grpcServer := grpc.NewServer(
 			grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
 		)
-		handlers:= server.NewDaemonServerHandler(nicpool)
-		messages.RegisterNicservicesServer(grpcServer,handlers)
+		handlers := server.NewDaemonServerHandler(nicpool)
+		messages.RegisterNicservicesServer(grpcServer, handlers)
 		grpc_prometheus.Register(grpcServer)
 		http.Handle("/metrics", promhttp.Handler())
 		http.HandleFunc("/clearcache", func(writer http.ResponseWriter, request *http.Request) {
@@ -81,17 +83,18 @@ then move the nic to container network namespace`,
 			writer.Write([]byte("Nic ready pool is cleared .\n"))
 		})
 		http.HandleFunc("/shutdown", func(writer http.ResponseWriter, request *http.Request) {
-			syscall.Kill(syscall.Getpid(),syscall.SIGTERM)
+			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 			writer.Header().Set("Content-Type", "text/plain")
 			writer.Write([]byte("terminate signal is sent .\n"))
 		})
 
-
 		go grpcServer.Serve(listener)
-		go http.ListenAndServe(viper.GetString("manageAddr"),nil)
+		go http.ListenAndServe(viper.GetString("manageAddr"), nil)
 		signalCh := make(chan os.Signal, 4)
 		signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		var sig os.Signal
+
+		daemon.SdNotify(false, "READY=1")
 
 	WAIT:
 		select {
@@ -139,13 +142,12 @@ func init() {
 	// is called directly, e.g.:
 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-
 	//sdk properties
 	startCmd.Flags().String("QyAccessFilePath", "/etc/qingcloud/client.yaml", "Path of QingCloud Access file")
 	startCmd.Flags().StringSlice("vxnets", []string{}, "ids of vxnet")
 
 	//pool properties
 	startCmd.Flags().Int("PoolSize", 3, "The size of nic pool")
-	startCmd.Flags().Bool("CleanUpCacheOnExit",false,"Delete cached nic on exit")
+	startCmd.Flags().Bool("CleanUpCacheOnExit", false, "Delete cached nic on exit")
 	viper.BindPFlags(startCmd.Flags())
 }

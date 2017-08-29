@@ -82,14 +82,20 @@ bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/
 bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go)) Dockerfile
 								docker build -q -t $(DOCKER_IMAGE_NAME):$(BUILD_LABEL) -t $(DOCKER_IMAGE_NAME):latest . > bin/.docker-images-build-timestamp
 
-release                         : test bin/hostnic.tar.gz bin/.docker-images-build-timestamp
+release                         : bin/hostnic.tar.gz bin/.docker-images-build-timestamp
 
-install                         : release
+install-docker                  : release
 								docker push $(DOCKER_IMAGE_NAME):$(BUILD_LABEL)
 								docker push $(DOCKER_IMAGE_NAME):latest
+
+install-distrib                 : go-build
+								cp bin/daemon /usr/local/bin/hostnic-daemon
+								cp distrib/hostnic.service /etc/system/systemd/
+								cp distrib/hostnic.conf /etc/qingcloud/hostnic.conf
+								systemctl daemon-reload
 
 clean                           :
 								docker rmi `cat bin/.docker-images-build-timestamp`
 								rm -rf bin/
 
-.PHONY							: default all go-build clean release install test
+.PHONY							: default all go-build clean release install install-distrib install-docker

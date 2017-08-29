@@ -71,6 +71,9 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string) (*QCNicProvider, e
 			return nil, err
 		}
 	}
+	if len(vxnets) <= 0 {
+		return nil,fmt.Errorf("vxnet is empty")
+	}
 	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
 		return nil, err
@@ -273,7 +276,10 @@ func (p *QCNicProvider) GetVxNet(vxNet string) (*pkg.VxNet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result[0], nil
+	if len(result) > 0{
+		return result[0], nil
+	}
+	return nil,fmt.Errorf("vxnet %s is not found",vxNet)
 }
 
 func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
