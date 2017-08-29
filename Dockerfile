@@ -5,7 +5,7 @@ RUN apk add go gcc g++ make git linux-headers bash
 WORKDIR /app
 ENV GOPATH /app
 ADD . /app/src/github.com/yunify/hostnic-cni
-RUN cd /app/src/github.com/yunify/hostnic-cni && rm -rf bin/ && make go-build
+RUN cd /app/src/github.com/yunify/hostnic-cni && rm -rf bin/ && make bin/daemon
 
 FROM alpine:latest
 MAINTAINER martinyunify <martinfan@yunify.com>

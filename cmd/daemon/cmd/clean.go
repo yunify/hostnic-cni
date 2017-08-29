@@ -19,11 +19,12 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
+
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // cleanCmd represents the clean command
@@ -35,7 +36,7 @@ var cleanCmd = &cobra.Command{
 This plugin will create a new nic by IaaS api and attach to host,
 then move the nic to container network namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		resp, err := http.Get("http://"+viper.GetString("manageAddr")+"/clearcache")
+		resp, err := http.Get("http://" + viper.GetString("manageAddr") + "/clearcache")
 		if err != nil {
 			log.Error(err)
 			return
