@@ -28,8 +28,6 @@ VOLUME /etc/qingcloud/
 
 VOLUME /etc/cni/net.d/
 
-COPY --from=build /app/src/github.com/yunify/hostnic-cni/bin/hostnic /opt/cni/bin/hostnic
-
 ENTRYPOINT ["/bin/daemon"]
 
 CMD ["start"]
