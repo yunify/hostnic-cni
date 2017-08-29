@@ -11,11 +11,10 @@ before_install:
   - sudo apt-get -y install docker-ce
 
 install:
-- make bin/hostnic
+- make release
 script:
 - echo "test skip"
-before_deploy:
-- make install
+
 deploy:
   provider: releases
   api_key:
