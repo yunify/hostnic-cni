@@ -37,7 +37,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"google.golang.org/grpc"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
 )
 
 const (
