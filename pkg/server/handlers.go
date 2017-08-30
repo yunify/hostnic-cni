@@ -21,7 +21,7 @@ func NewDaemonServerHandler(nicpool *NicPool) *DaemonServerHandler {
 }
 
 func (daemon *DaemonServerHandler) AllocateNic(context context.Context, request *messages.AllocateNicRequest) (*messages.AllocateNicResponse, error) {
-	nic, err := daemon.nicpool.BorrowNic(request.AutoAssignGateway)
+	nic,gateway, err := daemon.nicpool.BorrowNic(request.AutoAssignGateway)
 	if err != nil {
 		logrus.Errorf("Failed to borrow nic from pool,%v", err)
 		return nil, err
@@ -31,6 +31,9 @@ func (daemon *DaemonServerHandler) AllocateNic(context context.Context, request 
 		Nicgateway: nic.VxNet.GateWay,
 		Nicip:      nic.Address,
 		Niccidr:    nic.VxNet.Network,
+	}
+	if request.AutoAssignGateway && gateway != nil {
+		response.Servicegateway = *gateway
 	}
 	return response, nil
 }

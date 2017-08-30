@@ -29,8 +29,6 @@ RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/ && apk --update upgrade &
 
 VOLUME /etc/qingcloud/
 
-VOLUME /etc/cni/net.d/
-
 ENTRYPOINT ["/bin/daemon"]
 
 CMD ["start"]

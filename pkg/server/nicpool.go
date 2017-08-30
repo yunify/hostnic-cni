@@ -225,7 +225,7 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 	return nil
 }
 
-func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
+func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic,*string, error) {
 	nicid := <-pool.nicpool
 	times := 0
 	for ; !pool.nicProvider.ValidateNic(nicid) && times < AllocationRetryTimes; times++ {
@@ -233,7 +233,7 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 		nicid = <-pool.nicpool
 	}
 	if times == AllocationRetryTimes {
-		return nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
+		return nil,nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
 	}
 
 	var nic *pkg.HostNic
@@ -244,19 +244,10 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, error) {
 	if pool.gatewayMgr != nil &&autoAssignGateway {
 		gateway, err := pool.gatewayMgr.GetOrAllocateGateway(nic.VxNet.ID)
 		if err != nil {
-			return nil, err
+			return nil,nil, err
 		}
-		return &pkg.HostNic{
-			ID:           nic.ID,
-			HardwareAddr: nic.HardwareAddr,
-			Address:      nic.Address,
-			VxNet: &pkg.VxNet{
-				ID:      nic.VxNet.ID,
-				GateWay: gateway,
-				Network: nic.VxNet.Network,
-			},
-		}, nil
+		return nic,&gateway, nil
 	}
 	log.Debugf("Borrow nic from nic pool")
-	return nic, nil
+	return nic,nil, nil
 }

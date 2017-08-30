@@ -16,6 +16,7 @@ message AllocateNicResponse{
     string nicip =2 ;
     string niccidr =3;
     string nicgateway =4;
+    string servicegateway =5;
 }
 
 message FreeNicRequest {
