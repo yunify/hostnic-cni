@@ -94,7 +94,6 @@ install-distrib                 : go-build
 								systemctl daemon-reload
 
 clean                           :
-								docker rmi `cat bin/.docker-images-build-timestamp`
 								rm -rf bin/
 
 .PHONY							: default all go-build clean release install install-distrib install-docker
