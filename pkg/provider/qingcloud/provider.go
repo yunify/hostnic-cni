@@ -295,6 +295,9 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 		return nil, err
 	}
 	if *output.RetCode == 0 {
+		if len(output.InstanceSet) <=0 {
+			return nil,fmt.Errorf("Instance %s not found",id)
+		}
 		instanceItem := output.InstanceSet[0]
 		var vxnetIds []*string
 		for _, vxnetItem := range instanceItem.VxNets {
@@ -318,7 +321,7 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 			RouterID:   routerID,
 		}, nil
 	}
-	return nil, fmt.Errorf("Failed to describe instance, %", *output.Message)
+	return nil, fmt.Errorf("Failed to describe instance, %s", *output.Message)
 }
 
 func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
