@@ -22,7 +22,10 @@ ENV POOLSIZE 3
 
 ENV CLEANUPCACHEONEXIT false
 
-RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/
+RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/ && apk --update upgrade && \
+    apk add curl ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/cache/apk/*
 
 VOLUME /etc/qingcloud/
 
