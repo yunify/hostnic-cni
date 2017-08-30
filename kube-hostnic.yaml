@@ -67,7 +67,7 @@ spec:
       serviceAccountName: hostnic
       containers:
       - name: kube-qingcloud-hostnic
-        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:latest
+        image: qingcloud/hostnic-cni:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
