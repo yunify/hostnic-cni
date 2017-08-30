@@ -89,7 +89,7 @@ spec:
       containers:
       - name: kube-qingcloud-hostnic
         image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:hostnic-cni-v0.8-1-g89dae0f
-        command: [ "start" ]
+        imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
         env:
@@ -104,7 +104,7 @@ spec:
 
         volumeMounts:
         - name: hostnic-cfg
-          mountPath: /etc/cni/
+          mountPath: /etc/cni/net.d/
 
         - name: qingcloud-cfg
           mountPath: /etc/qingcloud/
