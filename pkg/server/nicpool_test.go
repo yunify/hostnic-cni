@@ -88,7 +88,7 @@ func TestPoolRace(t *testing.T){
 			t.Parallel()
 			var err error
 
-			nic,err:=nicpool.BorrowNic(false)
+			nic,_,err:=nicpool.BorrowNic(false)
 			if err!= nil {
 				t.Fatal(err)
 				return

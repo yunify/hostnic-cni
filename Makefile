@@ -21,7 +21,6 @@ endef
 # Will import the keyvalue pairs and make available as Makefile variables
 # Use dummy variable to only have execute once
 $(eval $(subst #,$(newline),$(shell $(GENERATE_VERSION_INFO_SCRIPT) keyvalue | tr '\n' '#')))
-
 # Call the verson_info script with json option and store result into output file and variable
 # Will only execute once due to ':='
 #GENERATE_VERSION_INFO			:= $(shell $(GENERATE_VERSION_INFO_SCRIPT) json | tee $(GENERATE_VERSION_INFO_OUTPUT))
@@ -70,13 +69,13 @@ print-%							:
 # perform go build on project
 go-build						: bin/hostnic bin/daemon
 
-bin/hostnic                     : $(foreach dir,$(hostnic_pkg),$(wildcard $(dir)/*.go))
+bin/hostnic                     : $(foreach dir,$(hostnic_pkg),$(wildcard $(dir)/*.go)) Makefile
 								go build -o bin/hostnic $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/hostnic/
 
 bin/hostnic.tar.gz              : bin/hostnic
 								tar -C bin/ -czf bin/hostnic.tar.gz hostnic
 
-bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go))
+bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go)) Makefile
 								go build -o bin/daemon $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/daemon/
 
 bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go)) Dockerfile
@@ -95,7 +94,6 @@ install-distrib                 : go-build
 								systemctl daemon-reload
 
 clean                           :
-								docker rmi `cat bin/.docker-images-build-timestamp`
 								rm -rf bin/
 
 .PHONY							: default all go-build clean release install install-distrib install-docker

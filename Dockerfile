@@ -5,7 +5,7 @@ RUN apk add go gcc g++ make git linux-headers bash
 WORKDIR /app
 ENV GOPATH /app
 ADD . /app/src/github.com/yunify/hostnic-cni
-RUN cd /app/src/github.com/yunify/hostnic-cni && rm -rf bin/ && make bin/daemon
+RUN cd /app/src/github.com/yunify/hostnic-cni && rm -rf bin/ && make
 
 FROM alpine:latest
 MAINTAINER martinyunify <martinfan@yunify.com>
@@ -22,11 +22,12 @@ ENV POOLSIZE 3
 
 ENV CLEANUPCACHEONEXIT false
 
-RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/
+RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/ && apk --update upgrade && \
+    apk add curl ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/cache/apk/*
 
 VOLUME /etc/qingcloud/
-
-VOLUME /etc/cni/net.d/
 
 ENTRYPOINT ["/bin/daemon"]
 
