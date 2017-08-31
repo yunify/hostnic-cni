@@ -4,7 +4,7 @@
 # Vars describing project
 NAME= hostnic-cni
 GIT_REPOSITORY= github.com/yunify/hostnic-cni
-DOCKER_IMAGE_NAME?= dockerhub.qingcloud.com/qingcloud/hostnic-cni
+DOCKER_IMAGE_NAME?= qingcloud/hostnic-cni
 
 # Generate vars to be included from external script
 # Allows using bash to generate complex vars, such as project versions
@@ -84,8 +84,11 @@ bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(
 release                         : bin/hostnic.tar.gz bin/.docker-images-build-timestamp
 
 install-docker                  : release
-								docker push $(DOCKER_IMAGE_NAME):$(BUILD_LABEL)
+								docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 								docker push $(DOCKER_IMAGE_NAME):latest
+								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(VERSION)
+								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
+
 
 install-distrib                 : go-build
 								cp bin/daemon /usr/local/bin/hostnic-daemon
