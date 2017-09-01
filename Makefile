@@ -34,6 +34,7 @@ BUILD_LABEL						?= unknown_build
 BUILD_DATE						?= $(shell date -u +%Y%m%d.%H%M%S)
 GIT_SHA1						?= unknown_sha1
 
+IMAGE_LABLE         ?= $(BUILD_LABEL)
 # Vars for export ; generate list of ENV vars based on matching export prefix
 # Use strip to get rid of excessive spaces due to the foreach / filter / if logic
 EXPORT_VAR_PREFIX               = EXPORT_VAR_
@@ -84,9 +85,9 @@ bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(
 release                         : bin/hostnic.tar.gz bin/.docker-images-build-timestamp
 
 install-docker                  : release
-								docker push $(DOCKER_IMAGE_NAME):$(VERSION)
+								docker push $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
 								docker push $(DOCKER_IMAGE_NAME):latest
-								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(VERSION)
+								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
 								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 
 
