@@ -80,7 +80,7 @@ bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/
 								go build -o bin/daemon $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/daemon/
 
 bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go)) Dockerfile
-								docker build -q -t $(DOCKER_IMAGE_NAME):$(VERSION) -t $(DOCKER_IMAGE_NAME):latest -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(VERSION) -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest . > bin/.docker-images-build-timestamp
+								docker build -q -t $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) -t $(DOCKER_IMAGE_NAME):latest -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest . > bin/.docker-images-build-timestamp
 
 release                         : bin/hostnic.tar.gz bin/.docker-images-build-timestamp
 
