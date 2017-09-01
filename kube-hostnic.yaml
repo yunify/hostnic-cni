@@ -70,10 +70,10 @@ spec:
           value: "info"
 
         - name: VXNETS
-          value: "vxnet-2xj9lrp vxnet-h00g66q"
+          value: "vxnet-xxxxxxx vxnet-xxxxxxx"
 
         - name: POOLSIZE
-          value: "3"
+          value: "2"
 
         - name: qingcloud-cfg
           mountPath: /etc/qingcloud/
