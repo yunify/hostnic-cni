@@ -11,7 +11,7 @@ before_install:
   - sudo apt-get -y install docker-ce
 
 install:
-- make release
+- IMAGE_LABLE=$TRAVIS_BRANCH make release
 script:
 - echo "test skip"
 
@@ -26,4 +26,6 @@ deploy:
     tags: true
 
 after_success:
-  - if [ "$TRAVIS_BRANCH" == "master" ]; then docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"; docker login -u="$QING_DOCKER_USER" -p="$QING_DOCKER_PASSWD" dockerhub.qingcloud.com; make install-docker ; fi
+  - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"
+  - docker login -u="$QING_DOCKER_USER" -p="$QING_DOCKER_PASSWD" dockerhub.qingcloud.com
+  - IMAGE_LABLE=$TRAVIS_BRANCH make install-docker
