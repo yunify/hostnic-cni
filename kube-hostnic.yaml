@@ -77,7 +77,13 @@ spec:
       - name: POOLSIZE
         value: "3"
 
-      volumeMounts:
+        - name: POOLSIZE
+          value: "2"
+
+        volumeMounts:
+        - name: qingcloud-cfg
+          mountPath: /etc/qingcloud/
+      volumes:
       - name: qingcloud-cfg
         mountPath: /etc/qingcloud/
     volumes:
