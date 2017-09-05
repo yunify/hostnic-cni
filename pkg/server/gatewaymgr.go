@@ -19,6 +19,7 @@ func NewGatewayManager(qcstub *qingcloud.QCNicProvider) *GatewayManager {
 	return &GatewayManager{gatewayMgr: cmap.New(), resourceStub: qcstub}
 }
 
+//CollectGatewayNic collect nic on host
 func (pool *GatewayManager) CollectGatewayNic() ([]*pkg.HostNic, error) {
 	log.Infof("Collect existing nic as gateway cadidate")
 	var nicidList []*string
@@ -60,8 +61,9 @@ func (pool *GatewayManager) CollectGatewayNic() ([]*pkg.HostNic, error) {
 	return unusedList, nil
 }
 
+//GetOrAllocateGateway find one nic for gateway usage
 func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error) {
-	var gatewayIp string
+	var gatewayIP string
 	if item, ok := pool.gatewayMgr.Get(vxnetid); !ok {
 
 		//allocate nic
@@ -74,15 +76,34 @@ func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error)
 		if err != nil {
 			return "", err
 		}
+
+		if err := netlink.LinkSetDown(niclink); err != nil {
+			log.Errorf("LinkSetDown err %v, delete Nic %s", err, nic.HardwareAddr)
+			pool.resourceStub.DeleteNic(nic.HardwareAddr)
+			return "", err
+		}
+		_, netcidr, err := net.ParseCIDR(nic.VxNet.Network)
+		if err != nil {
+			log.Errorf("Failed to parse gateway network.%s Please check your config", err)
+			pool.resourceStub.DeleteNic(nic.HardwareAddr)
+			return "", err
+		}
+		addr := &netlink.Addr{IPNet: netcidr, Label: ""}
+		if err := netlink.AddrAdd(niclink, addr); err != nil {
+			log.Errorf("AddrAdd err %s, delete Nic %s", err.Error(), nic.HardwareAddr)
+			pool.resourceStub.DeleteNic(nic.HardwareAddr)
+			return "", err
+		}
 		err = netlink.LinkSetUp(niclink)
 		if err != nil {
 			return "", err
 		}
 		pool.gatewayMgr.Set(nic.VxNet.ID, nic.Address)
 
-		return nic.Address, nil
+		gatewayIP = nic.Address
 	} else {
-		gatewayIp = item.(string)
-		return gatewayIp, nil
+		gatewayIP = item.(string)
+		return gatewayIP, nil
 	}
+	return gatewayIP, nil
 }

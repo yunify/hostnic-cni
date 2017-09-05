@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"sync"
 
+	"time"
+
 	"github.com/orcaman/concurrent-map"
 	log "github.com/sirupsen/logrus"
 	"github.com/yunify/hostnic-cni/pkg"
-	"time"
 )
 
 const (
+	//AllocationRetryTimes maximum allocation retry times
 	AllocationRetryTimes = 3
-	ReadyPoolSize        = 64
-	DeleteWaitTimeout    = 5 * time.Second
+	//ReadyPoolSize size of recycled nic pool
+	ReadyPoolSize = 64
+	//DeleteWaitTimeout delete nic time out
+	DeleteWaitTimeout = 5 * time.Second
 )
 
 //NicPool nic cached pool
@@ -36,34 +40,36 @@ type NicPool struct {
 	sync.WaitGroup
 }
 
+//NicPoolConfig nicpool configuration
 type NicPoolConfig struct {
 	CleanUpCache bool
 }
 
-func NewNicPoolConfig() NicPoolConfig{
-	return NicPoolConfig{CleanUpCache:false}
+//NewNicPoolConfig nicconfig factory func
+func NewNicPoolConfig() NicPoolConfig {
+	return NicPoolConfig{CleanUpCache: false}
 }
 
 //NewNicPool new nic pool
-func NewNicPool(size int, nicProvider NicProvider,gatewayMgr *GatewayManager,option ...NicPoolConfig) (*NicPool, error) {
+func NewNicPool(size int, nicProvider NicProvider, gatewayMgr *GatewayManager, option ...NicPoolConfig) (*NicPool, error) {
 	config := NewNicPoolConfig()
-	if len(option)> 1 {
-		return nil,fmt.Errorf("More than one option objects are found")
+	if len(option) > 1 {
+		return nil, fmt.Errorf("More than one option objects are found")
 	}
-	for _,item := range option{
+	for _, item := range option {
 		config.CleanUpCache = item.CleanUpCache
 	}
 	if nicProvider == nil {
-		return nil,fmt.Errorf("NicProvider is nil, Please provide nic provider")
+		return nil, fmt.Errorf("NicProvider is nil, Please provide nic provider")
 	}
 	pool := &NicPool{
-		nicDict:               cmap.New(),
-		nicpool:               make(chan string, size),
-		nicReadyPool:          make(chan string, ReadyPoolSize),
-		nicStopFlag: false,
-		nicProvider:           nicProvider,
-		gatewayMgr:            gatewayMgr,
-		config:config,
+		nicDict:      cmap.New(),
+		nicpool:      make(chan string, size),
+		nicReadyPool: make(chan string, ReadyPoolSize),
+		nicStopFlag:  false,
+		nicProvider:  nicProvider,
+		gatewayMgr:   gatewayMgr,
+		config:       config,
 	}
 	err := pool.init()
 	if err != nil {
@@ -100,16 +106,18 @@ func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
 		}
 	}()
 }
-func (pool *NicPool) CleanUpReadyPool(){
+
+//CleanUpReadyPool clear recycled nic cache
+func (pool *NicPool) CleanUpReadyPool() {
 	log.Infoln("Start to clean up ready pool")
 	timer := time.NewTimer(DeleteWaitTimeout)
 	var niclist []*string
-	Cleanerloop:
+Cleanerloop:
 	for {
 		select {
 		case <-timer.C:
 			break Cleanerloop
-		case nicid,ok := <- pool.nicReadyPool:
+		case nicid, ok := <-pool.nicReadyPool:
 			if ok {
 				niclist = append(niclist, pkg.StringPtr(nicid))
 				timer.Reset(DeleteWaitTimeout)
@@ -120,18 +128,19 @@ func (pool *NicPool) CleanUpReadyPool(){
 	}
 	timer.Stop()
 	log.Infof("Cleaned up ready pool ")
-	if len(niclist) >0 {
+	if len(niclist) > 0 {
 		log.Infof("Deleting reclaimed nics ...")
 		nicids := ""
-		err :=pool.nicProvider.ReclaimNic(niclist)
-		for _,item := range niclist {
-			nicids =nicids + "[" + *item+ "]"
+		err := pool.nicProvider.ReclaimNic(niclist)
+		for _, item := range niclist {
+			nicids = nicids + "[" + *item + "]"
 			pool.nicDict.Remove(*item)
 		}
-		log.Infof("Deleted nic %s , error : %v",nicids,err)
+		log.Infof("Deleted nic %s , error : %v", nicids, err)
 	}
 }
 
+//StartEventloop start nicpool event loop
 func (pool *NicPool) StartEventloop() {
 	pool.Add(1)
 	go func() {
@@ -151,7 +160,7 @@ func (pool *NicPool) StartEventloop() {
 				if !stopFlag {
 					nic, err := pool.nicProvider.GenerateNic()
 					if err != nil {
-						log.Errorf("Failed to get nic from generator", err)
+						log.Errorf("Failed to get nic from generator:%s ", err)
 						continue
 					}
 					pool.nicDict.Set(nic.ID, nic)
@@ -169,13 +178,14 @@ func (pool *NicPool) StartEventloop() {
 	}()
 }
 
+//ShutdownNicPool tear down nic pool and free up resources
 func (pool *NicPool) ShutdownNicPool() {
 
 	//recollect nics
 	stopChannel := make(chan struct{})
 	go func(stopch chan struct{}) {
 		pool.nicStopLock.Lock()
-		pool.nicStopFlag=true
+		pool.nicStopFlag = true
 		pool.nicStopLock.Unlock()
 		var cachedlist []*string
 
@@ -194,10 +204,10 @@ func (pool *NicPool) ShutdownNicPool() {
 			log.Infof("Deleting cached nics...")
 			err := pool.nicProvider.ReclaimNic(cachedlist)
 			var niclist string
-			for _,nicitem := range cachedlist{
-				niclist = niclist + "["+*nicitem+"] "
+			for _, nicitem := range cachedlist {
+				niclist = niclist + "[" + *nicitem + "] "
 			}
-			log.Infof("Deleted nics %s,error:%v",niclist,err)
+			log.Infof("Deleted nics %s,error:%v", niclist, err)
 		}
 		stopch <- struct{}{}
 		close(stopch)
@@ -209,6 +219,7 @@ func (pool *NicPool) ShutdownNicPool() {
 	<-stopChannel
 }
 
+//ReturnNic recycle deleted nic
 func (pool *NicPool) ReturnNic(nicid string) error {
 	log.Debugf("Return %s to nic ready pool", nicid)
 	//check if nic is in dict
@@ -225,7 +236,8 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 	return nil
 }
 
-func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic,*string, error) {
+//BorrowNic allocate nic for client
+func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, *string, error) {
 	nicid := <-pool.nicpool
 	times := 0
 	for ; !pool.nicProvider.ValidateNic(nicid) && times < AllocationRetryTimes; times++ {
@@ -233,7 +245,7 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic,*string, er
 		nicid = <-pool.nicpool
 	}
 	if times == AllocationRetryTimes {
-		return nil,nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
+		return nil, nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
 	}
 
 	var nic *pkg.HostNic
@@ -241,13 +253,13 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic,*string, er
 		nic = item.(*pkg.HostNic)
 	}
 
-	if pool.gatewayMgr != nil &&autoAssignGateway {
+	if pool.gatewayMgr != nil && autoAssignGateway {
 		gateway, err := pool.gatewayMgr.GetOrAllocateGateway(nic.VxNet.ID)
 		if err != nil {
-			return nil,nil, err
+			return nil, nil, err
 		}
-		return nic,&gateway, nil
+		return nic, &gateway, nil
 	}
 	log.Debugf("Borrow nic from nic pool")
-	return nic,nil, nil
+	return nic, nil, nil
 }

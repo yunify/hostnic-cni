@@ -7,6 +7,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 )
 
+//QingCloudNicProvider nic provider qingcloud implementation
 type QingCloudNicProvider struct {
 	resourceStub *qingcloud.QCNicProvider
 }

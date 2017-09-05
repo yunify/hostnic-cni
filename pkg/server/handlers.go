@@ -6,7 +6,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-//DaemonServer Daemon Server process which manages nics for nic plugin
+//DaemonServerHandler Daemon Server handler which handle nic requests from nic plugin
 type DaemonServerHandler struct {
 	nicpool *NicPool
 }
@@ -21,7 +21,7 @@ func NewDaemonServerHandler(nicpool *NicPool) *DaemonServerHandler {
 }
 
 func (daemon *DaemonServerHandler) AllocateNic(context context.Context, request *messages.AllocateNicRequest) (*messages.AllocateNicResponse, error) {
-	nic,gateway, err := daemon.nicpool.BorrowNic(request.AutoAssignGateway)
+	nic, gateway, err := daemon.nicpool.BorrowNic(request.AutoAssignGateway)
 	if err != nil {
 		logrus.Errorf("Failed to borrow nic from pool,%v", err)
 		return nil, err
