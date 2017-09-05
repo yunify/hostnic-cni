@@ -39,29 +39,32 @@ metadata:
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
-  name: kube-qingcloud-hostnic
+  name: qingcloud-hostnic-daemon
   namespace: kube-system
   labels:
-    tier: node
-    app: kube-qingcloud-hostnic
+    k8s-app: kube-qingcloud-hostnic
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
 spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-qingcloud-hostnic
+  updateStrategy:
+    type: RollingUpdate
   template:
     metadata:
       labels:
-        tier: node
-        app: kube-qingcloud-hostnic
+        k8s-app: kube-qingcloud-hostnic
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
-      hostNetwork: true
       nodeSelector:
-        beta.kubernetes.io/arch: amd64
-      tolerations:
-      - key: node-role.kubernetes.io/master
-        operator: Exists
-        effect: NoSchedule
+        beta.kubernetes.io/os: "linux"
+      hostNetwork: true
       serviceAccountName: hostnic
       containers:
-      - name: kube-qingcloud-hostnic
-        image: qingcloud/hostnic-cni:latest
+      - name: qingcloud-hostnic-daemon
+        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:v0.8.1
         imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
@@ -71,14 +74,23 @@ spec:
 
         - name: VXNETS
           value: "vxnet-xxxxxxx vxnet-xxxxxxx"
+      - name: POOLSIZE
+        value: "3"
 
-        - name: POOLSIZE
-          value: "2"
-
-        volumeMounts:
-        - name: qingcloud-cfg
-          mountPath: /etc/qingcloud/
-      volumes:
+      volumeMounts:
       - name: qingcloud-cfg
-        hostPath:
-          path: /etc/qingcloud/
+        mountPath: /etc/qingcloud/
+    volumes:
+    - name: qingcloud-cfg
+      hostPath:
+        path: /etc/qingcloud/
+    tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+    - key: "dedicated"
+      operator: "Exists"
+    - key: "node-role.kubernetes.io/master"
+      effect: NoSchedule
+    - key: node.cloudprovider.kubernetes.io/uninitialized
+      effect: NoSchedule
+      value: "true"
