@@ -51,7 +51,7 @@ type NetConf struct {
 	IPAM     *IPAMConfig `json:"ipam"`
 }
 
-func LoadNetConf(bytes []byte) (*NetConf, error) {
+func loadNetConf(bytes []byte) (*NetConf, error) {
 	netconf := &NetConf{}
 	if err := json.Unmarshal(bytes, netconf); err != nil {
 		return nil, fmt.Errorf("failed to load netconf: %v", err)
@@ -64,7 +64,7 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	conf, err := LoadNetConf(args.StdinData)
+	conf, err := loadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -99,13 +99,13 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	iface, err := pkg.LinkByMacAddr(nic.Nicid)
 	if err != nil {
-		logger.Error("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.Nicid)
+		logger.Errorf("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.Nicid, err)
 	}
 
 	if err = netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
-		logger.Error("LinkSetNsFd err %s, delete Nic %s", err.Error(), nic.Nicid)
+		logger.Errorf("LinkSetNsFd err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to set namespace on link %q: %v", nic.Nicid, err)
 	}
@@ -113,7 +113,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	srcName := iface.Attrs().Name
 	_, ipNet, err := net.ParseCIDR(nic.Niccidr)
 	if err != nil {
-		logger.Error("ParseCIDR err %s, delete Nic %s", err.Error(), nic.Nicid)
+		logger.Errorf("ParseCIDR err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to parse network %q: %v", nic.Niccidr, err)
 	}
@@ -153,7 +153,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	conf, err := LoadNetConf(args.StdinData)
+	conf, err := loadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -164,15 +164,13 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 
-	conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
-	if err != nil {
-		return fmt.Errorf("Failed to open socket %v", err)
-	}
-	defer conn.Close()
-	client := messages.NewNicservicesClient(conn)
-
 	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
-
+		conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
+		if err != nil {
+			return fmt.Errorf("Failed to open socket %v", err)
+		}
+		defer conn.Close()
+		client := messages.NewNicservicesClient(conn)
 		ifName := args.IfName
 		iface, err := netlink.LinkByName(ifName)
 		if err != nil {
@@ -182,6 +180,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: iface.Attrs().HardwareAddr.String()})
 		if err := netlink.LinkSetDown(iface); err != nil {
 			return err
+		}
+		if attrs := iface.Attrs(); attrs.Flags&net.FlagUp > 0 || attrs.OperState&netlink.OperUp > 0 {
+			return fmt.Errorf("nic is not turned off")
 		}
 		return nil
 	})
