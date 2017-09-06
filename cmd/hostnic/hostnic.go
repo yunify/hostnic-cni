@@ -21,6 +21,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"context"
 
@@ -186,6 +187,12 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err != nil {
 			return fmt.Errorf("failed to lookup %q: %v", ifName, err)
 		}
+
+		attrs:= iface.Attrs()
+		if err :=netlink.LinkSetName(iface, "dev"+strconv.Itoa(attrs.Index)); err != nil {
+			return fmt.Errorf("Failed to set name for nic:%v", err)
+		}
+
 		if err = netlink.LinkSetNsFd(iface, int(defaultNs.Fd())); err != nil {
 			return fmt.Errorf("Failed to set ns for nic:%v", err)
 		}
