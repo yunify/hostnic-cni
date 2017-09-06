@@ -21,6 +21,7 @@ deploy:
       secure: nv/RABxh3/lXeaUSQKnEZ4mPLxNnLMkm0H7gaGbH5+NECloNOE7vI4jBLthjJVdv9iPfyfWlFM4WfviPibbC8qraxh78HCLeZpKWe4SJAFk6xrX85HPaKECr4NS/uBHxJDDkRwUzaI40unT4fqPWgiMAYqsZiDtzW3YYK7e5UgOZmWXzQy8ShdjkzTWn04ytUmaiIgs2xnBK7jM5jfFiH4qTEtteFy/wDN1TTsrzBVxpNF1xgzK+0VEwOo9NEJw9ygEHx9v7giDs3FgPVOgZ0cW/fxA05Tqmvb7d/6jHRhAzdimBNXPZVLxOx3VYBKKoR0m19UQi1FXt96ORUzD+F+kpRMGStCJhifjyxn7pLuXkW6hC3z7U5HXUk0VbrtnfAqVxRvInNmzUBfQc9NN5PKIqHxjq6VS3bya91+Gb5qVLki2Xz51TAg1RU8oTfDkp9WSxG/D5OrhihVPmojIkuc0h551Y3jW2jukjtZ2KC/hnw5DJxfId+NTpG9SmwaI8ep1P1TG1zcJb8XpTZ9PM+23T2OaSEQSd95OXW4ImdvIvQxJG/He32gY4H2PfqRxm+wo5q2XAn4190FzsJgv6zums4X7/Wki43UWXC3F/bvl6A5zpqRxLywduLfCdAjV7vfZCPnwnI0QnsadVDO/yjSSsV5Qo9wOH3l9rBNbN6ec=
     file: bin/hostnic.tar.gz
     skip_cleanup: true
+    overwrite: true
     on:
       repo: yunify/hostnic-cni
       tags: true

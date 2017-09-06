@@ -80,17 +80,23 @@ bin/daemon                      : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/
 								go build -o bin/daemon $(GO_BUILD_FLAGS) $(GIT_REPOSITORY)/cmd/daemon/
 
 bin/.docker-images-build-timestamp   : $(foreach dir,$(daemon_pkg),$(wildcard $(dir)/*.go)) Dockerfile
-								docker build -q -t $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) -t $(DOCKER_IMAGE_NAME):latest -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest . > bin/.docker-images-build-timestamp
+								mkdir -p bin
+								docker build -q -t $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) -t dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) . > bin/.docker-images-build-timestamp
 
 release                         : bin/hostnic.tar.gz bin/.docker-images-build-timestamp
 
-install-docker                  : release
+bin/.docker_label               : bin/.docker-images-build-timestamp
 								docker push $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
-								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
+								#docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
+								echo $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) > bin/.docker_label
 
-publish                         : install-docker
+install-docker                  : bin/.docker_label
+
+publish                         : bin/.docker_label
+								docker tag `cat bin/.docker_label` $(DOCKER_IMAGE_NAME):latest
+								docker tag `cat bin/.docker_label` dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 								docker push $(DOCKER_IMAGE_NAME):latest
-								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
+								#docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 
 install-distrib                 : go-build
 								cp bin/daemon /usr/local/bin/hostnic-daemon
