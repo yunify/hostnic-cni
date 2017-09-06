@@ -181,6 +181,10 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err = netlink.LinkSetDown(iface); err != nil {
 			return err
 		}
+		iface, err = netlink.LinkByName(ifName)
+		if err != nil {
+			return fmt.Errorf("failed to lookup %q: %v", ifName, err)
+		}
 		if attrs := iface.Attrs(); attrs.Flags&net.FlagUp > 0 || attrs.OperState&netlink.OperUp > 0 {
 			return fmt.Errorf("nic is not turned off")
 		}
