@@ -3,6 +3,7 @@ package server
 import (
 	"net"
 
+	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
 )
@@ -37,4 +38,13 @@ func (provider *QingCloudNicProvider) ValidateNic(nicid string) bool {
 
 func (provider *QingCloudNicProvider) ReclaimNic(niclist []*string) error {
 	return provider.resourceStub.DeleteNics(niclist)
+}
+
+func (provider *QingCloudNicProvider) DisableNic(nicid string) error {
+	iface, err := pkg.LinkByMacAddr(nicid)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetDown(iface)
+	return err
 }

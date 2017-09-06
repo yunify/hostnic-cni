@@ -8,4 +8,5 @@ type NicProvider interface {
 	ValidateNic(nicid string) bool
 	ReclaimNic([]*string) error
 	GetNicsInfo([]*string) ([]*pkg.HostNic, error)
+	DisableNic(nicid string) error
 }

@@ -160,30 +160,34 @@ func cmdDel(args *skel.CmdArgs) error {
 	if args.Netns == "" {
 		return nil
 	}
+	defaultNs, err := ns.GetCurrentNS()
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
 
+	conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("Failed to open socket %v", err)
+	}
+	defer conn.Close()
+	client := messages.NewNicservicesClient(conn)
+
 	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
-		conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
-		if err != nil {
-			return fmt.Errorf("Failed to open socket %v", err)
-		}
-		defer conn.Close()
-		client := messages.NewNicservicesClient(conn)
 		ifName := args.IfName
 		iface, err := netlink.LinkByName(ifName)
 		if err != nil {
 			return fmt.Errorf("failed to lookup %q: %v", ifName, err)
 		}
-
-		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: iface.Attrs().HardwareAddr.String()})
-		if err := netlink.LinkSetDown(iface); err != nil {
+		if err = netlink.LinkSetDown(iface); err != nil {
 			return err
 		}
 		if attrs := iface.Attrs(); attrs.Flags&net.FlagUp > 0 || attrs.OperState&netlink.OperUp > 0 {
 			return fmt.Errorf("nic is not turned off")
 		}
+		if err = netlink.LinkSetNsFd(iface, int(defaultNs.Fd())); err != nil {
+			return fmt.Errorf("Failed to set ns for nic:%v", err)
+		}
+		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: iface.Attrs().HardwareAddr.String()})
 		return nil
 	})
 	return err

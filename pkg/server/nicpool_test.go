@@ -73,6 +73,10 @@ func (provider *MockProvider) GetNicsInfo(idlist []*string) ([]*pkg.HostNic, err
 	return result, nil
 }
 
+func (provider *MockProvider) DisableNic(nicid string) error {
+	return nil
+}
+
 func TestPoolRace(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
 	provider := NewMockProvider()

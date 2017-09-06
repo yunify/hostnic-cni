@@ -222,13 +222,18 @@ func (pool *NicPool) ShutdownNicPool() {
 //ReturnNic recycle deleted nic
 func (pool *NicPool) ReturnNic(nicid string) error {
 	log.Debugf("Return %s to nic ready pool", nicid)
+	err := pool.nicProvider.DisableNic(nicid)
+	if err != nil {
+		log.Errorf("Failed to disable nic %s, %v", nicid, err)
+		return err
+	}
 	//check if nic is in dict
 	if _, ok := pool.nicDict.Get(nicid); ok {
 		pool.nicReadyPool <- nicid
 	} else {
 		nics, err := pool.nicProvider.GetNicsInfo([]*string{&nicid})
 		if err != nil {
-			log.Errorf("Failed to get nics %s, %v", nicid, err)
+			log.Errorf("Failed to get nic %s, %v", nicid, err)
 			return err
 		}
 		pool.addNicsToPool(nics[0])
