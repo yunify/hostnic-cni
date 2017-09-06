@@ -185,9 +185,6 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err != nil {
 			return fmt.Errorf("failed to lookup %q: %v", ifName, err)
 		}
-		if attrs := iface.Attrs(); attrs.Flags&net.FlagUp > 0 || attrs.OperState&netlink.OperUp > 0 {
-			return fmt.Errorf("nic is not turned off")
-		}
 		if err = netlink.LinkSetNsFd(iface, int(defaultNs.Fd())); err != nil {
 			return fmt.Errorf("Failed to set ns for nic:%v", err)
 		}
