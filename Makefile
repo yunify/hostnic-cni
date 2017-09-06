@@ -87,7 +87,7 @@ release                         : bin/hostnic.tar.gz bin/.docker-images-build-ti
 
 bin/.docker_label               : bin/.docker-images-build-timestamp
 								docker push $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
-								#docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
+								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):$(IMAGE_LABLE)
 								echo $(DOCKER_IMAGE_NAME):$(IMAGE_LABLE) > bin/.docker_label
 
 install-docker                  : bin/.docker_label
@@ -96,7 +96,7 @@ publish                         : bin/.docker_label
 								docker tag `cat bin/.docker_label` $(DOCKER_IMAGE_NAME):latest
 								docker tag `cat bin/.docker_label` dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 								docker push $(DOCKER_IMAGE_NAME):latest
-								#docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
+								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 
 install-distrib                 : go-build
 								cp bin/daemon /usr/local/bin/hostnic-daemon
