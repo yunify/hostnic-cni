@@ -189,7 +189,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		}
 
 		attrs:= iface.Attrs()
-		if err :=netlink.LinkSetName(iface, "dev"+strconv.Itoa(attrs.Index)); err != nil {
+		if err :=netlink.LinkSetName(iface, "eth"+strconv.Itoa(attrs.Index)); err != nil {
 			return fmt.Errorf("Failed to set name for nic:%v", err)
 		}
 
