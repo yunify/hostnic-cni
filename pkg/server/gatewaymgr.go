@@ -82,13 +82,14 @@ func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error)
 			pool.resourceStub.DeleteNic(nic.HardwareAddr)
 			return "", err
 		}
+
 		_, netcidr, err := net.ParseCIDR(nic.VxNet.Network)
 		if err != nil {
 			log.Errorf("Failed to parse gateway network.%s Please check your config", err)
 			pool.resourceStub.DeleteNic(nic.HardwareAddr)
 			return "", err
 		}
-		addr := &netlink.Addr{IPNet: netcidr, Label: ""}
+		addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(nic.Address), Mask: netcidr.Mask}, Label: ""}
 		if err := netlink.AddrAdd(niclink, addr); err != nil {
 			log.Errorf("AddrAdd err %s, delete Nic %s", err.Error(), nic.HardwareAddr)
 			pool.resourceStub.DeleteNic(nic.HardwareAddr)

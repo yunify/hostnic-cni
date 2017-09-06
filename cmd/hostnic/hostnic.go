@@ -164,6 +164,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
 	}
+	defer defaultNs.Close()
 
 	conn, err := grpc.Dial(conf.BindAddr, grpc.WithInsecure())
 	if err != nil {
