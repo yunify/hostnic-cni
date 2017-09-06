@@ -27,6 +27,7 @@ deploy:
       tags: true
   - provider: script
     script: IMAGE_LABLE=$TRAVIS_BRANCH make publish
+    skip_cleanup: true
     on:
       tags: true
 
