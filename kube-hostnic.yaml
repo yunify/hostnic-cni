@@ -32,7 +32,7 @@ spec:
       serviceAccountName: hostnic
       containers:
       - name: qingcloud-hostnic-daemon
-        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:v0.8.1
+        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
@@ -42,8 +42,9 @@ spec:
 
         - name: VXNETS
           value: "vxnet-xxxxxxx vxnet-xxxxxxx"
-      - name: POOLSIZE
-        value: "3"
+
+        - name: POOLSIZE
+          value: "3"
 
       volumeMounts:
       - name: qingcloud-cfg
