@@ -52,6 +52,11 @@ var startCmd = &cobra.Command{
 This plugin will create a new nic by IaaS api and attach to host,
 then move the nic to container network namespace`,
 	Run: func(cmd *cobra.Command, args []string) {
+		listener, err := net.Listen("tcp", viper.GetString("bindAddr"))
+		if err != nil {
+			log.Errorf("Failed to listen to assigned port, %v", err)
+			return
+		}
 		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
 		if err != nil {
 			log.Errorf("Failed to initiate resource provider, %v", err)
@@ -65,11 +70,7 @@ then move the nic to container network namespace`,
 			return
 		}
 		//start up server rpc routine
-		listener, err := net.Listen("tcp", viper.GetString("bindAddr"))
-		if err != nil {
-			log.Errorf("Failed to listen to assigned port, %v", err)
-			return
-		}
+
 		grpcServer := grpc.NewServer(
 			grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
 		)

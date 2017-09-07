@@ -19,6 +19,7 @@ func NewGatewayManager(qcstub *qingcloud.QCNicProvider) *GatewayManager {
 	return &GatewayManager{gatewayMgr: cmap.New(), resourceStub: qcstub}
 }
 
+//CollectGatewayNic collect nic on host
 func (pool *GatewayManager) CollectGatewayNic() ([]*pkg.HostNic, error) {
 	log.Infof("Collect existing nic as gateway cadidate")
 	var nicidList []*string
@@ -60,29 +61,54 @@ func (pool *GatewayManager) CollectGatewayNic() ([]*pkg.HostNic, error) {
 	return unusedList, nil
 }
 
+//GetOrAllocateGateway find one nic for gateway usage
 func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error) {
-	var gatewayIp string
+	var gatewayIP string
 	if item, ok := pool.gatewayMgr.Get(vxnetid); !ok {
-
 		//allocate nic
 
-		nic, err := pool.resourceStub.CreateNicInVxnet(vxnetid)
-		if err != nil {
-			return "", err
-		}
-		niclink, err := pkg.LinkByMacAddr(nic.HardwareAddr)
-		if err != nil {
-			return "", err
-		}
-		err = netlink.LinkSetUp(niclink)
-		if err != nil {
-			return "", err
-		}
-		pool.gatewayMgr.Set(nic.VxNet.ID, nic.Address)
+		upsertcb := func (exist bool, valueInMap interface{}, newValue interface{}) interface{} {
+			if exist {
+				return valueInMap
+			}
+			nic, err := pool.resourceStub.CreateNicInVxnet(vxnetid)
+			if err != nil {
+				return nil
+			}
+			niclink, err := pkg.LinkByMacAddr(nic.HardwareAddr)
+			if err != nil {
+				return nil
 
-		return nic.Address, nil
+			}
+
+			if err = netlink.LinkSetDown(niclink); err != nil {
+				log.Errorf("LinkSetDown err %v, delete Nic %s", err, nic.HardwareAddr)
+				pool.resourceStub.DeleteNic(nic.HardwareAddr)
+				return nil
+			}
+
+			_, netcidr, err := net.ParseCIDR(nic.VxNet.Network)
+			if err != nil {
+				log.Errorf("Failed to parse gateway network.%s Please check your config", err)
+				pool.resourceStub.DeleteNic(nic.HardwareAddr)
+				return nil
+			}
+			addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(nic.Address), Mask: netcidr.Mask}, Label: ""}
+			if err = netlink.AddrAdd(niclink, addr); err != nil {
+				log.Errorf("AddrAdd err %s, delete Nic %s", err.Error(), nic.HardwareAddr)
+				pool.resourceStub.DeleteNic(nic.HardwareAddr)
+				return nil
+			}
+			err = netlink.LinkSetUp(niclink)
+			if err != nil {
+				return nil
+			}
+			return nic.Address
+		}
+		item = pool.gatewayMgr.Upsert(vxnetid, nil, upsertcb)
+		gatewayIP = item.(string)
 	} else {
-		gatewayIp = item.(string)
-		return gatewayIp, nil
+		gatewayIP = item.(string)
 	}
+	return gatewayIP, nil
 }
