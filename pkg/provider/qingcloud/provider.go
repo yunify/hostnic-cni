@@ -58,10 +58,11 @@ type QCNicProvider struct {
 	instanceService *service.InstanceService
 	vxNets          []string
 	Host            *pkg.HostInstance
+	isUnderAppCenter bool
 }
 
 // New create new nic provider object
-func NewQCNicProvider(qyAuthFilePath string, vxnets []string) (*QCNicProvider, error) {
+func NewQCNicProvider(qyAuthFilePath string, vxnets []string,	isUnderAppCenter bool) (*QCNicProvider, error) {
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
 		return nil, err
@@ -102,6 +103,7 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string) (*QCNicProvider, e
 		vxNetService:    vxNetService,
 		vxNets:          vxnets,
 		instanceService: instanceService,
+		isUnderAppCenter: isUnderAppCenter,
 	}
 
 	//describe instance to test if provider works
@@ -289,6 +291,10 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 	}
 	input := &service.DescribeInstancesInput{
 		Instances: []*string{&id},
+	}
+	if p.isUnderAppCenter {
+		flag :=1
+		input.IsClusterNode = &flag
 	}
 	output, err := p.instanceService.DescribeInstances(input)
 	if err != nil {

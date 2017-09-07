@@ -22,6 +22,8 @@ ENV POOLSIZE 3
 
 ENV CLEANUPCACHEONEXIT false
 
+ENV WORKINAPPCENTERCLUSTER false
+
 RUN mkdir -p /opt/cni/bin/ && mkdir -p /etc/cni/net.d/ && apk --update upgrade && \
     apk add curl ca-certificates && \
     update-ca-certificates && \
