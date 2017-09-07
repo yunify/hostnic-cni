@@ -187,20 +187,18 @@ func (pool *NicPool) ShutdownNicPool() {
 		pool.nicStopLock.Lock()
 		pool.nicStopFlag = true
 		pool.nicStopLock.Unlock()
-		var cachedlist []*string
-
-		log.Infoln("start to delete nics in cache pool")
-		for nic := range pool.nicpool {
-			cachedlist = append(cachedlist, pkg.StringPtr(nic))
-			log.Debugf("Got nic %s in nic pool", nic)
-		}
-		log.Infoln("start to delete nics in ready pool")
-		for nic := range pool.nicReadyPool {
-			cachedlist = append(cachedlist, pkg.StringPtr(nic))
-			log.Debugf("Got nic %s in nic pool", nic)
-		}
-		log.Infof("clean up nic pool")
 		if pool.config.CleanUpCache {
+			var cachedlist []*string
+			log.Infoln("start to delete nics in cache pool")
+			for nic := range pool.nicpool {
+				cachedlist = append(cachedlist, pkg.StringPtr(nic))
+				log.Debugf("Got nic %s in nic pool", nic)
+			}
+			log.Infoln("start to delete nics in ready pool")
+			for nic := range pool.nicReadyPool {
+				cachedlist = append(cachedlist, pkg.StringPtr(nic))
+				log.Debugf("Got nic %s in nic pool", nic)
+			}
 			log.Infof("Deleting cached nics...")
 			err := pool.nicProvider.ReclaimNic(cachedlist)
 			var niclist string
