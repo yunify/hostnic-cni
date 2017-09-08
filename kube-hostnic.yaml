@@ -1,35 +1,3 @@
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1beta1
-metadata:
-  name: hostnic
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - list
-      - watch
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1beta1
-metadata:
-  name: hostnic
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: hostnic
-subjects:
-- kind: ServiceAccount
-  name: hostnic
-  namespace: kube-system
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -64,7 +32,7 @@ spec:
       serviceAccountName: hostnic
       containers:
       - name: qingcloud-hostnic-daemon
-        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:v0.8.1
+        image: dockerhub.qingcloud.com/qingcloud/hostnic-cni:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
@@ -74,8 +42,9 @@ spec:
 
         - name: VXNETS
           value: "vxnet-xxxxxxx vxnet-xxxxxxx"
-      - name: POOLSIZE
-        value: "3"
+
+        - name: POOLSIZE
+          value: "3"
 
       volumeMounts:
       - name: qingcloud-cfg

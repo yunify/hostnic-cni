@@ -57,7 +57,7 @@ then move the nic to container network namespace`,
 			log.Errorf("Failed to listen to assigned port, %v", err)
 			return
 		}
-		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"))
+		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"),viper.GetBool("WorkInAppCenterCluser"))
 		if err != nil {
 			log.Errorf("Failed to initiate resource provider, %v", err)
 			return
@@ -150,5 +150,6 @@ func init() {
 	//pool properties
 	startCmd.Flags().Int("PoolSize", 3, "The size of nic pool")
 	startCmd.Flags().Bool("CleanUpCacheOnExit", false, "Delete cached nic on exit")
+	startCmd.Flags().Bool("WorkInAppCenterCluser", false, "Integration with QingCloud Appcenter")
 	viper.BindPFlags(startCmd.Flags())
 }
