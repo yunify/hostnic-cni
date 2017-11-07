@@ -1,6 +1,3 @@
-bin
-
-.glide/
+bin/
 .idea/
-glide.lock
 *.iml

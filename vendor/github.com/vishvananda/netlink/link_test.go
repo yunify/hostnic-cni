@@ -6,11 +6,12 @@ import (
 	"bytes"
 	"net"
 	"os"
-	"syscall"
 	"testing"
 	"time"
 
+	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -36,6 +37,12 @@ func testLinkAddDel(t *testing.T, link Link) {
 	}
 
 	rBase := result.Attrs()
+
+	if base.Index != 0 {
+		if base.Index != rBase.Index {
+			t.Fatalf("index is %d, should be %d", rBase.Index, base.Index)
+		}
+	}
 
 	if vlan, ok := link.(*Vlan); ok {
 		other, ok := result.(*Vlan)
@@ -169,6 +176,26 @@ func testLinkAddDel(t *testing.T, link Link) {
 		}
 	}
 
+	if _, ok := link.(*Sittun); ok {
+		_, ok := result.(*Sittun)
+		if !ok {
+			t.Fatal("Result of create is not a sittun")
+		}
+	}
+
+	if _, ok := link.(*Gretap); ok {
+		_, ok := result.(*Gretap)
+		if !ok {
+			t.Fatal("Result of create is not a Gretap")
+		}
+	}
+	if _, ok := link.(*Gretun); ok {
+		_, ok := result.(*Gretun)
+		if !ok {
+			t.Fatal("Result of create is not a Gretun")
+		}
+	}
+
 	if err = LinkDel(link); err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +273,13 @@ func compareVxlan(t *testing.T, expected, actual *Vxlan) {
 	}
 }
 
+func TestLinkAddDelWithIndex(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Dummy{LinkAttrs{Index: 1000, Name: "foo"}})
+}
+
 func TestLinkAddDelDummy(t *testing.T) {
 	tearDown := setUpNetlinkTest(t)
 	defer tearDown()
@@ -278,6 +312,27 @@ func TestLinkAddDelGretap(t *testing.T) {
 		PMtuDisc:  1,
 		Local:     net.IPv4(127, 0, 0, 1),
 		Remote:    net.IPv4(127, 0, 0, 1)})
+}
+
+func TestLinkAddDelGretun(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Gretun{
+		LinkAttrs: LinkAttrs{Name: "foo"},
+		Local:     net.IPv4(127, 0, 0, 1),
+		Remote:    net.IPv4(127, 0, 0, 1)})
+}
+
+func TestLinkAddDelGretunPointToMultiPoint(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Gretun{
+		LinkAttrs: LinkAttrs{Name: "foo"},
+		Local:     net.IPv4(127, 0, 0, 1),
+		IKey:      1234,
+		OKey:      1234})
 }
 
 func TestLinkAddDelGretapFlowBased(t *testing.T) {
@@ -856,6 +911,20 @@ func TestLinkSet(t *testing.T) {
 		t.Fatal("MTU not changed!")
 	}
 
+	err = LinkSetTxQLen(link, 500)
+	if err != nil {
+		t.Fatalf("Could not set txqlen: %v", err)
+	}
+
+	link, err = LinkByName("bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Attrs().TxQLen != 500 {
+		t.Fatal("txqlen not changed!")
+	}
+
 	addr, err := net.ParseMAC("00:12:34:56:78:AB")
 	if err != nil {
 		t.Fatal(err)
@@ -919,7 +988,7 @@ func TestLinkSetARP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if link.Attrs().RawFlags&syscall.IFF_NOARP != uint32(syscall.IFF_NOARP) {
+	if link.Attrs().RawFlags&unix.IFF_NOARP != uint32(unix.IFF_NOARP) {
 		t.Fatalf("NOARP was not set!")
 	}
 
@@ -933,7 +1002,7 @@ func TestLinkSetARP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if link.Attrs().RawFlags&syscall.IFF_NOARP != 0 {
+	if link.Attrs().RawFlags&unix.IFF_NOARP != 0 {
 		t.Fatalf("NOARP is still set!")
 	}
 }
@@ -943,7 +1012,7 @@ func expectLinkUpdate(ch <-chan LinkUpdate, ifaceName string, up bool) bool {
 		timeout := time.After(time.Minute)
 		select {
 		case update := <-ch:
-			if ifaceName == update.Link.Attrs().Name && (update.IfInfomsg.Flags&syscall.IFF_UP != 0) == up {
+			if ifaceName == update.Link.Attrs().Name && (update.IfInfomsg.Flags&unix.IFF_UP != 0) == up {
 				return true
 			}
 		case <-timeout:
@@ -986,6 +1055,37 @@ func TestLinkSubscribe(t *testing.T) {
 
 	if !expectLinkUpdate(ch, "foo", false) {
 		t.Fatal("Del update not received as expected")
+	}
+}
+
+func TestLinkSubscribeWithOptions(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	ch := make(chan LinkUpdate)
+	done := make(chan struct{})
+	defer close(done)
+	var lastError error
+	defer func() {
+		if lastError != nil {
+			t.Fatalf("Fatal error received during subscription: %v", lastError)
+		}
+	}()
+	if err := LinkSubscribeWithOptions(ch, done, LinkSubscribeOptions{
+		ErrorCallback: func(err error) {
+			lastError = err
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	link := &Veth{LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1400}, "bar"}
+	if err := LinkAdd(link); err != nil {
+		t.Fatal(err)
+	}
+
+	if !expectLinkUpdate(ch, "foo", false) {
+		t.Fatal("Add update not received as expected")
 	}
 }
 
@@ -1109,6 +1209,9 @@ func TestLinkXdp(t *testing.T) {
 	if err := LinkSetXdpFd(testXdpLink, fd); err != nil {
 		t.Fatal(err)
 	}
+	if err := LinkSetXdpFdWithFlags(testXdpLink, fd, nl.XDP_FLAGS_UPDATE_IF_NOEXIST); err != unix.EBUSY {
+		t.Fatal(err)
+	}
 	if err := LinkSetXdpFd(testXdpLink, -1); err != nil {
 		t.Fatal(err)
 	}
@@ -1120,6 +1223,17 @@ func TestLinkAddDelIptun(t *testing.T) {
 
 	testLinkAddDel(t, &Iptun{
 		LinkAttrs: LinkAttrs{Name: "iptunfoo"},
+		PMtuDisc:  1,
+		Local:     net.IPv4(127, 0, 0, 1),
+		Remote:    net.IPv4(127, 0, 0, 1)})
+}
+
+func TestLinkAddDelSittun(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Sittun{
+		LinkAttrs: LinkAttrs{Name: "sittunfoo"},
 		PMtuDisc:  1,
 		Local:     net.IPv4(127, 0, 0, 1),
 		Remote:    net.IPv4(127, 0, 0, 1)})
