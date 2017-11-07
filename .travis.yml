@@ -2,8 +2,12 @@ sudo: required
 language: go
 services:
   - docker
+
 go:
-- 1.8.x
+  - 1.8
+  - 1.9
+  - tip
+
 before_install:
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
   - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
@@ -11,9 +15,9 @@ before_install:
   - sudo apt-get -y install docker-ce
 
 install:
-- IMAGE_LABLE=$TRAVIS_BRANCH make release
+  - IMAGE_LABLE=$TRAVIS_BRANCH make release
 script:
-- echo "test skip"
+  - echo "test skip"
 
 deploy:
   - provider: releases
