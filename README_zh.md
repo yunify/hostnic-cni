@@ -1,5 +1,9 @@
 # hostnic-cni
 
+[![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master)
+
+[![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni)
+
 [English](README.md)|中文
 
 **hostnic-cni** 是一个 [Container Network Interface](https://github.com/containernetworking/cni) 插件。 本插件会直接调用 IaaS 的接口去创建网卡并且关联到容器的网络命名空间。当前支持的 IaaS：[QingCloud](http://qingcloud.com)，未来会支持更多。
