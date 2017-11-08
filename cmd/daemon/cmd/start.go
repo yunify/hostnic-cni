@@ -57,7 +57,7 @@ then move the nic to container network namespace`,
 			log.Errorf("Failed to listen to assigned port, %v", err)
 			return
 		}
-		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"),viper.GetBool("WorkInAppCenterCluser"))
+		resourceStub, err := qingcloud.NewQCNicProvider(viper.GetString("QyAccessFilePath"), viper.GetStringSlice("vxnets"), viper.GetBool("WorkInAppCenterCluser"))
 		if err != nil {
 			log.Errorf("Failed to initiate resource provider, %v", err)
 			return

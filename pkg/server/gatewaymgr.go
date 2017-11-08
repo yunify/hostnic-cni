@@ -67,7 +67,7 @@ func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error)
 	if item, ok := pool.gatewayMgr.Get(vxnetid); !ok {
 		//allocate nic
 
-		upsertcb := func (exist bool, valueInMap interface{}, newValue interface{}) interface{} {
+		upsertcb := func(exist bool, valueInMap interface{}, newValue interface{}) interface{} {
 			if exist {
 				return valueInMap
 			}

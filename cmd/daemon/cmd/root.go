@@ -64,7 +64,7 @@ func init() {
 
 	//server routine properties
 	RootCmd.PersistentFlags().String("bindAddr", ":31080", "port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )")
-	RootCmd.PersistentFlags().String("manageAddr", ":31081","addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) ")
+	RootCmd.PersistentFlags().String("manageAddr", ":31081", "addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) ")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
