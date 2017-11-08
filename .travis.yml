@@ -2,18 +2,38 @@ sudo: required
 language: go
 services:
   - docker
+
 go:
-- 1.8.x
+  - 1.9.x
+
 before_install:
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
   - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
   - sudo apt-get update
   - sudo apt-get -y install docker-ce
+  - curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -
+  - sudo apt-get install -y nodejs
+  - sudo npm install -g codeclimate-test-reporter
 
 install:
-- IMAGE_LABLE=$TRAVIS_BRANCH make release
+  - IMAGE_LABLE=$TRAVIS_BRANCH make release
 script:
-- echo "test skip"
+  - |
+    shopt -s globstar
+    rootdir=`pwd`
+    for dir in $(go list ./... |grep -v 'vendor'); do
+      cd $GOPATH/src/$dir
+      exec 5>&1
+      out=$(go test -v -coverprofile=cov_part.out | tee >(cat - >&5))
+      if [ $? -eq 1 ] ; then
+        if [ $(cat $out | grep -o 'no buildable Go source files') == "" ] ; then
+          echo "Tests failed! Exiting..." ; exit 1
+        fi
+      fi
+      cd $rootdir
+    done
+    find . -name cov_part.out | xargs cat > cov.out
+    codeclimate-test-reporter < cov.out
 
 deploy:
   - provider: releases

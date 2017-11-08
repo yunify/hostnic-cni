@@ -92,6 +92,9 @@ func TestPoolRace(t *testing.T) {
 
 			nic, _, err := nicpool.BorrowNic(false)
 			if err != nil {
+				if err.Error() == fmt.Sprintf("Failed to allocate nic. retried %d times ", AllocationRetryTimes) {
+					return
+				}
 				t.Fatal(err)
 				return
 			}

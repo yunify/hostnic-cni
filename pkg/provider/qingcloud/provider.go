@@ -52,17 +52,17 @@ const (
 
 //QCNicProvider QingCloud Nic provider object
 type QCNicProvider struct {
-	nicService      *service.NicService
-	vxNetService    *service.VxNetService
-	jobService      *service.JobService
-	instanceService *service.InstanceService
-	vxNets          []string
-	Host            *pkg.HostInstance
+	nicService       *service.NicService
+	vxNetService     *service.VxNetService
+	jobService       *service.JobService
+	instanceService  *service.InstanceService
+	vxNets           []string
+	Host             *pkg.HostInstance
 	isUnderAppCenter bool
 }
 
 // New create new nic provider object
-func NewQCNicProvider(qyAuthFilePath string, vxnets []string,	isUnderAppCenter bool) (*QCNicProvider, error) {
+func NewQCNicProvider(qyAuthFilePath string, vxnets []string, isUnderAppCenter bool) (*QCNicProvider, error) {
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string,	isUnderAppCenter b
 		}
 	}
 	if len(vxnets) <= 0 {
-		return nil,fmt.Errorf("vxnet is empty")
+		return nil, fmt.Errorf("vxnet is empty")
 	}
 	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
@@ -98,11 +98,11 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string,	isUnderAppCenter b
 	}
 
 	p := &QCNicProvider{
-		nicService:      nicService,
-		jobService:      jobService,
-		vxNetService:    vxNetService,
-		vxNets:          vxnets,
-		instanceService: instanceService,
+		nicService:       nicService,
+		jobService:       jobService,
+		vxNetService:     vxNetService,
+		vxNets:           vxnets,
+		instanceService:  instanceService,
 		isUnderAppCenter: isUnderAppCenter,
 	}
 
@@ -278,10 +278,10 @@ func (p *QCNicProvider) GetVxNet(vxNet string) (*pkg.VxNet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(result) > 0{
+	if len(result) > 0 {
 		return result[0], nil
 	}
-	return nil,fmt.Errorf("vxnet %s is not found",vxNet)
+	return nil, fmt.Errorf("vxnet %s is not found", vxNet)
 }
 
 func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
@@ -293,7 +293,7 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 		Instances: []*string{&id},
 	}
 	if p.isUnderAppCenter {
-		flag :=1
+		flag := 1
 		input.IsClusterNode = &flag
 	}
 	output, err := p.instanceService.DescribeInstances(input)
@@ -301,8 +301,8 @@ func (p *QCNicProvider) getInstance() (*pkg.HostInstance, error) {
 		return nil, err
 	}
 	if *output.RetCode == 0 {
-		if len(output.InstanceSet) <=0 {
-			return nil,fmt.Errorf("Instance %s not found",id)
+		if len(output.InstanceSet) <= 0 {
+			return nil, fmt.Errorf("Instance %s not found", id)
 		}
 		instanceItem := output.InstanceSet[0]
 		var vxnetIds []*string
