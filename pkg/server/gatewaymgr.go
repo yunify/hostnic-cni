@@ -77,8 +77,8 @@ func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error)
 			}
 			niclink, err := pkg.LinkByMacAddr(nic.HardwareAddr)
 			if err != nil {
+				pool.resourceStub.DeleteNic(nic.HardwareAddr)
 				return nil
-
 			}
 
 			if err = netlink.LinkSetDown(niclink); err != nil {

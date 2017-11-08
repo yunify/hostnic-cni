@@ -176,14 +176,19 @@ func (p *QCNicProvider) CreateNicInVxnet(vxNetID string) (*pkg.HostNic, error) {
 		hostNic := &pkg.HostNic{ID: *nic.NICID, HardwareAddr: *nic.NICID, Address: *nic.PrivateIP}
 		err := p.attachNic(hostNic, instanceID)
 		if err != nil {
+			p.DeleteNic(*nic.NICID)
 			return nil, err
 		}
 		niclink, err := pkg.LinkByMacAddr(*nic.NICID)
 		if err != nil {
+			p.detachNic(*nic.NICID)
+			p.DeleteNic(*nic.NICID)
 			return nil, err
 		}
 		err = netlink.LinkSetDown(niclink)
 		if err != nil {
+			p.detachNic(*nic.NICID)
+			p.DeleteNic(*nic.NICID)
 			return nil, err
 		}
 		hostNic.VxNet = vxNet
