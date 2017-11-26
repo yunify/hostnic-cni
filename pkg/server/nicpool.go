@@ -170,6 +170,7 @@ func (pool *NicPool) StartEventloop() {
 					}
 					if timer == 5 {
 						log.Errorf("Failed to generate nic %v", err)
+						go pool.ShutdownNicPool()
 						break CLEANUP
 					}
 					pool.nicDict.Set(nic.ID, nic)
