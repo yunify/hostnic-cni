@@ -158,10 +158,20 @@ func (pool *NicPool) StartEventloop() {
 				stopFlag := pool.nicStopFlag
 				pool.nicStopLock.RUnlock()
 				if !stopFlag {
-					nic, err := pool.nicProvider.GenerateNic()
-					if err != nil {
+					var err error
+					var nic *pkg.HostNic
+					var timer int
+					for timer = 0; timer < 5; timer++ {
+						nic, err = pool.nicProvider.GenerateNic()
+						if err == nil {
+							break
+						}
 						log.Errorf("Failed to get nic from generator:%s ", err)
-						continue
+					}
+					if timer == 5 {
+						log.Errorf("Failed to generate nic %v", err)
+						go pool.ShutdownNicPool()
+						break CLEANUP
 					}
 					pool.nicDict.Set(nic.ID, nic)
 
