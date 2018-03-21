@@ -22,7 +22,7 @@
     zone: "pek3a"
     EOF
     ```
-    
+    access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  
 1. 启动后台进程
 
     后台进程主要负责后台异步的进行网卡的申请销毁。给hostnic程序提供服务。它监听本地端口，维护网卡信息，并管理缓存网卡池
@@ -52,6 +52,7 @@
           --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
 
     ```
+    其中 PoolSize 参数为当前进程为提高网卡挂载效率预先申请的网卡数，缺省为3个。  
 
     例如
 
@@ -100,11 +101,14 @@
     EOF
     ```
 
-
-
 ### 配置说明
 
-* **ipam** 给nic设置路由条目。（可选）
+* **ipam** 给nic设置路由条目。（可选）  
+* **bindaddr**  后台进程监听的服务器地址  
+* **dst** 无类域间路由标记中的目标子网  
+* **gw** 网关地址  
+
+以上 cni 配置文件及其可支持参数的具体说明以可以参考 [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md)
 
 ### kubernetes用户的说明
 
