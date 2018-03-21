@@ -22,6 +22,7 @@ English|[中文](README_zh.md)
     zone: "pek3a"
     EOF
     ```
+    Make sure you have requested the API access_key/secret_access_key through QingCloud console.  
     
 1. Launch daemon process
 
@@ -53,6 +54,7 @@ English|[中文](README_zh.md)
           --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
 
     ```
+    The parameter PoolSize is used to tell the daemon process how many nic should be created and put into pool beforehand, the default size is 3.  
 
     e.g.
 
@@ -103,8 +105,12 @@ English|[中文](README_zh.md)
 
 ### CNI config Description
 
-* **ipam** add custom routing rules for nic, (optional)
-* **bindaddr** server addr where daemon listens to
+* **ipam** add custom routing rules for nic, (optional)  
+* **bindaddr** server addr where daemon listens to  
+* **dst** destination subnet specified in CIDR notation  
+* **gw** IP of the gateway. If omitted, a default gateway is assumed (as determined by the CNI plugin).  
+
+For more information about CNI configuration and related parameters, please refer to [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md).  
 
 ### Special notes for Kubernetes users
 
