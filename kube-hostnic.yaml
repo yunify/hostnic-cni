@@ -46,20 +46,20 @@ spec:
         - name: POOLSIZE
           value: "3"
 
-      volumeMounts:
+        volumeMounts:
+        - name: qingcloud-cfg
+          mountPath: /etc/qingcloud/
+      volumes:
       - name: qingcloud-cfg
-        mountPath: /etc/qingcloud/
-    volumes:
-    - name: qingcloud-cfg
-      hostPath:
-        path: /etc/qingcloud/
-    tolerations:
-    - key: "CriticalAddonsOnly"
-      operator: "Exists"
-    - key: "dedicated"
-      operator: "Exists"
-    - key: "node-role.kubernetes.io/master"
-      effect: NoSchedule
+        hostPath:
+          path: /etc/qingcloud/
+      tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+      - key: "dedicated"
+        operator: "Exists"
+      - key: "node-role.kubernetes.io/master"
+        effect: NoSchedule
     - key: node.cloudprovider.kubernetes.io/uninitialized
       effect: NoSchedule
       value: "true"
