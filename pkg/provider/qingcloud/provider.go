@@ -37,6 +37,7 @@ import (
 
 const (
 	instanceIDFile = "/etc/qingcloud/instance-id"
+
 )
 
 func init() {
@@ -107,14 +108,15 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string, isUnderAppCenter b
 	}
 
 	//describe instance to test if provider works
+
 	p.Host, err = p.getInstance()
 	if err != nil {
 		return nil, err
 	}
 
-	if p.Host.RouterID == "" {
-		return nil, fmt.Errorf("Instance is not managed by router, Please put instance under VPC's supervision")
-	}
+	//if p.Host.RouterID == "" {
+	//	return nil, fmt.Errorf("Instance is not managed by router, Please put instance under VPC's supervision")
+	//}
 
 	var vxnetids []*string
 	for _, vxnet := range vxnets {
@@ -128,11 +130,17 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string, isUnderAppCenter b
 	}
 
 	for _, vxnetItem := range vxnetItems {
-		if vxnetItem.RouterID == "" {
-			return nil, fmt.Errorf("vxnet %s is not managed by VPC", vxnetItem.ID)
+		//if vxnetItem.RouterID == "" {
+		//	return nil, fmt.Errorf("vxnet %s is not managed by VPC", vxnetItem.ID)
+		//}
+		//if vxnetItem.RouterID != p.Host.RouterID {
+		//	return nil, fmt.Errorf("vxnet %s is not managed by the very router where the instance resides.", vxnetItem.ID)
+		//}
+		if vxnetItem.VxNetType != 1 || vxnetItem.VxNetType != 2 {
+			return nil, fmt.Errorf("illegal vxnet, just accept base and private vxnet", vxnetItem.ID)
 		}
-		if vxnetItem.RouterID != p.Host.RouterID {
-			return nil, fmt.Errorf("vxnet %s is not managed by the very router where the instance resides.", vxnetItem.ID)
+		if vxnetItem.ID == "vxnet-0" || vxnetItem.ID == "vxnet-1" || vxnetItem.ID == "vxnet-ks" || vxnetItem.ID == "vxnet-out" {
+			return nil, fmt.Errorf("illegal reserved vxnet, just accept base and private vxnet", vxnetItem.ID)
 		}
 	}
 
@@ -350,7 +358,7 @@ func (p *QCNicProvider) GetVxNets(vxNets []*string) ([]*pkg.VxNet, error) {
 			} else {
 				routerID = ""
 			}
-			vxnetItem := &pkg.VxNet{ID: *qcVxNet.VxNetID, RouterID: routerID}
+			vxnetItem := &pkg.VxNet{ID: *qcVxNet.VxNetID, RouterID: routerID, VxNetType: *qcVxNet.VxNetType}
 			if qcVxNet.Router != nil {
 				vxnetItem.GateWay = *qcVxNet.Router.ManagerIP
 				vxnetItem.Network = *qcVxNet.Router.IPNetwork

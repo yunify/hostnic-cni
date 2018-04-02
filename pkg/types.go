@@ -33,6 +33,11 @@ type VxNet struct {
 	Network string `json:"network"`
 	//RouterId
 	RouterID string `json:"router_id"`
+	//VxNetType
+	VxNetType int `json:"vxnet_type"`
+	//Mode
+	Mode int `json:"mode"`
+
 }
 
 type HostInstance struct {
