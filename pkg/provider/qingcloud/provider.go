@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"regexp"
 	"time"
 
 	"net"
@@ -37,7 +38,6 @@ import (
 
 const (
 	instanceIDFile = "/etc/qingcloud/instance-id"
-
 )
 
 func init() {
@@ -136,10 +136,11 @@ func NewQCNicProvider(qyAuthFilePath string, vxnets []string, isUnderAppCenter b
 		//if vxnetItem.RouterID != p.Host.RouterID {
 		//	return nil, fmt.Errorf("vxnet %s is not managed by the very router where the instance resides.", vxnetItem.ID)
 		//}
-		if vxnetItem.VxNetType != 1 || vxnetItem.VxNetType != 2 {
+		if vxnetItem.VxNetType != 1 && vxnetItem.VxNetType != 2 {
 			return nil, fmt.Errorf("illegal vxnet, just accept base and private vxnet", vxnetItem.ID)
 		}
-		if vxnetItem.ID == "vxnet-0" || vxnetItem.ID == "vxnet-1" || vxnetItem.ID == "vxnet-ks" || vxnetItem.ID == "vxnet-out" {
+
+		if regexp.MustCompile(`^vxnet-(0|1|ks|out)$`).MatchString(vxnetItem.ID) {
 			return nil, fmt.Errorf("illegal reserved vxnet, just accept base and private vxnet", vxnetItem.ID)
 		}
 	}

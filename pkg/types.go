@@ -37,7 +37,6 @@ type VxNet struct {
 	VxNetType int `json:"vxnet_type"`
 	//Mode
 	Mode int `json:"mode"`
-
 }
 
 type HostInstance struct {
