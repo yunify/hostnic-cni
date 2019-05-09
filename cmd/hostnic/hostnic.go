@@ -19,13 +19,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
-
-	"context"
-
-	"encoding/json"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -48,8 +46,8 @@ type IPAMConfig struct {
 //NetConf nic plugin configuration
 type NetConf struct {
 	types.NetConf
-	BindAddr string      `json:"bindaddr"`
-	IPAM     *IPAMConfig `json:"ipam"`
+	BindAddr   string      `json:"bindaddr"`
+	IPAMConfig *IPAMConfig `json:"ipamConfig"`
 }
 
 func loadNetConf(bytes []byte) (*NetConf, error) {
@@ -84,8 +82,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	client := messages.NewNicservicesClient(conn)
 
 	autoAssignGateway := false
-	if conf.IPAM != nil {
-		for _, route := range conf.IPAM.Routes {
+	if conf.IPAMConfig != nil {
+		for _, route := range conf.IPAMConfig.Routes {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
 				autoAssignGateway = true
 			}
@@ -126,8 +124,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	route := &types.Route{Dst: net.IPNet{IP: net.IPv4zero, Mask: net.IPMask(net.IPv4zero)}, GW: gateWay}
 
 	var routeTable = []*types.Route{route}
-	if conf.IPAM != nil {
-		for _, route := range conf.IPAM.Routes {
+	if conf.IPAMConfig != nil {
+		for _, route := range conf.IPAMConfig.Routes {
 			if route.GW != nil && route.GW.Equal(net.IPv4(0, 0, 0, 0)) {
 				route.GW = net.ParseIP(nic.Servicegateway)
 			}

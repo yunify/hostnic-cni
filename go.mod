@@ -3,7 +3,7 @@ module github.com/yunify/hostnic-cni
 go 1.12
 
 require (
-	github.com/containernetworking/cni v0.7.0
+	github.com/containernetworking/cni v0.6.0
 	github.com/containernetworking/plugins v0.7.5
 	github.com/coreos/go-iptables v0.4.1 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
