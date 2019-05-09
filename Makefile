@@ -5,13 +5,7 @@
 NAME= hostnic-cni
 GIT_REPOSITORY= github.com/yunify/hostnic-cni
 DOCKER_IMAGE_NAME?= qingcloud/hostnic-cni
-GOPATH ?= $(HOME)/go/
-BASE= $(GOPATH)/src/$(GIT_REPOSITORY)
-BIN      = $(GOPATH)/bin
 
-export GOPATH
-GO      = go
-GOFMT   = gofmt
 TIMEOUT = 15
 V = 0
 Q = $(if $(filter 1,$V),,@)
@@ -111,12 +105,6 @@ publish                         : bin/.docker_label
 								docker push $(DOCKER_IMAGE_NAME):latest
 								docker push dockerhub.qingcloud.com/$(DOCKER_IMAGE_NAME):latest
 
-install-distrib                 : go-build
-								cp bin/daemon /usr/local/bin/hostnic-daemon
-								cp distrib/hostnic.service /etc/system/systemd/
-								cp distrib/hostnic.conf /etc/qingcloud/hostnic.conf
-								systemctl daemon-reload
-
 clean                           :
 								rm -rf bin/
 
@@ -135,22 +123,7 @@ $(BIN)/dep: REPOSITORY=github.com/golang/dep/cmd/dep
 
 GOLINT = $(BIN)/golint
 $(BIN)/golint: REPOSITORY=github.com/golang/lint/golint
-# Dependency management
 
-vendor: Gopkg.toml Gopkg.lock | $(BASE) $(GODEP) ; $(info $(M) retrieving dependencies…)
-	$Q cd $(BASE) && $(GODEP) ensure
-	@touch $@
-.PHONY: vendor-update
-vendor-update: vendor | $(BASE) $(GODEP)
-ifeq "$(origin PKG)" "command line"
-	$(info $(M) updating $(PKG) dependency…)
-	$Q cd $(BASE) && $(GODEP) ensure -update $(PKG)
-else
-	$(info $(M) updating all dependencies…)
-	$Q cd $(BASE) && $(GODEP) ensure -update
-endif
-	@ln -nsf . vendor/src
-	@touch vendor
 
 TEST_TARGETS := test-default test-bench test-short test-verbose test-race
 .PHONY: $(TEST_TARGETS) check test tests
