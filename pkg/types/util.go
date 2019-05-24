@@ -16,26 +16,28 @@
 // =========================================================================
 //
 
-package pkg
+package types
 
-type HostNic struct {
-	ID           string `json:"id"`
-	VxNet        *VxNet `json:"vxNet"`
-	HardwareAddr string `json:"hardwareAddr"`
-	Address      string `json:"address"`
+import (
+	"fmt"
+
+	"github.com/vishvananda/netlink"
+)
+
+func StringPtr(str string) *string {
+	return &str
 }
 
-type VxNet struct {
-	ID string `json:"id"`
-	//GateWay eg: 192.168.1.1
-	GateWay string `json:"gateWay"`
-	//Network eg: 192.168.1.0/24
-	Network string `json:"network"`
-	//RouterId
-	RouterID string `json:"router_id"`
-}
-
-type HostInstance struct {
-	InstanceID string `json:"instance_id"`
-	RouterID   string `json:"router_id"`
+func LinkByMacAddr(macAddr string) (netlink.Link, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, err
+	}
+	for _, link := range links {
+		attr := link.Attrs()
+		if attr.HardwareAddr.String() == macAddr {
+			return link, nil
+		}
+	}
+	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
 }

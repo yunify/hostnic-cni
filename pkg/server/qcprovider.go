@@ -4,29 +4,30 @@ import (
 	"net"
 
 	"github.com/vishvananda/netlink"
-	"github.com/yunify/hostnic-cni/pkg"
-	"github.com/yunify/hostnic-cni/pkg/provider/qingcloud"
+	"github.com/yunify/hostnic-cni/pkg/qcclient"
+	"github.com/yunify/hostnic-cni/pkg/types"
 )
 
 //QingCloudNicProvider nic provider qingcloud implementation
 type QingCloudNicProvider struct {
-	resourceStub *qingcloud.QCNicProvider
+	qcClient qcclient.QingCloudAPI
+	vxnet    string
 }
 
-func (provider *QingCloudNicProvider) GetNicsInfo(nicids []*string) ([]*pkg.HostNic, error) {
-	return provider.resourceStub.GetNics(nicids)
+func (provider *QingCloudNicProvider) GetNicsInfo(nicids []string) ([]*types.HostNic, error) {
+	return provider.qcClient.GetNics(nicids)
 }
 
-func NewQingCloudNicProvider(provider *qingcloud.QCNicProvider) NicProvider {
-	return &QingCloudNicProvider{resourceStub: provider}
+func NewQingCloudNicProvider(qcClient qcclient.QingCloudAPI) NicProvider {
+	return &QingCloudNicProvider{qcClient: qcClient}
 }
 
-func (provider *QingCloudNicProvider) GenerateNic() (*pkg.HostNic, error) {
-	return provider.resourceStub.CreateNic()
+func (provider *QingCloudNicProvider) GenerateNic() (*types.HostNic, error) {
+	return provider.qcClient.CreateNic(provider.vxnet)
 }
 
 func (provider *QingCloudNicProvider) ValidateNic(nicid string) bool {
-	link, err := pkg.LinkByMacAddr(nicid)
+	link, err := types.LinkByMacAddr(nicid)
 	if err != nil {
 		return false
 	}
@@ -36,12 +37,12 @@ func (provider *QingCloudNicProvider) ValidateNic(nicid string) bool {
 	return true
 }
 
-func (provider *QingCloudNicProvider) ReclaimNic(niclist []*string) error {
-	return provider.resourceStub.DeleteNics(niclist)
+func (provider *QingCloudNicProvider) ReclaimNic(niclist []string) error {
+	return provider.qcClient.DeleteNics(niclist)
 }
 
 func (provider *QingCloudNicProvider) DisableNic(nicid string) error {
-	iface, err := pkg.LinkByMacAddr(nicid)
+	iface, err := types.LinkByMacAddr(nicid)
 	if err != nil {
 		return err
 	}

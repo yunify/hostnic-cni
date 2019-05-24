@@ -6,9 +6,9 @@ import (
 
 	"time"
 
-	"github.com/orcaman/concurrent-map"
-	log "github.com/sirupsen/logrus"
-	"github.com/yunify/hostnic-cni/pkg"
+	cmap "github.com/orcaman/concurrent-map"
+	"github.com/yunify/hostnic-cni/pkg/types"
+	"k8s.io/klog"
 )
 
 const (
@@ -80,7 +80,7 @@ func NewNicPool(size int, nicProvider NicProvider, gatewayMgr *GatewayManager, o
 
 func (pool *NicPool) init() error {
 	if pool.gatewayMgr != nil {
-		log.Infoln("Initialize gateway manager")
+		klog.V(1).Infoln("Initialize gateway manager")
 		nicids, err := pool.gatewayMgr.CollectGatewayNic()
 		if err != nil {
 			return err
@@ -88,28 +88,28 @@ func (pool *NicPool) init() error {
 		pool.addNicsToPool(nicids...)
 	}
 	//start eventloop
-	log.Infoln("Start nic pool event loop")
+	klog.V(1).Infoln("Start nic pool event loop")
 	pool.StartEventloop()
 	return nil
 }
 
 //addNicsToPool may block current process until channel is not empty
-func (pool *NicPool) addNicsToPool(nics ...*pkg.HostNic) {
+func (pool *NicPool) addNicsToPool(nics ...*types.HostNic) {
 	pool.Add(1)
 	go func() {
 		defer pool.Done()
 		for _, nic := range nics {
 			pool.nicDict.Set(nic.ID, nic)
-			log.Debugln("start to wait until ready pool is not full.")
+			klog.V(2).Infoln("start to wait until ready pool is not full.")
 			pool.nicReadyPool <- nic.ID
-			log.Debugf("put %s into ready pool", nic.ID)
+			klog.V(2).Infof("put %s into ready pool", nic.ID)
 		}
 	}()
 }
 
 //CleanUpReadyPool clear recycled nic cache
 func (pool *NicPool) CleanUpReadyPool() {
-	log.Infoln("Start to clean up ready pool")
+	klog.V(1).Infoln("Start to clean up ready pool")
 	timer := time.NewTimer(DeleteWaitTimeout)
 	var niclist []*string
 Cleanerloop:
@@ -119,7 +119,7 @@ Cleanerloop:
 			break Cleanerloop
 		case nicid, ok := <-pool.nicReadyPool:
 			if ok {
-				niclist = append(niclist, pkg.StringPtr(nicid))
+				niclist = append(niclist, types.StringPtr(nicid))
 				timer.Reset(DeleteWaitTimeout)
 			} else {
 				break Cleanerloop
@@ -127,16 +127,16 @@ Cleanerloop:
 		}
 	}
 	timer.Stop()
-	log.Infof("Cleaned up ready pool ")
+	klog.V(1).Infof("Cleaned up ready pool ")
 	if len(niclist) > 0 {
-		log.Infof("Deleting reclaimed nics ...")
+		klog.V(1).Infof("Deleting reclaimed nics ...")
 		nicids := ""
 		err := pool.nicProvider.ReclaimNic(niclist)
 		for _, item := range niclist {
 			nicids = nicids + "[" + *item + "]"
 			pool.nicDict.Remove(*item)
 		}
-		log.Infof("Deleted nic %s , error : %v", nicids, err)
+		klog.V(1).Infof("Deleted nic %s , error : %v", nicids, err)
 	}
 }
 
@@ -150,7 +150,7 @@ func (pool *NicPool) StartEventloop() {
 			select {
 
 			case nic := <-pool.nicReadyPool:
-				log.Debugf("move %s from ready pool to nic pool", nic)
+				klog.V(2).Infof("move %s from ready pool to nic pool", nic)
 				pool.nicpool <- nic
 
 			default:
@@ -159,32 +159,32 @@ func (pool *NicPool) StartEventloop() {
 				pool.nicStopLock.RUnlock()
 				if !stopFlag {
 					var err error
-					var nic *pkg.HostNic
+					var nic *types.HostNic
 					var timer int
 					for timer = 0; timer < 5; timer++ {
 						nic, err = pool.nicProvider.GenerateNic()
 						if err == nil {
 							break
 						}
-						log.Errorf("Failed to get nic from generator:%s ", err)
+						klog.Errorf("Failed to get nic from generator:%s ", err)
 					}
 					if timer == 5 {
-						log.Errorf("Failed to generate nic %v", err)
+						klog.Errorf("Failed to generate nic %v", err)
 						go pool.ShutdownNicPool()
 						break CLEANUP
 					}
 					pool.nicDict.Set(nic.ID, nic)
 
-					log.Debugln("start to wait until nic pool is not full.")
+					klog.V(2).Infoln("start to wait until nic pool is not full.")
 					pool.nicpool <- nic.ID
-					log.Debugf("put %s into nic pool", nic.ID)
+					klog.V(2).Infof("put %s into nic pool", nic.ID)
 				} else {
-					log.Debugln("Stopped generator")
+					klog.V(2).Infoln("Stopped generator")
 					break CLEANUP
 				}
 			}
 		}
-		log.Info("Event loop stopped")
+		klog.V(1).Infoln("Event loop stopped")
 	}()
 }
 
@@ -199,23 +199,23 @@ func (pool *NicPool) ShutdownNicPool() {
 		pool.nicStopLock.Unlock()
 		if pool.config.CleanUpCache {
 			var cachedlist []*string
-			log.Infoln("start to delete nics in cache pool")
+			klog.V(1).Infoln("start to delete nics in cache pool")
 			for nic := range pool.nicpool {
-				cachedlist = append(cachedlist, pkg.StringPtr(nic))
-				log.Debugf("Got nic %s in nic pool", nic)
+				cachedlist = append(cachedlist, types.StringPtr(nic))
+				klog.V(2).Infof("Got nic %s in nic pool", nic)
 			}
-			log.Infoln("start to delete nics in ready pool")
+			klog.V(1).Infoln("start to delete nics in ready pool")
 			for nic := range pool.nicReadyPool {
-				cachedlist = append(cachedlist, pkg.StringPtr(nic))
-				log.Debugf("Got nic %s in nic pool", nic)
+				cachedlist = append(cachedlist, types.StringPtr(nic))
+				klog.V(2).Infof("Got nic %s in nic pool", nic)
 			}
-			log.Infof("Deleting cached nics...")
+			klog.V(1).Infof("Deleting cached nics...")
 			err := pool.nicProvider.ReclaimNic(cachedlist)
 			var niclist string
 			for _, nicitem := range cachedlist {
 				niclist = niclist + "[" + *nicitem + "] "
 			}
-			log.Infof("Deleted nics %s,error:%v", niclist, err)
+			klog.V(1).Infof("Deleted nics %s,error:%v", niclist, err)
 		}
 		stopch <- struct{}{}
 		close(stopch)
@@ -223,16 +223,16 @@ func (pool *NicPool) ShutdownNicPool() {
 	pool.Wait() // wait until all of requests are processed
 	close(pool.nicReadyPool)
 	close(pool.nicpool)
-	log.Infof("closed nic pool")
+	klog.V(1).Infof("closed nic pool")
 	<-stopChannel
 }
 
 //ReturnNic recycle deleted nic
 func (pool *NicPool) ReturnNic(nicid string) error {
-	log.Debugf("Return %s to nic ready pool", nicid)
+	klog.V(2).Infof("Return %s to nic ready pool", nicid)
 	err := pool.nicProvider.DisableNic(nicid)
 	if err != nil {
-		log.Errorf("Failed to disable nic %s, %v", nicid, err)
+		klog.Errorf("Failed to disable nic %s, %v", nicid, err)
 		return err
 	}
 	//check if nic is in dict
@@ -241,7 +241,7 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 	} else {
 		nics, err := pool.nicProvider.GetNicsInfo([]*string{&nicid})
 		if err != nil {
-			log.Errorf("Failed to get nic %s, %v", nicid, err)
+			klog.Errorf("Failed to get nic %s, %v", nicid, err)
 			return err
 		}
 		pool.addNicsToPool(nics[0])
@@ -250,20 +250,20 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 }
 
 //BorrowNic allocate nic for client
-func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, *string, error) {
+func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*types.HostNic, *string, error) {
 	nicid := <-pool.nicpool
 	times := 0
 	for ; !pool.nicProvider.ValidateNic(nicid) && times < AllocationRetryTimes; times++ {
-		log.Errorf("Validation Failed. retry allocation")
+		klog.Errorf("Validation Failed. retry allocation")
 		nicid = <-pool.nicpool
 	}
 	if times == AllocationRetryTimes {
 		return nil, nil, fmt.Errorf("Failed to allocate nic. retried %d times ", times)
 	}
 
-	var nic *pkg.HostNic
+	var nic *types.HostNic
 	if item, ok := pool.nicDict.Get(nicid); ok {
-		nic = item.(*pkg.HostNic)
+		nic = item.(*types.HostNic)
 	}
 
 	if pool.gatewayMgr != nil && autoAssignGateway {
@@ -273,6 +273,6 @@ func (pool *NicPool) BorrowNic(autoAssignGateway bool) (*pkg.HostNic, *string, e
 		}
 		return nic, &gateway, nil
 	}
-	log.Debugf("Borrow nic from nic pool")
+	klog.V(2).Infof("Borrow nic from nic pool")
 	return nic, nil, nil
 }

@@ -1,3 +1,41 @@
+apiVersion: rbac.authorization.k8s.io/v1
+# kubernetes versions before 1.8.0 should use rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: hostnic-node
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - nodes
+  - namespaces
+  verbs: ["list", "watch", "get"]
+- apiGroups: ["extensions"]
+  resources:
+  - daemonsets
+  verbs: ["list", "watch"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hostnic-node
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+# kubernetes versions before 1.8.0 should use rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: hostnic-node
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hostnic-node
+subjects:
+- kind: ServiceAccount
+  name: hostnic-node
+  namespace: kube-system
+---
+
 kind: DaemonSet
 apiVersion: apps/v1
 # kubernetes versions before 1.9.0 should use extensions/v1beta1
@@ -20,7 +58,7 @@ spec:
         scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
       priorityClassName: system-node-critical
-      serviceAccountName: aws-node
+      serviceAccountName: hostnic-node
       hostNetwork: true
       tolerations:
       - operator: Exists
@@ -30,10 +68,8 @@ spec:
         ports:
         - containerPort: 61678
           name: metrics
-        name: aws-node
+        name: hostnic-node
         env:
-          - name: AWS_VPC_K8S_CNI_LOGLEVEL
-            value: DEBUG
           - name: MY_NODE_NAME
             valueFrom:
               fieldRef:
@@ -56,6 +92,12 @@ spec:
           name: log-dir
         - mountPath: /var/run/docker.sock
           name: dockersock
+        - mountPath: /root/.qingcloud/
+          name: apiaccesskey
+          readOnly: true
+        - mountPath: /host/etc/qingcloud/
+          name: qingcloud-cfg
+          readOnly: true
       volumes:
       - name: cni-bin-dir
         hostPath:
@@ -69,3 +111,9 @@ spec:
       - name: dockersock
         hostPath:
           path: /var/run/docker.sock
+      - name:  apiaccesskey
+        secret:
+          secretName: qcsecret
+      - name:  qingcloud-cfg
+        hostPath:
+          path:  /etc/qingcloud

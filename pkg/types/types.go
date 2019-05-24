@@ -16,28 +16,39 @@
 // =========================================================================
 //
 
-package pkg
+package types
 
 import (
-	"encoding/json"
-	"reflect"
-	"testing"
+	"net"
 )
 
-func TestTypesJson(t *testing.T) {
-	hostnic := &HostNic{ID: "test", Address: "192.168.1.10", HardwareAddr: "52:54:72:46:81:51",
-		VxNet: &VxNet{ID: "testvxnet", GateWay: "192.168.1.1",
-			Network: "192.168.1.0/24"}}
-	bytes, err := json.Marshal(hostnic)
-	if err != nil {
-		t.Error(err)
-	}
-	hostnic2 := &HostNic{}
-	err = json.Unmarshal(bytes, hostnic2)
-	if err != nil {
-		t.Error(err)
-	}
-	if !reflect.DeepEqual(hostnic, hostnic2) {
-		t.Errorf(" %++v != %++v", hostnic, hostnic2)
-	}
+type HostNic struct {
+	ID           string `json:"id"`
+	VxNetID      string `json:"vxNetID"`
+	HardwareAddr string `json:"hardwareAddr"`
+	Address      string `json:"address"`
+	DeviceNumber int    `json:"deviceNumber"`
+	IsPrimary    bool   `json:"IsPrimary"`
+}
+
+type VxNet struct {
+	ID string `json:"id"`
+	//GateWay eg: 192.168.1.1
+	GateWay string `json:"gateWay"`
+	//Network eg: 192.168.1.0/24
+	Network string `json:"network"`
+	//RouterId
+	RouterID string `json:"router_id"`
+	Name     string `json:"name"`
+}
+
+type HostInstance struct {
+	ID        string `json:"id"`
+	RouterID  string `json:"router_id"`
+	ClusterID string `json:"cluster_id"`
+}
+
+type VPC struct {
+	Network *net.IPNet
+	ID      string
 }

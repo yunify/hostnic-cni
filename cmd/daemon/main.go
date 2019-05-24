@@ -18,8 +18,34 @@
 
 package main
 
-import "github.com/yunify/hostnic-cni/cmd/daemon/cmd"
+import (
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/coreos/go-systemd/daemon"
+	"github.com/yunify/hostnic-cni/pkg/ipam"
+	"k8s.io/klog"
+)
 
 func main() {
-	cmd.Execute()
+	ipamd, err := ipam.NewIpamD()
+	if err != nil {
+		klog.Fatalf("Failed to create ipam, err:%s", err.Error())
+	}
+	stopCh := make(chan os.Signal)
+	signal.Notify(stopCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+
+	ipamd.StartIPAMD(stopCh)
+	daemon.SdNotify(false, "READY=1")
+
+	err := ipamd.StartIPAMD(stopCh)
+	if err != nil {
+		klog.Fatalf("Failed to start ipamd, err: %s", err.Error())
+	}
+	err := ipamd.StartGrpcServer()
+	if err != nil {
+		klog.Fatalf("Failed to start grpc server, err: %s", err.Error())
+	}
+	select {}
 }
