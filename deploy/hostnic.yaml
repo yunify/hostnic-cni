@@ -1,0 +1,71 @@
+kind: DaemonSet
+apiVersion: apps/v1
+# kubernetes versions before 1.9.0 should use extensions/v1beta1
+metadata:
+  name: hostnic-node
+  namespace: kube-system
+  labels:
+    app: hostnic-node
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: hostnic-node
+  template:
+    metadata:
+      labels:
+        app: hostnic-node
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: aws-node
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+      containers:
+      - image: magicsong/hostnic:v0.0.1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 61678
+          name: metrics
+        name: aws-node
+        env:
+          - name: AWS_VPC_K8S_CNI_LOGLEVEL
+            value: DEBUG
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: WATCH_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        resources:
+          requests:
+            cpu: 10m
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /host/opt/cni/bin
+          name: cni-bin-dir
+        - mountPath: /host/etc/cni/net.d
+          name: cni-net-dir
+        - mountPath: /host/var/log
+          name: log-dir
+        - mountPath: /var/run/docker.sock
+          name: dockersock
+      volumes:
+      - name: cni-bin-dir
+        hostPath:
+          path: /opt/cni/bin
+      - name: cni-net-dir
+        hostPath:
+          path: /etc/cni/net.d
+      - name: log-dir
+        hostPath:
+          path: /var/log
+      - name: dockersock
+        hostPath:
+          path: /var/run/docker.sock

@@ -125,17 +125,17 @@ func (e *MPLSEncap) Type() int {
 
 func (e *MPLSEncap) Decode(buf []byte) error {
 	if len(buf) < 4 {
-		return fmt.Errorf("Lack of bytes")
+		return fmt.Errorf("lack of bytes")
 	}
 	native := nl.NativeEndian()
 	l := native.Uint16(buf)
 	if len(buf) < int(l) {
-		return fmt.Errorf("Lack of bytes")
+		return fmt.Errorf("lack of bytes")
 	}
 	buf = buf[:l]
 	typ := native.Uint16(buf[2:])
 	if typ != nl.MPLS_IPTUNNEL_DST {
-		return fmt.Errorf("Unknown MPLS Encap Type: %d", typ)
+		return fmt.Errorf("unknown MPLS Encap Type: %d", typ)
 	}
 	e.Labels = nl.DecodeMPLSStack(buf[4:])
 	return nil
@@ -180,6 +180,79 @@ func (e *MPLSEncap) Equal(x Encap) bool {
 	}
 	for i := range e.Labels {
 		if e.Labels[i] != o.Labels[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// SEG6 definitions
+type SEG6Encap struct {
+	Mode     int
+	Segments []net.IP
+}
+
+func (e *SEG6Encap) Type() int {
+	return nl.LWTUNNEL_ENCAP_SEG6
+}
+func (e *SEG6Encap) Decode(buf []byte) error {
+	if len(buf) < 4 {
+		return fmt.Errorf("lack of bytes")
+	}
+	native := nl.NativeEndian()
+	// Get Length(l) & Type(typ) : 2 + 2 bytes
+	l := native.Uint16(buf)
+	if len(buf) < int(l) {
+		return fmt.Errorf("lack of bytes")
+	}
+	buf = buf[:l] // make sure buf size upper limit is Length
+	typ := native.Uint16(buf[2:])
+	if typ != nl.SEG6_IPTUNNEL_SRH {
+		return fmt.Errorf("unknown SEG6 Type: %d", typ)
+	}
+
+	var err error
+	e.Mode, e.Segments, err = nl.DecodeSEG6Encap(buf[4:])
+
+	return err
+}
+func (e *SEG6Encap) Encode() ([]byte, error) {
+	s, err := nl.EncodeSEG6Encap(e.Mode, e.Segments)
+	native := nl.NativeEndian()
+	hdr := make([]byte, 4)
+	native.PutUint16(hdr, uint16(len(s)+4))
+	native.PutUint16(hdr[2:], nl.SEG6_IPTUNNEL_SRH)
+	return append(hdr, s...), err
+}
+func (e *SEG6Encap) String() string {
+	segs := make([]string, 0, len(e.Segments))
+	// append segment backwards (from n to 0) since seg#0 is the last segment.
+	for i := len(e.Segments); i > 0; i-- {
+		segs = append(segs, fmt.Sprintf("%s", e.Segments[i-1]))
+	}
+	str := fmt.Sprintf("mode %s segs %d [ %s ]", nl.SEG6EncapModeString(e.Mode),
+		len(e.Segments), strings.Join(segs, " "))
+	return str
+}
+func (e *SEG6Encap) Equal(x Encap) bool {
+	o, ok := x.(*SEG6Encap)
+	if !ok {
+		return false
+	}
+	if e == o {
+		return true
+	}
+	if e == nil || o == nil {
+		return false
+	}
+	if e.Mode != o.Mode {
+		return false
+	}
+	if len(e.Segments) != len(o.Segments) {
+		return false
+	}
+	for i := range e.Segments {
+		if !e.Segments[i].Equal(o.Segments[i]) {
 			return false
 		}
 	}
@@ -381,6 +454,25 @@ func (h *Handle) routeHandle(route *Route, req *nl.NetlinkRequest, msg *nl.RtMsg
 		msg.Type = uint8(route.Type)
 	}
 
+	var metrics []*nl.RtAttr
+	// TODO: support other rta_metric values
+	if route.MTU > 0 {
+		b := nl.Uint32Attr(uint32(route.MTU))
+		metrics = append(metrics, nl.NewRtAttr(unix.RTAX_MTU, b))
+	}
+	if route.AdvMSS > 0 {
+		b := nl.Uint32Attr(uint32(route.AdvMSS))
+		metrics = append(metrics, nl.NewRtAttr(unix.RTAX_ADVMSS, b))
+	}
+
+	if metrics != nil {
+		attr := nl.NewRtAttr(unix.RTA_METRICS, nil)
+		for _, metric := range metrics {
+			attr.AddChild(metric)
+		}
+		rtAttrs = append(rtAttrs, attr)
+	}
+
 	msg.Flags = uint32(route.Flags)
 	msg.Scope = uint8(route.Scope)
 	msg.Family = uint8(family)
@@ -537,11 +629,11 @@ func deserializeRoute(m []byte) (Route, error) {
 		case unix.RTA_MULTIPATH:
 			parseRtNexthop := func(value []byte) (*NexthopInfo, []byte, error) {
 				if len(value) < unix.SizeofRtNexthop {
-					return nil, nil, fmt.Errorf("Lack of bytes")
+					return nil, nil, fmt.Errorf("lack of bytes")
 				}
 				nh := nl.DeserializeRtNexthop(value)
 				if len(value) < int(nh.RtNexthop.Len) {
-					return nil, nil, fmt.Errorf("Lack of bytes")
+					return nil, nil, fmt.Errorf("lack of bytes")
 				}
 				info := &NexthopInfo{
 					LinkIndex: int(nh.RtNexthop.Ifindex),
@@ -612,6 +704,19 @@ func deserializeRoute(m []byte) (Route, error) {
 			encapType = attr
 		case nl.RTA_ENCAP:
 			encap = attr
+		case unix.RTA_METRICS:
+			metrics, err := nl.ParseRouteAttr(attr.Value)
+			if err != nil {
+				return route, err
+			}
+			for _, metric := range metrics {
+				switch metric.Attr.Type {
+				case unix.RTAX_MTU:
+					route.MTU = int(native.Uint32(metric.Value[0:4]))
+				case unix.RTAX_ADVMSS:
+					route.AdvMSS = int(native.Uint32(metric.Value[0:4]))
+				}
+			}
 		}
 	}
 
@@ -621,6 +726,11 @@ func deserializeRoute(m []byte) (Route, error) {
 		switch typ {
 		case nl.LWTUNNEL_ENCAP_MPLS:
 			e = &MPLSEncap{}
+			if err := e.Decode(encap.Value); err != nil {
+				return route, err
+			}
+		case nl.LWTUNNEL_ENCAP_SEG6:
+			e = &SEG6Encap{}
 			if err := e.Decode(encap.Value); err != nil {
 				return route, err
 			}
@@ -679,13 +789,13 @@ func (h *Handle) RouteGet(destination net.IP) ([]Route, error) {
 // RouteSubscribe takes a chan down which notifications will be sent
 // when routes are added or deleted. Close the 'done' chan to stop subscription.
 func RouteSubscribe(ch chan<- RouteUpdate, done <-chan struct{}) error {
-	return routeSubscribeAt(netns.None(), netns.None(), ch, done, nil)
+	return routeSubscribeAt(netns.None(), netns.None(), ch, done, nil, false)
 }
 
 // RouteSubscribeAt works like RouteSubscribe plus it allows the caller
 // to choose the network namespace in which to subscribe (ns).
 func RouteSubscribeAt(ns netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}) error {
-	return routeSubscribeAt(ns, netns.None(), ch, done, nil)
+	return routeSubscribeAt(ns, netns.None(), ch, done, nil, false)
 }
 
 // RouteSubscribeOptions contains a set of options to use with
@@ -693,6 +803,7 @@ func RouteSubscribeAt(ns netns.NsHandle, ch chan<- RouteUpdate, done <-chan stru
 type RouteSubscribeOptions struct {
 	Namespace     *netns.NsHandle
 	ErrorCallback func(error)
+	ListExisting  bool
 }
 
 // RouteSubscribeWithOptions work like RouteSubscribe but enable to
@@ -703,10 +814,10 @@ func RouteSubscribeWithOptions(ch chan<- RouteUpdate, done <-chan struct{}, opti
 		none := netns.None()
 		options.Namespace = &none
 	}
-	return routeSubscribeAt(*options.Namespace, netns.None(), ch, done, options.ErrorCallback)
+	return routeSubscribeAt(*options.Namespace, netns.None(), ch, done, options.ErrorCallback, options.ListExisting)
 }
 
-func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}, cberr func(error)) error {
+func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <-chan struct{}, cberr func(error), listExisting bool) error {
 	s, err := nl.SubscribeAt(newNs, curNs, unix.NETLINK_ROUTE, unix.RTNLGRP_IPV4_ROUTE, unix.RTNLGRP_IPV6_ROUTE)
 	if err != nil {
 		return err
@@ -716,6 +827,15 @@ func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <
 			<-done
 			s.Close()
 		}()
+	}
+	if listExisting {
+		req := pkgHandle.newNetlinkRequest(unix.RTM_GETROUTE,
+			unix.NLM_F_DUMP)
+		infmsg := nl.NewIfInfomsg(unix.AF_UNSPEC)
+		req.AddData(infmsg)
+		if err := s.Send(req); err != nil {
+			return err
+		}
 	}
 	go func() {
 		defer close(ch)
@@ -728,6 +848,20 @@ func routeSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- RouteUpdate, done <
 				return
 			}
 			for _, m := range msgs {
+				if m.Header.Type == unix.NLMSG_DONE {
+					continue
+				}
+				if m.Header.Type == unix.NLMSG_ERROR {
+					native := nl.NativeEndian()
+					error := int32(native.Uint32(m.Data[0:4]))
+					if error == 0 {
+						continue
+					}
+					if cberr != nil {
+						cberr(syscall.Errno(-error))
+					}
+					return
+				}
 				route, err := deserializeRoute(m.Data)
 				if err != nil {
 					if cberr != nil {
