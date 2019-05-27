@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map"
 	log "github.com/sirupsen/logrus"
-	"github.com/yunify/hostnic-cni/pkg"
+	"github.com/yunify/hostnic-cni/pkg/types"
 )
 
 type MockProviderInterface interface {
@@ -31,13 +31,13 @@ func NewMockProvider() *MockProvider {
 	return &MockProvider{index: 0, result: cmap.New()}
 }
 
-func (provider *MockProvider) GenerateNic() (*pkg.HostNic, error) {
+func (provider *MockProvider) GenerateNic() (*types.HostNic, error) {
 	provider.Lock()
 	defer provider.Unlock()
 	id := strconv.Itoa(provider.index)
 	provider.result.Set(id, true)
 	provider.index++
-	return &pkg.HostNic{
+	return &types.HostNic{
 		ID: id,
 	}, nil
 
@@ -52,22 +52,22 @@ func (provider *MockProvider) ValidateNic(nicid string) bool {
 	return result
 }
 
-func (provider *MockProvider) ReclaimNic(ids []*string) error {
+func (provider *MockProvider) ReclaimNic(ids []string) error {
 	for _, id := range ids {
-		provider.result.Remove(*id)
+		provider.result.Remove(id)
 	}
 	return nil
 }
 
-func (provider *MockProvider) GetNicsInfo(idlist []*string) ([]*pkg.HostNic, error) {
-	var result []*pkg.HostNic
+func (provider *MockProvider) GetNicsInfo(idlist []string) ([]*types.HostNic, error) {
+	var result []*types.HostNic
 	for _, item := range idlist {
 		rand.Seed(time.Now().UnixNano())
 		if rand.Intn(2) == 1 {
-			result = append(result, &pkg.HostNic{ID: *item})
-			provider.result.Set(*item, true)
+			result = append(result, &types.HostNic{ID: item})
+			provider.result.Set(item, true)
 		} else {
-			return nil, fmt.Errorf("nic %s not found", *item)
+			return nil, fmt.Errorf("nic %s not found", item)
 		}
 	}
 	return result, nil

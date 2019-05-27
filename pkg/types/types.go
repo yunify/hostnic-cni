@@ -16,13 +16,19 @@
 // =========================================================================
 //
 
-package pkg
+package types
+
+import (
+	"net"
+)
 
 type HostNic struct {
 	ID           string `json:"id"`
 	VxNet        *VxNet `json:"vxNet"`
 	HardwareAddr string `json:"hardwareAddr"`
 	Address      string `json:"address"`
+	DeviceNumber int    `json:"deviceNumber"`
+	IsPrimary    bool   `json:"IsPrimary"`
 }
 
 type VxNet struct {
@@ -30,12 +36,20 @@ type VxNet struct {
 	//GateWay eg: 192.168.1.1
 	GateWay string `json:"gateWay"`
 	//Network eg: 192.168.1.0/24
-	Network string `json:"network"`
+	Network *net.IPNet `json:"network"`
 	//RouterId
 	RouterID string `json:"router_id"`
+	Name     string `json:"name"`
 }
 
 type HostInstance struct {
-	InstanceID string `json:"instance_id"`
-	RouterID   string `json:"router_id"`
+	ID        string `json:"id"`
+	RouterID  string `json:"router_id"`
+	ClusterID string `json:"cluster_id"`
+}
+
+type VPC struct {
+	Network *net.IPNet
+	ID      string
+	VxNets  []string
 }

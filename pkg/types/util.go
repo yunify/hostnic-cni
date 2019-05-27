@@ -16,28 +16,28 @@
 // =========================================================================
 //
 
-package pkg
+package types
 
 import (
-	"encoding/json"
-	"reflect"
-	"testing"
+	"fmt"
+
+	"github.com/vishvananda/netlink"
 )
 
-func TestTypesJson(t *testing.T) {
-	hostnic := &HostNic{ID: "test", Address: "192.168.1.10", HardwareAddr: "52:54:72:46:81:51",
-		VxNet: &VxNet{ID: "testvxnet", GateWay: "192.168.1.1",
-			Network: "192.168.1.0/24"}}
-	bytes, err := json.Marshal(hostnic)
+func StringPtr(str string) *string {
+	return &str
+}
+
+func LinkByMacAddr(macAddr string) (netlink.Link, error) {
+	links, err := netlink.LinkList()
 	if err != nil {
-		t.Error(err)
+		return nil, err
 	}
-	hostnic2 := &HostNic{}
-	err = json.Unmarshal(bytes, hostnic2)
-	if err != nil {
-		t.Error(err)
+	for _, link := range links {
+		attr := link.Attrs()
+		if attr.HardwareAddr.String() == macAddr {
+			return link, nil
+		}
 	}
-	if !reflect.DeepEqual(hostnic, hostnic2) {
-		t.Errorf(" %++v != %++v", hostnic, hostnic2)
-	}
+	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
 }

@@ -31,11 +31,11 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/plugins/pkg/ns"
-	logger "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"github.com/yunify/hostnic-cni/pkg"
 	"github.com/yunify/hostnic-cni/pkg/messages"
+	util "github.com/yunify/hostnic-cni/pkg/types"
 	"google.golang.org/grpc"
+	"k8s.io/klog"
 )
 
 //IPAMConfig routing rules configuratioins
@@ -57,7 +57,7 @@ func loadNetConf(bytes []byte) (*NetConf, error) {
 	}
 
 	if netconf.BindAddr == "" {
-		netconf.BindAddr = "127.0.0.1:31080"
+		netconf.BindAddr = "127.0.0.1:41080"
 	}
 	return netconf, nil
 }
@@ -96,15 +96,15 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 		return fmt.Errorf("Failed to allocate nic :%v", err)
 	}
-	iface, err := pkg.LinkByMacAddr(nic.Nicid)
+	iface, err := util.LinkByMacAddr(nic.Nicid)
 	if err != nil {
-		logger.Errorf("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.Nicid)
+		klog.Errorf("LinkByMacAddr err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to get link by MacAddr %q: %v", nic.Nicid, err)
 	}
 
 	if err = netlink.LinkSetNsFd(iface, int(netns.Fd())); err != nil {
-		logger.Errorf("LinkSetNsFd err %s, delete Nic %s", err.Error(), nic.Nicid)
+		klog.Errorf("LinkSetNsFd err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to set namespace on link %q: %v", nic.Nicid, err)
 	}
@@ -112,7 +112,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	srcName := iface.Attrs().Name
 	_, ipNet, err := net.ParseCIDR(nic.Niccidr)
 	if err != nil {
-		logger.Errorf("ParseCIDR err %s, delete Nic %s", err.Error(), nic.Nicid)
+		klog.Errorf("ParseCIDR err %s, delete Nic %s", err.Error(), nic.Nicid)
 		client.FreeNic(context.Background(), &messages.FreeNicRequest{Nicid: nic.Nicid})
 		return fmt.Errorf("failed to parse network %q: %v", nic.Niccidr, err)
 	}

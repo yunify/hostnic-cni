@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
 echo "===== Starting installing HOSTNIC-CNI ========="
 
@@ -8,4 +8,4 @@ cp /app/99-loopback.conf /host/etc/cni/net.d/
 
 
 echo "===== Starting HOSTNIC-AGENT ==========="
-/app/hostnic-agent
+/app/hostnic-agent -v=4

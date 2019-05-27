@@ -30,7 +30,7 @@ func (daemon *DaemonServerHandler) AllocateNic(context context.Context, request 
 		Nicid:      nic.HardwareAddr,
 		Nicgateway: nic.VxNet.GateWay,
 		Nicip:      nic.Address,
-		Niccidr:    nic.VxNet.Network,
+		Niccidr:    nic.VxNet.Network.String(),
 	}
 	if request.AutoAssignGateway && gateway != nil {
 		response.Servicegateway = *gateway
