@@ -19,6 +19,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,22 +29,32 @@ import (
 	"k8s.io/klog"
 )
 
+func init() {
+	klog.InitFlags(nil)
+	flag.Parse()
+}
 func main() {
 	ipamd, err := ipam.NewIpamD()
 	if err != nil {
 		klog.Fatalf("Failed to create ipam, err:%s", err.Error())
 	}
-	stopCh := make(chan os.Signal)
-	signal.Notify(stopCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-
-	ipamd.StartIPAMD(stopCh)
+	stopCh := make(chan struct{})
+	stopSignal := make(chan os.Signal)
+	signal.Notify(stopSignal, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	daemon.SdNotify(false, "READY=1")
-
-	err := ipamd.StartIPAMD(stopCh)
+	go func() {
+		defer close(stopSignal)
+		for range stopSignal {
+			stopCh <- struct{}{}
+		}
+	}()
+	klog.V(1).Infoln("Starting IPAMD")
+	err = ipamd.StartIPAMD(stopCh)
 	if err != nil {
 		klog.Fatalf("Failed to start ipamd, err: %s", err.Error())
 	}
-	err := ipamd.StartGrpcServer()
+	klog.V(1).Infoln("Starting Grpc server")
+	err = ipamd.StartGrpcServer()
 	if err != nil {
 		klog.Fatalf("Failed to start grpc server, err: %s", err.Error())
 	}

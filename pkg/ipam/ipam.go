@@ -55,7 +55,8 @@ func NewIpamD() (*IpamD, error) {
 		klog.Errorln("Failed to initiate qingcloud api")
 		return nil, err
 	}
-	vpc, err := qcclient.GetVPCRouteID()
+	klog.V(2).Infoln("Get current vpc info")
+	vpc, err := qcclient.GetNodeVPC()
 	if err != nil {
 		klog.Errorf("Failed to get vpc router of %s", instanceid)
 		return nil, err
@@ -71,12 +72,20 @@ func NewIpamD() (*IpamD, error) {
 }
 
 func (s *IpamD) StartIPAMD(stopCh <-chan struct{}) error {
-	s.startK8sClient(stopCh)
+	err := s.startK8sClient(stopCh)
+	if err != nil {
+		klog.Errorln("Failed to start k8s node informer")
+		return err
+	}
 	return s.EnsureVxNet()
 }
-func (s *IpamD) startK8sClient(stopCh <-chan struct{}) {
-	go s.K8sClient.Start(stopCh)
+func (s *IpamD) startK8sClient(stopCh <-chan struct{}) error {
+	err := s.K8sClient.Start(stopCh)
+	if err != nil {
+		return err
+	}
 	s.isInformerStarted = true
+	return nil
 }
 
 func (s *IpamD) StartGrpcServer() error {
@@ -87,8 +96,8 @@ func (s *IpamD) StartGrpcServer() error {
 	}
 
 	//setup nic pool
-	nicpool, err := server.NewNicPool(s.poolSize, server.NewQingCloudNicProvider(s.resourceStub),
-		server.NewGatewayManager(s.resourceStub), server.NicPoolConfig{CleanUpCache: s.cleanUpCache})
+	nicpool, err := server.NewNicPool(s.poolSize, server.NewQingCloudNicProvider(s.qcClient, s.vxnet.ID),
+		server.NewGatewayManager(s.qcClient), server.NicPoolConfig{CleanUpCache: s.cleanUpCache})
 	if err != nil {
 		klog.Errorln("Failed to create pool.")
 		return err

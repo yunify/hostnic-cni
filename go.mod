@@ -24,7 +24,8 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
-	github.com/onsi/gomega v0.0.0-20190113212917-5533ce8a0da3 // indirect
+	github.com/onsi/ginkgo v1.6.0
+	github.com/onsi/gomega v0.0.0-20190113212917-5533ce8a0da3
 	github.com/orcaman/concurrent-map v0.0.0-20190314100340-2693aad1ed75
 	github.com/prometheus/client_golang v0.9.2
 	github.com/sirupsen/logrus v1.4.1
@@ -41,7 +42,7 @@ require (
 	google.golang.org/grpc v1.20.1
 	gopkg.in/inf.v0 v0.9.0 // indirect
 	k8s.io/api v0.0.0-20190313235455-40a48860b5ab
-	k8s.io/apimachinery v0.0.0-20190313205120-d7deff9243b1 // indirect
+	k8s.io/apimachinery v0.0.0-20190313205120-d7deff9243b1
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/klog v0.3.1
 	k8s.io/kube-openapi v0.0.0-20190228160746-b3a7cee44a30 // indirect

@@ -18,8 +18,8 @@ func (provider *QingCloudNicProvider) GetNicsInfo(nicids []string) ([]*types.Hos
 	return provider.qcClient.GetNics(nicids)
 }
 
-func NewQingCloudNicProvider(qcClient qcclient.QingCloudAPI) NicProvider {
-	return &QingCloudNicProvider{qcClient: qcClient}
+func NewQingCloudNicProvider(qcClient qcclient.QingCloudAPI, vxnet string) NicProvider {
+	return &QingCloudNicProvider{qcClient: qcClient, vxnet: vxnet}
 }
 
 func (provider *QingCloudNicProvider) GenerateNic() (*types.HostNic, error) {

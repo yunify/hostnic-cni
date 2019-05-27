@@ -111,7 +111,7 @@ func (pool *NicPool) addNicsToPool(nics ...*types.HostNic) {
 func (pool *NicPool) CleanUpReadyPool() {
 	klog.V(1).Infoln("Start to clean up ready pool")
 	timer := time.NewTimer(DeleteWaitTimeout)
-	var niclist []*string
+	var niclist []string
 Cleanerloop:
 	for {
 		select {
@@ -119,7 +119,7 @@ Cleanerloop:
 			break Cleanerloop
 		case nicid, ok := <-pool.nicReadyPool:
 			if ok {
-				niclist = append(niclist, types.StringPtr(nicid))
+				niclist = append(niclist, nicid)
 				timer.Reset(DeleteWaitTimeout)
 			} else {
 				break Cleanerloop
@@ -133,8 +133,8 @@ Cleanerloop:
 		nicids := ""
 		err := pool.nicProvider.ReclaimNic(niclist)
 		for _, item := range niclist {
-			nicids = nicids + "[" + *item + "]"
-			pool.nicDict.Remove(*item)
+			nicids = nicids + "[" + item + "]"
+			pool.nicDict.Remove(item)
 		}
 		klog.V(1).Infof("Deleted nic %s , error : %v", nicids, err)
 	}
@@ -198,22 +198,22 @@ func (pool *NicPool) ShutdownNicPool() {
 		pool.nicStopFlag = true
 		pool.nicStopLock.Unlock()
 		if pool.config.CleanUpCache {
-			var cachedlist []*string
+			var cachedlist []string
 			klog.V(1).Infoln("start to delete nics in cache pool")
 			for nic := range pool.nicpool {
-				cachedlist = append(cachedlist, types.StringPtr(nic))
+				cachedlist = append(cachedlist, nic)
 				klog.V(2).Infof("Got nic %s in nic pool", nic)
 			}
 			klog.V(1).Infoln("start to delete nics in ready pool")
 			for nic := range pool.nicReadyPool {
-				cachedlist = append(cachedlist, types.StringPtr(nic))
+				cachedlist = append(cachedlist, nic)
 				klog.V(2).Infof("Got nic %s in nic pool", nic)
 			}
 			klog.V(1).Infof("Deleting cached nics...")
 			err := pool.nicProvider.ReclaimNic(cachedlist)
 			var niclist string
 			for _, nicitem := range cachedlist {
-				niclist = niclist + "[" + *nicitem + "] "
+				niclist = niclist + "[" + nicitem + "] "
 			}
 			klog.V(1).Infof("Deleted nics %s,error:%v", niclist, err)
 		}
@@ -239,7 +239,7 @@ func (pool *NicPool) ReturnNic(nicid string) error {
 	if _, ok := pool.nicDict.Get(nicid); ok {
 		pool.nicReadyPool <- nicid
 	} else {
-		nics, err := pool.nicProvider.GetNicsInfo([]*string{&nicid})
+		nics, err := pool.nicProvider.GetNicsInfo([]string{nicid})
 		if err != nil {
 			klog.Errorf("Failed to get nic %s, %v", nicid, err)
 			return err

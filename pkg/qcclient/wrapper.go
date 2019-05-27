@@ -94,7 +94,13 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 	if *output.RetCode == 0 && len(output.Nics) > 0 {
 		qcnic := output.Nics[0]
 		hostNic := &types.HostNic{ID: *qcnic.NICID, HardwareAddr: *qcnic.NICID, Address: *qcnic.PrivateIP}
-		err := q.attachNic(hostNic)
+		vn, err := q.GetVxNet(vxnet)
+		if err != nil {
+			klog.Errorf("Failed to get vxnet of this nic")
+			return nil, err
+		}
+		hostNic.VxNet = vn
+		err = q.attachNic(hostNic)
 		if err != nil {
 			klog.Errorf("Failed to attach nic %s", *qcnic.NICID)
 			q.DeleteNic(*qcnic.NICID)
@@ -117,8 +123,10 @@ func (q *qingcloudAPIWrapper) GetAttachedNICs() ([]*types.HostNic, error) {
 	result := make([]*types.HostNic, 0)
 	for _, nic := range output.NICSet {
 		h := &types.HostNic{
-			ID:           *nic.NICID,
-			VxNetID:      *nic.VxNetID,
+			ID: *nic.NICID,
+			VxNet: &types.VxNet{
+				ID: *nic.VxNetID,
+			},
 			HardwareAddr: *nic.NICID,
 			Address:      *nic.PrivateIP,
 			DeviceNumber: *nic.Sequence,
@@ -228,7 +236,7 @@ func (q *qingcloudAPIWrapper) GetVxNets(ids []string) ([]*types.VxNet, error) {
 			vxnetItem := &types.VxNet{ID: *qcVxNet.VxNetID, RouterID: *qcVxNet.VpcRouterID}
 			if qcVxNet.Router != nil {
 				vxnetItem.GateWay = *qcVxNet.Router.ManagerIP
-				vxnetItem.Network = *qcVxNet.Router.IPNetwork
+				_, vxnetItem.Network, _ = net.ParseCIDR(*qcVxNet.Router.IPNetwork)
 			}
 			vxNets = append(vxNets, vxnetItem)
 		}
@@ -249,8 +257,10 @@ func (q *qingcloudAPIWrapper) GetNics(ids []string) ([]*types.HostNic, error) {
 		var niclist []*types.HostNic
 		for _, nic := range output.NICSet {
 			niclist = append(niclist, &types.HostNic{
-				ID:           *nic.NICID,
-				VxNetID:      *nic.VxNetID,
+				ID: *nic.NICID,
+				VxNet: &types.VxNet{
+					ID: *nic.VxNetID,
+				},
 				HardwareAddr: *nic.NICID,
 				Address:      *nic.PrivateIP,
 			})
@@ -278,7 +288,7 @@ func (q *qingcloudAPIWrapper) CreateVxNet(name string) (*types.VxNet, error) {
 	return nil, fmt.Errorf("Failed to create vxnet %s,err:%s", name, *output.Message)
 }
 
-func (q *qingcloudAPIWrapper) GetNodeRouter() (*types.VPC, error) {
+func (q *qingcloudAPIWrapper) GetNodeVPC() (*types.VPC, error) {
 	input := &service.DescribeInstancesInput{
 		Instances: []*string{&q.instanceID},
 		Verbose:   service.Int(1),
@@ -330,4 +340,69 @@ func (q *qingcloudAPIWrapper) GetVPC(id string) (*types.VPC, error) {
 	}
 	vpc.Network = net
 	return vpc, nil
+}
+
+func (q *qingcloudAPIWrapper) GetVPCVxNets(vpcid string) ([]*types.VxNet, error) {
+	input := &service.DescribeRouterVxNetsInput{
+		Router: &vpcid,
+	}
+	output, err := q.vpcService.DescribeRouterVxNets(input)
+	if err != nil {
+		return nil, err
+	}
+	if *output.RetCode != 0 {
+		err := fmt.Errorf("Failed to call 'DescribeRouterVxNets',err: %s", *output.Message)
+		return nil, err
+	}
+	result := make([]*types.VxNet, 0)
+	for _, vxnet := range output.RouterVxNetSet {
+		v := new(types.VxNet)
+		v.ID = *vxnet.VxNetID
+		_, v.Network, _ = net.ParseCIDR(*vxnet.IPNetwork)
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func (q *qingcloudAPIWrapper) JoinVPC(network, vxnetID, vpcID string) error {
+	input := &service.JoinRouterInput{
+		VxNet:     &vxnetID,
+		Router:    &vpcID,
+		IPNetwork: &network,
+	}
+	output, err := q.vpcService.JoinRouter(input)
+	if err != nil {
+		return err
+	}
+	return client.WaitJob(q.jobService, *output.JobID, defaultOpTimeout, defaultWaitInterval)
+}
+
+func (q *qingcloudAPIWrapper) LeaveVPC(vxnetID, vpcID string) error {
+	input := &service.LeaveRouterInput{
+		Router: &vpcID,
+		VxNets: []*string{&vxnetID},
+	}
+	output, err := q.vpcService.LeaveRouter(input)
+	if err != nil {
+		return err
+	}
+	err = client.WaitJob(q.jobService, *output.JobID, defaultOpTimeout, defaultWaitInterval)
+	if err != nil {
+		return err
+	}
+	return q.DeleteVxNet(vxnetID)
+}
+
+func (q *qingcloudAPIWrapper) DeleteVxNet(id string) error {
+	input := &service.DeleteVxNetsInput{
+		VxNets: []*string{&id},
+	}
+	output, err := q.vxNetService.DeleteVxNets(input)
+	if err != nil {
+		return err
+	}
+	if *output.RetCode != 0 {
+		return fmt.Errorf("Failed to delete vxnet %s, err: %s", id, *output.Message)
+	}
+	return nil
 }

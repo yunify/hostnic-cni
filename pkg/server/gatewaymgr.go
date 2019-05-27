@@ -45,7 +45,7 @@ func (pool *GatewayManager) CollectGatewayNic() ([]*types.HostNic, error) {
 			return nil, err
 		}
 		if niclink.Attrs().Flags&net.FlagUp != 0 {
-			if ok := pool.gatewayMgr.SetIfAbsent(nic.VxNetID, nic.Address); ok {
+			if ok := pool.gatewayMgr.SetIfAbsent(nic.VxNet.ID, nic.Address); ok {
 				continue
 			} else {
 				netlink.LinkSetDown(niclink)
@@ -88,16 +88,10 @@ func (pool *GatewayManager) GetOrAllocateGateway(vxnetid string) (string, error)
 			}
 			v, err := pool.qcClient.GetVxNet(vxnetid)
 			if err != nil {
-				klog.Errorf("Failed to get vxvet of %s, err: ", vxnetid, err.Error())
+				klog.Errorf("Failed to get vxvet of %s, err: %s", vxnetid, err.Error())
 				return nil
 			}
-			_, netcidr, err := net.ParseCIDR(v.Network)
-			if err != nil {
-				klog.Errorf("Failed to parse gateway network.%s Please check your config", err)
-				pool.qcClient.DeleteNic(nic.HardwareAddr)
-				return nil
-			}
-			addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(nic.Address), Mask: netcidr.Mask}, Label: ""}
+			addr := &netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP(nic.Address), Mask: v.Network.Mask}, Label: ""}
 			if err = netlink.AddrAdd(niclink, addr); err != nil {
 				klog.Errorf("AddrAdd err %s, delete Nic %s", err.Error(), nic.HardwareAddr)
 				pool.qcClient.DeleteNic(nic.HardwareAddr)

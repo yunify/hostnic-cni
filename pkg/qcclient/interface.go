@@ -22,9 +22,13 @@ type QingCloudNetAPI interface {
 	DeleteNics(nicIDs []string) error
 	GetVxNet(vxNet string) (*types.VxNet, error)
 	GetVxNets([]string) ([]*types.VxNet, error)
+	DeleteVxNet(string) error
 	GetNics([]string) ([]*types.HostNic, error)
 	CreateVxNet(name string) (*types.VxNet, error)
 	GetAttachedNICs() ([]*types.HostNic, error)
 	GetVPC(string) (*types.VPC, error)
-	GetNodeRouter() (*types.VPC, error)
+	GetNodeVPC() (*types.VPC, error)
+	GetVPCVxNets(string) ([]*types.VxNet, error)
+	JoinVPC(network, vxnetID, vpcID string) error
+	LeaveVPC(vxnetID, vpcID string) error
 }

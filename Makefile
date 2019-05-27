@@ -25,9 +25,9 @@ build-binary: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic cmd/hostnic/hostnic.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/daemon/main.go
 
-build-docker: 
+build-docker: build-binary
 	docker build -t $(IMAGE_NAME) .
 	docker push $(IMAGE_NAME)
 
-deploy-dev:  build-binary build-docker
-	kubectl apply -f deploy/hostnic.yaml
+debug:
+	./hack/debug.sh
