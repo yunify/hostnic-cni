@@ -129,7 +129,7 @@ func (q *qingcloudAPIWrapper) GetAttachedNICs() ([]*types.HostNic, error) {
 			},
 			HardwareAddr: *nic.NICID,
 			Address:      *nic.PrivateIP,
-			DeviceNumber: *nic.Sequence,
+			DeviceNumber: int32(*nic.Sequence),
 			IsPrimary:    false,
 		}
 		result = append(result, h)

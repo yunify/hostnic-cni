@@ -8,6 +8,14 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/types"
 )
 
+type NicProvider interface {
+	GenerateNic() (*types.HostNic, error)
+	ValidateNic(nicid string) bool
+	ReclaimNic([]string) error
+	GetNicsInfo([]string) ([]*types.HostNic, error)
+	DisableNic(nicid string) error
+}
+
 //QingCloudNicProvider nic provider qingcloud implementation
 type QingCloudNicProvider struct {
 	qcClient qcclient.QingCloudAPI

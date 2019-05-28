@@ -27,7 +27,7 @@ type HostNic struct {
 	VxNet        *VxNet `json:"vxNet"`
 	HardwareAddr string `json:"hardwareAddr"`
 	Address      string `json:"address"`
-	DeviceNumber int    `json:"deviceNumber"`
+	DeviceNumber int32  `json:"deviceNumber"`
 	IsPrimary    bool   `json:"IsPrimary"`
 }
 

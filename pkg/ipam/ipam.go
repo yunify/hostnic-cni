@@ -11,8 +11,8 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yunify/hostnic-cni/pkg/k8sclient"
-	"github.com/yunify/hostnic-cni/pkg/messages"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
+	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/server"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"google.golang.org/grpc"
@@ -107,8 +107,8 @@ func (s *IpamD) StartGrpcServer() error {
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
 	)
-	handlers := server.NewDaemonServerHandler(nicpool)
-	messages.RegisterNicservicesServer(grpcServer, handlers)
+	handlers := NewGRPCServerHandler(nicpool, s)
+	rpc.RegisterCNIBackendServer(grpcServer, handlers)
 	grpc_prometheus.Register(grpcServer)
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/clearcache", func(writer http.ResponseWriter, request *http.Request) {
