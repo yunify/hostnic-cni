@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"github.com/yunify/hostnic-cni/pkg/retry"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"github.com/yunify/qingcloud-sdk-go/client"
 	"github.com/yunify/qingcloud-sdk-go/config"
@@ -20,11 +22,16 @@ func init() {
 }
 
 const (
+	nicPrefix = "hostnic_"
+
 	defaultOpTimeout     = 180 * time.Second
 	defaultWaitInterval  = 10 * time.Second
 	waitNicLocalTimeout  = 20 * time.Second
 	waitNicLocalInterval = 2 * time.Second
 	nicNumLimit          = 60
+
+	retryTimes    = 3
+	retryInterval = time.Second * 5
 )
 
 var _ QingCloudAPI = &qingcloudAPIWrapper{}
@@ -83,7 +90,7 @@ func NewQingCloudClient(instanceID string) (QingCloudAPI, error) {
 func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 	input := &service.CreateNicsInput{
 		VxNet:   &vxnet,
-		NICName: service.String("hostnic_%" + q.instanceID),
+		NICName: service.String(nicPrefix + q.instanceID),
 	}
 	output, err := q.nicService.CreateNics(input)
 	//TODO check too many nic in vDxnet err, and retry with another vxnet.
@@ -111,28 +118,31 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 	return nil, fmt.Errorf("Failed to creat nic, error: %s", *output.Message)
 }
 
-func (q *qingcloudAPIWrapper) GetAttachedNICs() ([]*types.HostNic, error) {
+func (q *qingcloudAPIWrapper) GetAttachedNICs(vxnet string) ([]*types.HostNic, error) {
 	output, err := q.nicService.DescribeNics(&service.DescribeNicsInput{
 		Instances: []*string{&q.instanceID},
-		VxNetType: service.Int(1),
 		Limit:     service.Int(nicNumLimit),
+		VxNets:    []*string{&vxnet},
+		VxNetType: []*int{service.Int(1)},
 	})
 	if err != nil {
 		return nil, err
 	}
 	result := make([]*types.HostNic, 0)
 	for _, nic := range output.NICSet {
-		h := &types.HostNic{
-			ID: *nic.NICID,
-			VxNet: &types.VxNet{
-				ID: *nic.VxNetID,
-			},
-			HardwareAddr: *nic.NICID,
-			Address:      *nic.PrivateIP,
-			DeviceNumber: int32(*nic.Sequence),
-			IsPrimary:    false,
+		if strings.HasPrefix(*nic.NICName, nicPrefix) {
+			h := &types.HostNic{
+				ID: *nic.NICID,
+				VxNet: &types.VxNet{
+					ID: *nic.VxNetID,
+				},
+				HardwareAddr: *nic.NICID,
+				Address:      *nic.PrivateIP,
+				DeviceNumber: *nic.Sequence,
+				IsPrimary:    false,
+			}
+			result = append(result, h)
 		}
-		result = append(result, h)
 	}
 	return result, nil
 }
@@ -339,6 +349,17 @@ func (q *qingcloudAPIWrapper) GetVPC(id string) (*types.VPC, error) {
 		return nil, err
 	}
 	vpc.Network = net
+	err = retry.Do(3, time.Second*5, func() error {
+		vpc.VxNets, err = q.GetVPCVxNets(vpc.ID)
+		if err != nil {
+			klog.V(3).Infof("[Will retry] Error in get vxnets of vpc %s", vpc.ID)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		klog.Errorf("Failed to get vxnets in this vpc %s", vpc.ID)
+	}
 	return vpc, nil
 }
 
@@ -405,4 +426,32 @@ func (q *qingcloudAPIWrapper) DeleteVxNet(id string) error {
 		return fmt.Errorf("Failed to delete vxnet %s, err: %s", id, *output.Message)
 	}
 	return nil
+}
+
+func (q *qingcloudAPIWrapper) GetPrimaryNIC() (*types.HostNic, error) {
+	input := &service.DescribeNicsInput{
+		Instances: []*string{&q.instanceID},
+		Status:    service.String("in-use"),
+		Limit:     service.Int(nicNumLimit),
+		VxNetType: []*int{service.Int(1)},
+	}
+	output, err := q.nicService.DescribeNics(input)
+	if err != nil {
+		return nil, err
+	}
+	for _, nic := range output.NICSet {
+		if *nic.Role == 1 {
+			return &types.HostNic{
+				ID: *nic.NICID,
+				VxNet: &types.VxNet{
+					ID: *nic.VxNetID,
+				},
+				HardwareAddr: *nic.NICID,
+				Address:      *nic.PrivateIP,
+				IsPrimary:    true,
+				DeviceNumber: *nic.Sequence,
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("Could not find the primary nic of instance %s", q.instanceID)
 }

@@ -27,7 +27,7 @@ type HostNic struct {
 	VxNet        *VxNet `json:"vxNet"`
 	HardwareAddr string `json:"hardwareAddr"`
 	Address      string `json:"address"`
-	DeviceNumber int32  `json:"deviceNumber"`
+	DeviceNumber int    `json:"deviceNumber"`
 	IsPrimary    bool   `json:"IsPrimary"`
 }
 
@@ -51,5 +51,5 @@ type HostInstance struct {
 type VPC struct {
 	Network *net.IPNet
 	ID      string
-	VxNets  []string
+	VxNets  []*VxNet
 }

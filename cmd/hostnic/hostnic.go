@@ -25,7 +25,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"runtime"
 
 	"github.com/containernetworking/cni/pkg/skel"
@@ -34,14 +36,16 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/driver"
+	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
+	"github.com/yunify/hostnic-cni/pkg/rpcwrapper"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
 )
 
 const (
 	ipamDAddress       = "127.0.0.1:41080"
-	defaultLogFilePath = "/var/log/hostnic_plugin.log"
+	defaultLogFilePath = "/tmp/hostnic.log"
 )
 
 type NetConf struct {
@@ -78,21 +82,31 @@ type K8sArgs struct {
 }
 
 func init() {
-	flag.Set("log_file", defaultLogFilePath)
-	flag.Set("V", "2")
+	klog.InitFlags(nil)
+	flag.Set("logtostderr", "false")
+	flag.Set("alsologtostderr", "false")
+	flag.Set("v", "2")
 	flag.Parse()
 	runtime.LockOSThread()
 }
 
 func main() {
+	f, err := os.OpenFile(defaultLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		log.Print("Error openlog file ", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+	klog.SetOutput(f)
 	defer klog.Flush()
 	skel.PluginMain(cmdAdd, cmdDel, version.All)
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	return add(args, driver.New())
+	return add(args, driver.New(), rpcwrapper.NewGRPC(), rpcwrapper.New())
 }
-func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
+
+func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs, grpcW rpcwrapper.GRPC, rpcW rpcwrapper.RPC) error {
 	klog.V(1).Infof("Received CNI add request: ContainerID(%s) Netns(%s) IfName(%s) Args(%s) Path(%s) argsStdinData(%s)",
 		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path, args.StdinData)
 
@@ -119,7 +133,7 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 	cniVersion := conf.CNIVersion
 
 	// Set up a connection to the ipamD server.
-	conn, err := grpc.Dial(ipamDAddress, grpc.WithInsecure())
+	conn, err := grpcW.Dial(ipamDAddress, grpc.WithInsecure())
 	if err != nil {
 		klog.Errorf("Failed to connect to backend server for pod %s namespace %s container %s: %v",
 			string(k8sArgs.K8S_POD_NAME),
@@ -129,8 +143,7 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 		return errors.Wrap(err, "add cmd: failed to connect to backend server")
 	}
 	defer conn.Close()
-
-	c := rpc.NewCNIBackendClient(conn)
+	c := rpcW.NewCNIBackendClient(conn)
 	r, err := c.AddNetwork(context.Background(),
 		&rpc.AddNetworkRequest{
 			Netns:                      args.Netns,
@@ -164,12 +177,10 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 		IP:   net.ParseIP(r.IPv4Addr),
 		Mask: net.IPv4Mask(255, 255, 255, 255),
 	}
-
 	// build hostVethName
 	// Note: the maximum length for linux interface name is 15
 	hostVethName := generateHostVethName(conf.VethPrefix, string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-
-	err = driverClient.SetupNS(hostVethName, args.IfName, args.Netns, addr, int(r.DeviceNumber), r.VPCcidrs, r.UseExternalSNAT)
+	err = driverClient.SetupNS(hostVethName, args.IfName, args.Netns, addr, int(r.DeviceNumber), r.VPCcidrs, networkutils.GetVPNNet(r.IPv4Addr), r.UseExternalSNAT)
 
 	if err != nil {
 		klog.Errorf("Failed SetupPodNetwork for pod %s namespace %s container %s: %v",
@@ -217,7 +228,7 @@ func generateHostVethName(prefix, namespace, podname string) string {
 	return fmt.Sprintf("%s%s", prefix, hex.EncodeToString(h.Sum(nil))[:11])
 }
 
-func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
+func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs, grpcW rpcwrapper.GRPC, rpcW rpcwrapper.RPC) error {
 
 	klog.V(1).Infof("Received CNI del request: ContainerID(%s) Netns(%s) IfName(%s) Args(%s) Path(%s) argsStdinData(%s)",
 		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path, args.StdinData)
@@ -236,7 +247,7 @@ func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 
 	// notify local IP address manager to free secondary IP
 	// Set up a connection to the server.
-	conn, err := grpc.Dial(ipamDAddress, grpc.WithInsecure())
+	conn, err := grpcW.Dial(ipamDAddress, grpc.WithInsecure())
 	if err != nil {
 		klog.Errorf("Failed to connect to backend server for pod %s namespace %s container %s: %v",
 			string(k8sArgs.K8S_POD_NAME),
@@ -248,16 +259,14 @@ func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 	}
 	defer conn.Close()
 
-	c := rpc.NewCNIBackendClient(conn)
-
-	r, err := c.DelNetwork(context.Background(),
-		&rpc.DelNetworkRequest{
-			K8S_POD_NAME:               string(k8sArgs.K8S_POD_NAME),
-			K8S_POD_NAMESPACE:          string(k8sArgs.K8S_POD_NAMESPACE),
-			K8S_POD_INFRA_CONTAINER_ID: string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID),
-			IPv4Addr:                   k8sArgs.IP.String(),
-			Reason:                     "PodDeleted"})
-
+	c := rpcW.NewCNIBackendClient(conn)
+	request := &rpc.DelNetworkRequest{
+		K8S_POD_NAME:               string(k8sArgs.K8S_POD_NAME),
+		K8S_POD_NAMESPACE:          string(k8sArgs.K8S_POD_NAMESPACE),
+		K8S_POD_INFRA_CONTAINER_ID: string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID),
+		Reason:                     "PodDeleted",
+	}
+	r, err := c.DelNetwork(context.Background(), request)
 	if err != nil {
 		klog.Errorf("Error received from DelNetwork grpc call for pod %s namespace %s container %s: %v",
 			string(k8sArgs.K8S_POD_NAME), string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID), err)
@@ -269,7 +278,10 @@ func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 			string(k8sArgs.K8S_POD_NAME), string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID), err)
 		return errors.Wrap(err, "del cmd: failed to process delete request")
 	}
-
+	if r.IPv4Addr == "" {
+		klog.Warningf("Try to delete a pod %s namespace %swith noip", string(k8sArgs.K8S_POD_NAME), string(k8sArgs.K8S_POD_NAMESPACE))
+		return nil
+	}
 	addr := &net.IPNet{
 		IP:   net.ParseIP(r.IPv4Addr),
 		Mask: net.IPv4Mask(255, 255, 255, 255),
@@ -284,6 +296,7 @@ func del(args *skel.CmdArgs, driverClient driver.NetworkAPIs) error {
 	}
 	return nil
 }
+
 func cmdDel(args *skel.CmdArgs) error {
-	return del(args, driver.New())
+	return del(args, driver.New(), rpcwrapper.NewGRPC(), rpcwrapper.New())
 }

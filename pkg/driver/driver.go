@@ -29,7 +29,7 @@ const (
 
 // NetworkAPIs defines network API calls
 type NetworkAPIs interface {
-	SetupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, useExternalSNAT bool) error
+	SetupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, tunnelNet string, useExternalSNAT bool) error
 	TeardownNS(addr *net.IPNet, table int) error
 }
 
@@ -125,7 +125,7 @@ func (createVethContext *createVethPairContext) run(hostNS ns.NetNS) error {
 	}
 
 	if err = createVethContext.netLink.AddrAdd(contVeth, &netlink.Addr{IPNet: createVethContext.addr}); err != nil {
-		return errors.Wrapf(err, "setup NS network: failed to add IP addr to %q", createVethContext.contVethName)
+		return errors.Wrapf(err, "setup NS network: failed to add IP addr %s to %q", createVethContext.addr.String(), createVethContext.contVethName)
 	}
 
 	// add static ARP entry for default gateway
@@ -150,12 +150,12 @@ func (createVethContext *createVethPairContext) run(hostNS ns.NetNS) error {
 }
 
 // SetupNS wires up linux networking for a pod's network
-func (os *linuxNetwork) SetupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, useExternalSNAT bool) error {
+func (os *linuxNetwork) SetupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, tunnelNet string, useExternalSNAT bool) error {
 	klog.V(2).Infof("SetupNS: hostVethName=%s,contVethName=%s, netnsPath=%s table=%d\n", hostVethName, contVethName, netnsPath, table)
-	return setupNS(hostVethName, contVethName, netnsPath, addr, table, vpcCIDRs, useExternalSNAT, os.netLink, os.ns)
+	return setupNS(hostVethName, contVethName, netnsPath, addr, table, vpcCIDRs, useExternalSNAT, tunnelNet, os.netLink, os.ns)
 }
 
-func setupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, useExternalSNAT bool,
+func setupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, useExternalSNAT bool, tunnelNet string,
 	netLink netlinkwrapper.NetLink, ns nswrapper.NS) error {
 	// Clean up if hostVeth exists.
 	if oldHostVeth, err := netLink.LinkByName(hostVethName); err == nil {
@@ -222,6 +222,10 @@ func setupNS(hostVethName string, contVethName string, netnsPath string, addr *n
 			}
 			klog.V(1).Infof("Added rule priority %d from %s table %d", fromContainerRulePriority, addr.String(), table)
 		} else {
+			if tunnelNet != "" {
+				klog.V(2).Infof("Append tunnel net %s to vpc cidrs", tunnelNet)
+				vpcCIDRs = append(vpcCIDRs, tunnelNet)
+			}
 			// add rule: 1536: list of from <podIP> to <vpcCIDR> use table <table>
 			for _, cidr := range vpcCIDRs {
 				podRule := netLink.NewRule()

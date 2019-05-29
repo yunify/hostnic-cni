@@ -16,8 +16,10 @@ type QingCloudAPI interface {
 // QingCloudNetAPI  do dirty works on  net interface on qingcloud
 type QingCloudNetAPI interface {
 	//CreateNicInVxnet create network interface card in vxnet and attach to host
-	CreateNic(string) (*types.HostNic, error)
+	CreateNic(vxnet string) (*types.HostNic, error)
 	DeleteNic(nicID string) error
+
+	GetPrimaryNIC() (*types.HostNic, error)
 	//DeleteNic delete nic from host
 	DeleteNics(nicIDs []string) error
 	GetVxNet(vxNet string) (*types.VxNet, error)
@@ -25,7 +27,7 @@ type QingCloudNetAPI interface {
 	DeleteVxNet(string) error
 	GetNics([]string) ([]*types.HostNic, error)
 	CreateVxNet(name string) (*types.VxNet, error)
-	GetAttachedNICs() ([]*types.HostNic, error)
+	GetAttachedNICs(string) ([]*types.HostNic, error)
 	GetVPC(string) (*types.VPC, error)
 	GetNodeVPC() (*types.VPC, error)
 	GetVPCVxNets(string) ([]*types.VxNet, error)

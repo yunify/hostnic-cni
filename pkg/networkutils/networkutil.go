@@ -36,35 +36,36 @@ const (
 	mainRoutingTable = unix.RT_TABLE_MAIN
 
 	// This environment is used to specify whether an external NAT gateway will be used to provide SNAT of
-	// secondary ENI IP addresses.  If set to "true", the SNAT iptables rule and off-VPC ip rule will not
+	// secondary NIC IP addresses.  If set to "true", the SNAT iptables rule and off-VPC ip rule will not
 	// be installed and will be removed if they are already installed.  Defaults to false.
-	envExternalSNAT = "AWS_VPC_K8S_CNI_EXTERNALSNAT"
+	envExternalSNAT = "QINGCLOUD_VPC_K8S_CNI_EXTERNALSNAT"
 
 	// This environment is used to specify weather the SNAT rule added to iptables should randomize port
 	// allocation for outgoing connections. If set to "hashrandom" the SNAT iptables rule will have the "--random" flag
 	// added to it. Set it to "prng" if you want to use a pseudo random numbers, i.e. "--random-fully".
 	// Defaults to hashrandom.
-	envRandomizeSNAT = "AWS_VPC_K8S_CNI_RANDOMIZESNAT"
+	envRandomizeSNAT = "QINGCLOUD_VPC_K8S_CNI_RANDOMIZESNAT"
 
 	// envNodePortSupport is the name of environment variable that configures whether we implement support for
-	// NodePorts on the primary ENI.  This requires that we add additional iptables rules and loosen the kernel's
+	// NodePorts on the primary NIC.  This requires that we add additional iptables rules and loosen the kernel's
 	// RPF check as described below.  Defaults to true.
-	envNodePortSupport = "AWS_VPC_CNI_NODE_PORT_SUPPORT"
+	envNodePortSupport = "QINGCLOUD_VPC_CNI_NODE_PORT_SUPPORT"
 
+	envVPNSupport = "QINGCLOUD_VPC_CNI_VPN_SUPPORT"
 	// envConnmark is the name of the environment variable that overrides the default connection mark, used to
-	// mark traffic coming from the primary ENI so that return traffic can be forced out of the same interface.
+	// mark traffic coming from the primary NIC so that return traffic can be forced out of the same interface.
 	// Without using a mark, NodePort DNAT and our source-based routing do not work together if the target pod
-	// behind the node port is not on the main ENI.  In that case, the un-DNAT is done after the source-based
-	// routing, resulting in the packet being sent out of the pod's ENI, when the NodePort traffic should be
-	// sent over the main ENI.
-	envConnmark = "AWS_VPC_K8S_CNI_CONNMARK"
+	// behind the node port is not on the main NIC.  In that case, the un-DNAT is done after the source-based
+	// routing, resulting in the packet being sent out of the pod's NIC, when the NodePort traffic should be
+	// sent over the main NIC.
+	envConnmark = "QINGCLOUD_VPC_K8S_CNI_CONNMARK"
 
 	// defaultConnmark is the default value for the connmark described above.  Note: the mark space is a little crowded,
 	// - kube-proxy uses 0x0000c000
 	// - Calico uses 0xffff0000.
 	defaultConnmark = 0x80
 
-	// MTU of ENI - veth MTU defined in plugins/routed-eni/driver/driver.go
+	// MTU of NIC - veth MTU defined in plugins/routed-nic/driver/driver.go
 	ethernetMTU = 9001
 
 	// number of retries to add a route
@@ -72,18 +73,18 @@ const (
 
 	retryRouteAddInterval = 5 * time.Second
 
-	// number of attempts to find an ENI by MAC address after it is attached
+	// number of attempts to find an NIC by MAC address after it is attached
 	maxAttemptsLinkByMac = 5
 
 	retryLinkByMacInterval = 5 * time.Second
 )
 
-// NetworkAPIs defines the host level and the eni level network related operations
+// NetworkAPIs defines the host level and the nic level network related operations
 type NetworkAPIs interface {
 	// SetupNodeNetwork performs node level network configuration
 	SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, primaryMAC string, primaryAddr *net.IP) error
-	// SetupENINetwork performs eni level network configuration
-	SetupENINetwork(eniIP string, mac string, table int, subnetCIDR string) error
+	// SetupNICNetwork performs nic level network configuration
+	SetupNICNetwork(nicIP string, mac string, table int, subnetCIDR string) error
 	UseExternalSNAT() bool
 	GetRuleList() ([]netlink.Rule, error)
 	GetRuleListBySrc(ruleList []netlink.Rule, src net.IPNet) ([]netlink.Rule, error)
@@ -96,11 +97,12 @@ type linuxNetwork struct {
 	typeOfSNAT             snatType
 	nodePortSupportEnabled bool
 	connmark               uint32
+	vpnSupportEnabled      bool
 
 	netLink     netlinkwrapper.NetLink
 	ns          nswrapper.NS
 	newIptables func() (iptablesIface, error)
-	mainENIMark uint32
+	mainNICMark uint32
 	openFile    func(name string, flag int, perm os.FileMode) (stringWriteCloser, error)
 }
 
@@ -131,7 +133,7 @@ func New() NetworkAPIs {
 		useExternalSNAT:        useExternalSNAT(),
 		typeOfSNAT:             typeOfSNAT(),
 		nodePortSupportEnabled: nodePortSupportEnabled(),
-		mainENIMark:            getConnmark(),
+		mainNICMark:            getConnmark(),
 
 		netLink: netlinkwrapper.NewNetLink(),
 		ns:      nswrapper.NewNS(),
@@ -200,9 +202,9 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		// filtering.  This is required because
 		// - NodePorts are exposed on eth0
 		// - The kernel's RPF check happens after incoming packets to NodePorts are DNATted to the pod IP.
-		// - For pods assigned to secondary ENIs, the routing table includes source-based routing.  When the kernel does
+		// - For pods assigned to secondary NICs, the routing table includes source-based routing.  When the kernel does
 		//   the RPF check, it looks up the route using the pod IP as the source.
-		// - Thus, it finds the source-based route that leaves via the secondary ENI.
+		// - Thus, it finds the source-based route that leaves via the secondary NIC.
 		// - In "strict" mode, the RPF check fails because the return path uses a different interface to the incoming
 		//   packet.  In "loose" mode, the check passes because some route was found.
 		primaryIntfRPFilter := "/proc/sys/net/ipv4/conf/" + primaryIntf + "/rp_filter"
@@ -215,28 +217,28 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		}
 	}
 
-	// If node port support is enabled, add a rule that will force force marked traffic out of the main ENI.  We then
+	// If node port support is enabled, add a rule that will force force marked traffic out of the main NIC.  We then
 	// add iptables rules below that will mark traffic that needs this special treatment.  In particular NodePort
-	// traffic always comes in via the main ENI but response traffic would go out of the pod's assigned ENI if we
+	// traffic always comes in via the main NIC but response traffic would go out of the pod's assigned NIC if we
 	// didn't handle it specially. This is because the routing decision is done before the NodePort's DNAT is
 	// reversed so, to the routing table, it looks like the traffic is pod traffic instead of NodePort traffic.
-	mainENIRule := n.netLink.NewRule()
-	mainENIRule.Mark = int(n.mainENIMark)
-	mainENIRule.Mask = int(n.mainENIMark)
-	mainENIRule.Table = mainRoutingTable
-	mainENIRule.Priority = hostRulePriority
+	mainNICRule := n.netLink.NewRule()
+	mainNICRule.Mark = int(n.mainNICMark)
+	mainNICRule.Mask = int(n.mainNICMark)
+	mainNICRule.Table = mainRoutingTable
+	mainNICRule.Priority = hostRulePriority
 	// If this is a restart, cleanup previous rule first
-	err = n.netLink.RuleDel(mainENIRule)
+	err = n.netLink.RuleDel(mainNICRule)
 	if err != nil && !containsNoSuchRule(err) {
-		klog.Errorf("Failed to cleanup old main ENI rule: %v", err)
-		return errors.Wrapf(err, "host network setup: failed to delete old main ENI rule")
+		klog.Errorf("Failed to cleanup old main NIC rule: %v", err)
+		return errors.Wrapf(err, "host network setup: failed to delete old main NIC rule")
 	}
 
 	if n.nodePortSupportEnabled {
-		err = n.netLink.RuleAdd(mainENIRule)
+		err = n.netLink.RuleAdd(mainNICRule)
 		if err != nil {
-			klog.Errorf("Failed to add host main ENI rule: %v", err)
-			return errors.Wrapf(err, "host network setup: failed to add main ENI rule")
+			klog.Errorf("Failed to add host main NIC rule: %v", err)
+			return errors.Wrapf(err, "host network setup: failed to add main NIC rule")
 		}
 	}
 
@@ -248,7 +250,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	// build IPTABLES chain for SNAT of non-VPC outbound traffic
 	var chains []string
 	for i := 0; i <= len(vpcCIDRs); i++ {
-		chain := fmt.Sprintf("AWS-SNAT-CHAIN-%d", i)
+		chain := fmt.Sprintf("QINGCLOUD-SNAT-CHAIN-%d", i)
 		klog.V(2).Infof("Setup Host Network: iptables -N %s -t nat", chain)
 		if err = ipt.NewChain("nat", chain); err != nil && !containChainExistErr(err) {
 			klog.Errorf("ipt.NewChain error for chain [%s]: %v", chain, err)
@@ -258,7 +260,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	}
 
 	// build SNAT rules for outbound non-VPC traffic
-	klog.V(2).Infof("Setup Host Network: iptables -A POSTROUTING -m comment --comment \"AWS SNAT CHAIN\" -j AWS-SNAT-CHAIN-0")
+	klog.V(2).Infof("Setup Host Network: iptables -A POSTROUTING -m comment --comment \"QINGCLOUD SNAT CHAIN\" -j QINGCLOUD-SNAT-CHAIN-0")
 
 	var iptableRules []iptablesRule
 	iptableRules = append(iptableRules, iptablesRule{
@@ -267,13 +269,13 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		table:       "nat",
 		chain:       "POSTROUTING",
 		rule: []string{
-			"-m", "comment", "--comment", "AWS SNAT CHAN", "-j", "AWS-SNAT-CHAIN-0",
+			"-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-0",
 		}})
 
 	for i, cidr := range vpcCIDRs {
 		curChain := chains[i]
 		nextChain := chains[i+1]
-		curName := fmt.Sprintf("[%d] AWS-SNAT-CHAIN", i)
+		curName := fmt.Sprintf("[%d] QINGCLOUD-SNAT-CHAIN", i)
 
 		klog.V(2).Infof("Setup Host Network: iptables -A %s ! -d %s -t nat -j %s", curChain, *cidr, nextChain)
 
@@ -283,13 +285,13 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 			table:       "nat",
 			chain:       curChain,
 			rule: []string{
-				"!", "-d", *cidr, "-m", "comment", "--comment", "AWS SNAT CHAN", "-j", nextChain,
+				"!", "-d", *cidr, "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", nextChain,
 			}})
 	}
 
 	lastChain := chains[len(chains)-1]
 	// Prepare the Desired Rule for SNAT Rule
-	snatRule := []string{"-m", "comment", "--comment", "AWS, SNAT",
+	snatRule := []string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
 		"-m", "addrtype", "!", "--dst-type", "LOCAL",
 		"-j", "SNAT", "--to-source", primaryAddr.String()}
 	if n.typeOfSNAT == randomHashSNAT {
@@ -316,30 +318,30 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	klog.V(2).Infof("iptableRules: %v", iptableRules)
 
 	iptableRules = append(iptableRules, iptablesRule{
-		name:        "connmark for primary ENI",
+		name:        "connmark for primary NIC",
 		shouldExist: n.nodePortSupportEnabled,
 		table:       "mangle",
 		chain:       "PREROUTING",
 		rule: []string{
-			"-m", "comment", "--comment", "AWS, primary ENI",
+			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
 			"-i", primaryIntf,
 			"-m", "addrtype", "--dst-type", "LOCAL", "--limit-iface-in",
-			"-j", "CONNMARK", "--set-mark", fmt.Sprintf("%#x/%#x", n.mainENIMark, n.mainENIMark),
+			"-j", "CONNMARK", "--set-mark", fmt.Sprintf("%#x/%#x", n.mainNICMark, n.mainNICMark),
 		},
 	})
 
 	iptableRules = append(iptableRules, iptablesRule{
-		name:        "connmark restore for primary ENI",
+		name:        "connmark restore for primary NIC",
 		shouldExist: n.nodePortSupportEnabled,
 		table:       "mangle",
 		chain:       "PREROUTING",
 		rule: []string{
-			"-m", "comment", "--comment", "AWS, primary ENI",
-			"-i", "eni+", "-j", "CONNMARK", "--restore-mark", "--mask", fmt.Sprintf("%#x", n.mainENIMark),
+			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
+			"-i", "nic+", "-j", "CONNMARK", "--restore-mark", "--mask", fmt.Sprintf("%#x", n.mainNICMark),
 		},
 	})
 
-	// remove pre-1.3 AWS SNAT rules
+	// remove pre-1.3 QINGCLOUD SNAT rules
 	iptableRules = append(iptableRules, iptablesRule{
 		name:        fmt.Sprintf("rule for primary address %s", primaryAddr),
 		shouldExist: false,
@@ -347,7 +349,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		chain:       "POSTROUTING",
 		rule: []string{
 			"!", "-d", vpcCIDR.String(),
-			"-m", "comment", "--comment", "AWS, SNAT",
+			"-m", "comment", "--comment", "QINGCLOUD, SNAT",
 			"-m", "addrtype", "!", "--dst-type", "LOCAL",
 			"-j", "SNAT", "--to-source", primaryAddr.String()}})
 
@@ -423,7 +425,7 @@ func GetConfigForDebug() map[string]interface{} {
 	}
 }
 
-// UseExternalSNAT returns whether SNAT of secondary ENI IPs should be handled with an external
+// UseExternalSNAT returns whether SNAT of secondary NIC IPs should be handled with an external
 // NAT gateway rather than on node. Failure to parse the setting will result in a log and the
 // setting will be disabled.
 func (n *linuxNetwork) UseExternalSNAT() bool {
@@ -463,6 +465,10 @@ func typeOfSNAT() snatType {
 
 func nodePortSupportEnabled() bool {
 	return getBoolEnvVar(envNodePortSupport, true)
+}
+
+func vpnSupportEnabled() bool {
+	return getBoolEnvVar(envVPNSupport, true)
 }
 
 func getBoolEnvVar(name string, defaultValue bool) bool {
@@ -528,92 +534,93 @@ func LinkByMac(mac string, netLink netlinkwrapper.NetLink, retryInterval time.Du
 
 }
 
-// SetupENINetwork adds default route to route table (eni-<eni_table>)
-func (n *linuxNetwork) SetupENINetwork(eniIP string, eniMAC string, eniTable int, eniSubnetCIDR string) error {
-	return setupENINetwork(eniIP, eniMAC, eniTable, eniSubnetCIDR, n.netLink, retryLinkByMacInterval)
+// SetupNICNetwork adds default route to route table (nic-<nic_table>)
+func (n *linuxNetwork) SetupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR string) error {
+	return setupNICNetwork(nicIP, nicMAC, nicTable, nicSubnetCIDR, n.netLink, retryLinkByMacInterval)
 }
 
-func setupENINetwork(eniIP string, eniMAC string, eniTable int, eniSubnetCIDR string, netLink netlinkwrapper.NetLink, retryLinkByMacInterval time.Duration) error {
-	if eniTable == 0 {
-		klog.V(2).Infof("Skipping set up ENI network for primary interface")
+func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR string, netLink netlinkwrapper.NetLink, retryLinkByMacInterval time.Duration) error {
+	if nicTable == 0 {
+		klog.V(2).Infof("Skipping set up NIC network for primary interface %s", nicIP)
 		return nil
 	}
 
-	klog.V(1).Infof("Setting up network for an ENI with IP address %s, MAC address %s, CIDR %s and route table %d",
-		eniIP, eniMAC, eniSubnetCIDR, eniTable)
-	link, err := LinkByMac(eniMAC, netLink, retryLinkByMacInterval)
+	klog.V(1).Infof("Setting up network for an NIC with IP address %s, MAC address %s, CIDR %s and route table %d",
+		nicIP, nicMAC, nicSubnetCIDR, nicTable)
+	link, err := LinkByMac(nicMAC, netLink, retryLinkByMacInterval)
 	if err != nil {
-		return errors.Wrapf(err, "setupENINetwork: failed to find the link which uses MAC address %s", eniMAC)
+		return errors.Wrapf(err, "setupNICNetwork: failed to find the link which uses MAC address %s", nicMAC)
 	}
 
 	if err = netLink.LinkSetMTU(link, ethernetMTU); err != nil {
-		return errors.Wrapf(err, "setupENINetwork: failed to set MTU for %s", eniIP)
+		return errors.Wrapf(err, "setupNICNetwork: failed to set MTU for %s", nicIP)
 	}
 
 	if err = netLink.LinkSetUp(link); err != nil {
-		return errors.Wrapf(err, "setupENINetwork: failed to bring up ENI %s", eniIP)
+		return errors.Wrapf(err, "setupNICNetwork: failed to bring up NIC %s", nicIP)
 	}
 
 	deviceNumber := link.Attrs().Index
 
-	_, ipnet, err := net.ParseCIDR(eniSubnetCIDR)
+	_, ipnet, err := net.ParseCIDR(nicSubnetCIDR)
 	if err != nil {
-		return errors.Wrapf(err, "setupENINetwork: invalid IPv4 CIDR block %s", eniSubnetCIDR)
+		return errors.Wrapf(err, "setupNICNetwork: invalid IPv4 CIDR block %s", nicSubnetCIDR)
 	}
 
 	gw, err := incrementIPv4Addr(ipnet.IP)
 	if err != nil {
-		return errors.Wrapf(err, "setupENINetwork: failed to define gateway address from %v", ipnet.IP)
+		return errors.Wrapf(err, "setupNICNetwork: failed to define gateway address from %v", ipnet.IP)
 	}
 
 	// Explicitly set the IP on the device if not already set.
 	// Required for older kernels.
 	// ip addr show
-	// ip add del <eniIP> dev <link> (if necessary)
-	// ip add add <eniIP> dev <link>
-	klog.V(2).Infof("Setting up ENI's primary IP %s", eniIP)
+	// ip add del <nicIP> dev <link> (if necessary)
+	// ip add add <nicIP> dev <link>
+	klog.V(2).Infof("Setting up NIC's primary IP %s", nicIP)
 	addrs, err := netLink.AddrList(link, unix.AF_INET)
 	if err != nil {
-		return errors.Wrap(err, "setupENINetwork: failed to list IP address for ENI")
+		return errors.Wrap(err, "setupNICNetwork: failed to list IP address for NIC")
 	}
 
 	for _, addr := range addrs {
 		klog.V(2).Infof("Deleting existing IP address %s", addr.String())
 		if err = netLink.AddrDel(link, &addr); err != nil {
-			return errors.Wrap(err, "setupENINetwork: failed to delete IP addr from ENI")
+			return errors.Wrap(err, "setupNICNetwork: failed to delete IP addr from NIC")
 		}
 	}
-	eniAddr := &net.IPNet{
-		IP:   net.ParseIP(eniIP),
-		Mask: ipnet.Mask,
-	}
-	klog.V(2).Infof("Adding IP address %s", eniAddr.String())
-	if err = netLink.AddrAdd(link, &netlink.Addr{IPNet: eniAddr}); err != nil {
-		return errors.Wrap(err, "setupENINetwork: failed to add IP addr to ENI")
-	}
 
-	klog.V(2).Infof("Setting up ENI's default gateway %v", gw)
+	// nicAddr := &net.IPNet{
+	// 	IP:   net.ParseIP(nicIP),
+	// 	Mask: ipnet.Mask,
+	// }
+	// // klog.V(2).Infof("Adding Primary IP address %s ", nicAddr.String())
+	// // if err = netLink.AddrAdd(link, &netlink.Addr{IPNet: nicAddr}); err != nil {
+	// // 	return errors.Wrap(err, "setupNICNetwork: failed to add IP addr to NIC")
+	// // }
+
+	klog.V(2).Infof("Setting up NIC's default gateway %v", gw)
 	routes := []netlink.Route{
-		// Add a direct link route for the host's ENI IP only
+		// Add a direct link route for the host's NIC IP only
 		{
 			LinkIndex: deviceNumber,
 			Dst:       &net.IPNet{IP: gw, Mask: net.CIDRMask(32, 32)},
 			Scope:     netlink.SCOPE_LINK,
-			Table:     eniTable,
+			Table:     nicTable,
 		},
-		// Route all other traffic via the host's ENI IP
+		// Route all other traffic via the host's NIC IP
 		{
 			LinkIndex: deviceNumber,
 			Dst:       &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
 			Scope:     netlink.SCOPE_UNIVERSE,
 			Gw:        gw,
-			Table:     eniTable,
+			Table:     nicTable,
 		},
 	}
 	for _, r := range routes {
 		err := netLink.RouteDel(&r)
 		if err != nil && !netlinkwrapper.IsNotExistsError(err) {
-			return errors.Wrap(err, "setupENINetwork: failed to clean up old routes")
+			return errors.Wrap(err, "setupNICNetwork: failed to clean up old routes")
 		}
 
 		// In case of route dependency, retry few times
@@ -624,45 +631,45 @@ func setupENINetwork(eniIP string, eniMAC string, eniTable int, eniSubnetCIDR st
 					retry++
 					if retry > maxRetryRouteAdd {
 						klog.Errorf("Failed to add route %s/0 via %s table %d",
-							r.Dst.IP.String(), gw.String(), eniTable)
-						return errors.Wrapf(err, "setupENINetwork: failed to add route %s/0 via %s table %d",
-							r.Dst.IP.String(), gw.String(), eniTable)
+							r.Dst.IP.String(), gw.String(), nicTable)
+						return errors.Wrapf(err, "setupNICNetwork: failed to add route %s/0 via %s table %d",
+							r.Dst.IP.String(), gw.String(), nicTable)
 					}
 					klog.V(2).Infof("Not able to add route route %s/0 via %s table %d (attempt %d/%d)",
-						r.Dst.IP.String(), gw.String(), eniTable, retry, maxRetryRouteAdd)
+						r.Dst.IP.String(), gw.String(), nicTable, retry, maxRetryRouteAdd)
 					time.Sleep(retryRouteAddInterval)
 				} else if netlinkwrapper.IsRouteExistsError(err) {
 					if err := netLink.RouteReplace(&r); err != nil {
-						return errors.Wrapf(err, "setupENINetwork: unable to replace route entry %s", r.Dst.IP.String())
+						return errors.Wrapf(err, "setupNICNetwork: unable to replace route entry %s", r.Dst.IP.String())
 					}
 					klog.V(2).Infof("Successfully replaced route to be %s/0", r.Dst.IP.String())
 					break
 				} else {
-					return errors.Wrapf(err, "setupENINetwork: unable to add route %s/0 via %s table %d",
-						r.Dst.IP.String(), gw.String(), eniTable)
+					return errors.Wrapf(err, "setupNICNetwork: unable to add route %s/0 via %s table %d",
+						r.Dst.IP.String(), gw.String(), nicTable)
 				}
 			} else {
-				klog.V(2).Infof("Successfully added route route %s/0 via %s table %d", r.Dst.IP.String(), gw.String(), eniTable)
+				klog.V(2).Infof("Successfully added route route %s/0 via %s table %d", r.Dst.IP.String(), gw.String(), nicTable)
 				break
 			}
 		}
 	}
 
-	// Remove the route that default out to ENI-x out of main route table
-	_, cidr, err := net.ParseCIDR(eniSubnetCIDR)
+	// Remove the route that default out to NIC-x out of main route table
+	_, cidr, err := net.ParseCIDR(nicSubnetCIDR)
 	if err != nil {
-		return errors.Wrapf(err, "setupENINetwork: invalid IPv4 CIDR block %s", eniSubnetCIDR)
+		return errors.Wrapf(err, "setupNICNetwork: invalid IPv4 CIDR block %s", nicSubnetCIDR)
 	}
 	defaultRoute := netlink.Route{
 		Dst:   cidr,
-		Src:   net.ParseIP(eniIP),
+		Src:   net.ParseIP(nicIP),
 		Table: mainRoutingTable,
 		Scope: netlink.SCOPE_LINK,
 	}
 
 	if err := netLink.RouteDel(&defaultRoute); err != nil {
 		if !netlinkwrapper.IsNotExistsError(err) {
-			return errors.Wrapf(err, "setupENINetwork: unable to delete default route %s for source IP %s", cidr.String(), eniIP)
+			return errors.Wrapf(err, "setupNICNetwork: unable to delete default route %s for source IP %s", cidr.String(), nicIP)
 		}
 	}
 	return nil
@@ -734,7 +741,7 @@ func (n *linuxNetwork) DeleteRuleListBySrc(src net.IPNet) error {
 
 // UpdateRuleListBySrc modify IP rules that have a matching source IP
 func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNet, toCIDRs []string, useExternalSNAT bool) error {
-	klog.V(1).Infof("Update Rule List[%v] for source[%v] with toCIDRs[%v], useExternalSNAT[%v]", ruleList, src, toCIDRs, useExternalSNAT)
+	klog.V(3).Infof("Update Rule List[%v] for source[%v] with toCIDRs[%v], useExternalSNAT[%v]", ruleList, src, toCIDRs, useExternalSNAT)
 
 	srcRuleList, err := n.GetRuleListBySrc(ruleList, src)
 	if err != nil {
@@ -742,7 +749,7 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 		return err
 	}
 
-	klog.V(1).Infof("Remove current list [%v]", srcRuleList)
+	klog.V(3).Infof("Remove current list [%v]", srcRuleList)
 	var srcRuleTable int
 	for _, rule := range srcRuleList {
 		srcRuleTable = rule.Table
@@ -797,4 +804,15 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 		klog.V(1).Infof("UpdateRuleListBySrc: Successfully added pod rule[%v]", podRule)
 	}
 	return nil
+}
+
+func GetVPNNet(ip string) string {
+	i := net.ParseIP(ip).To4()
+	i[2] = 255
+	i[3] = 254
+	addr := &net.IPNet{
+		IP:   i,
+		Mask: net.IPv4Mask(255, 255, 255, 255),
+	}
+	return addr.String()
 }
