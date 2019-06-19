@@ -306,6 +306,23 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 			snatRule = append(snatRule, "--random")
 		}
 	}
+	//turn on the forward chain on the nics
+
+	iptableRules = append(iptableRules, iptablesRule{
+		name:        "accept traffic to/from nics in chain Forward",
+		shouldExist: true,
+		table:       "filter",
+		chain:       "FORWARD",
+		rule:        []string{"-i", "nic+", "-j", "ACCEPT"},
+	})
+
+	iptableRules = append(iptableRules, iptablesRule{
+		name:        "accept traffic to/from nics in chain Forward",
+		shouldExist: true,
+		table:       "filter",
+		chain:       "FORWARD",
+		rule:        []string{"-o", "nic+", "-j", "ACCEPT"},
+	})
 
 	iptableRules = append(iptableRules, iptablesRule{
 		name:        "last SNAT rule for non-VPC outbound traffic",
@@ -341,7 +358,6 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		},
 	})
 
-	// remove pre-1.3 QINGCLOUD SNAT rules
 	iptableRules = append(iptableRules, iptablesRule{
 		name:        fmt.Sprintf("rule for primary address %s", primaryAddr),
 		shouldExist: false,

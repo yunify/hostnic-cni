@@ -100,20 +100,32 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 
 	if *output.RetCode == 0 && len(output.Nics) > 0 {
 		qcnic := output.Nics[0]
-		hostNic := &types.HostNic{ID: *qcnic.NICID, HardwareAddr: *qcnic.NICID, Address: *qcnic.PrivateIP}
+		var hostnic *types.HostNic
+
+		retry.Do(5, time.Second*3, func() error {
+			hostNics, err := q.GetNics([]string{*qcnic.NICID})
+			if err != nil {
+				return err
+			}
+			if len(hostNics) == 0 {
+				return fmt.Errorf("get empty nic")
+			}
+			hostnic = hostNics[0]
+			return nil
+		})
 		vn, err := q.GetVxNet(vxnet)
 		if err != nil {
 			klog.Errorf("Failed to get vxnet of this nic")
 			return nil, err
 		}
-		hostNic.VxNet = vn
-		err = q.attachNic(hostNic)
+		hostnic.VxNet = vn
+		err = q.attachNic(hostnic)
 		if err != nil {
 			klog.Errorf("Failed to attach nic %s", *qcnic.NICID)
 			q.DeleteNic(*qcnic.NICID)
 			return nil, err
 		}
-		return hostNic, nil
+		return hostnic, nil
 	}
 	return nil, fmt.Errorf("Failed to creat nic, error: %s", *output.Message)
 }
