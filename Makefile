@@ -12,8 +12,11 @@ endif
 
 BUILD_ENV ?= GOOS=linux  GOARCH=$(ARCH)  CGO_ENABLED=0 
 
-unit-test: fmt vet
-	go test -v ./pkg/...
+docker-unit-test: fmt vet
+	docker run --rm -e GO111MODULE=on  -v "${PWD}":/root/myapp -w /root/myapp golang:1.12 make unit-test 
+
+unit-test:
+	$(BUILD_ENV) go test -mod=vendor -v ./pkg/... ./cmd/...
 
 fmt:
 	go fmt ./pkg/... ./cmd/...
@@ -29,5 +32,5 @@ build-docker: build-binary
 	docker build -t $(IMAGE_NAME) .
 	docker push $(IMAGE_NAME)
 
-debug:
+debug: vet fmt
 	./hack/debug.sh

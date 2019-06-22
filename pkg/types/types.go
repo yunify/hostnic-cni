@@ -51,5 +51,5 @@ type HostInstance struct {
 type VPC struct {
 	Network *net.IPNet
 	ID      string
-	VxNets  []string
+	VxNets  []*VxNet
 }

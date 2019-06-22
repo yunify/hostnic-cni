@@ -13,9 +13,6 @@ const (
 )
 
 func (s *IpamD) EnsureVxNet() error {
-	if !s.isInformerStarted {
-		return fmt.Errorf("NodeInformer is not started")
-	}
 	node, err := s.K8sClient.GetCurrentNode()
 	if err != nil {
 		klog.Errorf("Failed to get current node")

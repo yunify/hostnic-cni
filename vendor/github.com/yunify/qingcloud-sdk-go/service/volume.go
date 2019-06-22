@@ -132,6 +132,7 @@ func (s *VolumeService) CreateVolumes(i *CreateVolumesInput) (*CreateVolumesOutp
 
 type CreateVolumesInput struct {
 	Count      *int    `json:"count" name:"count" default:"1" location:"params"`
+	Repl       *string `json:"repl" name:"repl" location:"params"`
 	Size       *int    `json:"size" name:"size" location:"params"` // Required
 	VolumeName *string `json:"volume_name" name:"volume_name" location:"params"`
 	// VolumeType's available values: 0, 1, 2, 3, 4, 5, 10, 100, 200

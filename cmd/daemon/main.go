@@ -34,10 +34,6 @@ func init() {
 	flag.Parse()
 }
 func main() {
-	ipamd, err := ipam.NewIpamD()
-	if err != nil {
-		klog.Fatalf("Failed to create ipam, err:%s", err.Error())
-	}
 	stopCh := make(chan struct{})
 	stopSignal := make(chan os.Signal)
 	signal.Notify(stopSignal, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
@@ -49,10 +45,12 @@ func main() {
 		}
 	}()
 	klog.V(1).Infoln("Starting IPAMD")
-	err = ipamd.StartIPAMD(stopCh)
+	ipamd := ipam.NewIpamD()
+	err := ipamd.StartIPAMD(stopCh)
 	if err != nil {
 		klog.Fatalf("Failed to start ipamd, err: %s", err.Error())
 	}
+	go ipamd.StartReconcileIPPool(stopCh)
 	klog.V(1).Infoln("Starting Grpc server")
 	err = ipamd.StartGrpcServer()
 	if err != nil {
