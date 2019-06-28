@@ -1,57 +1,9 @@
-sudo: required
 language: go
-services:
-  - docker
+go: 
+ - "1.12.x"
 
-go:
-  - 1.9.x
+install: true
+env:
+  - GO111MODULE=on
 
-before_install:
-  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-  - sudo apt-get update
-  - sudo apt-get -y install docker-ce
-  - curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -
-  - sudo apt-get install -y nodejs
-  - sudo npm install -g codeclimate-test-reporter
-
-install:
-  - IMAGE_LABLE=$TRAVIS_BRANCH make release
-script:
-  - |
-    shopt -s globstar
-    rootdir=`pwd`
-    for dir in $(go list ./... |grep -v 'vendor'); do
-      cd $GOPATH/src/$dir
-      exec 5>&1
-      out=$(go test -v -coverprofile=cov_part.out | tee >(cat - >&5))
-      if [ $? -eq 1 ] ; then
-        if [ $(cat $out | grep -o 'no buildable Go source files') == "" ] ; then
-          echo "Tests failed! Exiting..." ; exit 1
-        fi
-      fi
-      cd $rootdir
-    done
-    find . -name cov_part.out | xargs cat > cov.out
-    codeclimate-test-reporter < cov.out
-
-deploy:
-  - provider: releases
-    api_key:
-      secure: nv/RABxh3/lXeaUSQKnEZ4mPLxNnLMkm0H7gaGbH5+NECloNOE7vI4jBLthjJVdv9iPfyfWlFM4WfviPibbC8qraxh78HCLeZpKWe4SJAFk6xrX85HPaKECr4NS/uBHxJDDkRwUzaI40unT4fqPWgiMAYqsZiDtzW3YYK7e5UgOZmWXzQy8ShdjkzTWn04ytUmaiIgs2xnBK7jM5jfFiH4qTEtteFy/wDN1TTsrzBVxpNF1xgzK+0VEwOo9NEJw9ygEHx9v7giDs3FgPVOgZ0cW/fxA05Tqmvb7d/6jHRhAzdimBNXPZVLxOx3VYBKKoR0m19UQi1FXt96ORUzD+F+kpRMGStCJhifjyxn7pLuXkW6hC3z7U5HXUk0VbrtnfAqVxRvInNmzUBfQc9NN5PKIqHxjq6VS3bya91+Gb5qVLki2Xz51TAg1RU8oTfDkp9WSxG/D5OrhihVPmojIkuc0h551Y3jW2jukjtZ2KC/hnw5DJxfId+NTpG9SmwaI8ep1P1TG1zcJb8XpTZ9PM+23T2OaSEQSd95OXW4ImdvIvQxJG/He32gY4H2PfqRxm+wo5q2XAn4190FzsJgv6zums4X7/Wki43UWXC3F/bvl6A5zpqRxLywduLfCdAjV7vfZCPnwnI0QnsadVDO/yjSSsV5Qo9wOH3l9rBNbN6ec=
-    file: bin/hostnic.tar.gz
-    skip_cleanup: true
-    overwrite: true
-    on:
-      repo: yunify/hostnic-cni
-      tags: true
-  - provider: script
-    script: IMAGE_LABLE=$TRAVIS_BRANCH make publish
-    skip_cleanup: true
-    on:
-      tags: true
-
-after_success:
-  - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"
-  - docker login -u="$QING_DOCKER_USER" -p="$QING_DOCKER_PASSWD" dockerhub.qingcloud.com
-  - IMAGE_LABLE=$TRAVIS_BRANCH make install-docker
+script: make unit-test

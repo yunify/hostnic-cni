@@ -6,17 +6,18 @@ import (
 	"net"
 	"time"
 
-	"github.com/yunify/hostnic-cni/pkg/retry"
-
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/ipam/datastore"
 	"github.com/yunify/hostnic-cni/pkg/k8sclient"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
+	"github.com/yunify/hostnic-cni/pkg/retry"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 )
 
@@ -208,11 +209,19 @@ func (s *IpamD) setupNic(nic *types.HostNic) error {
 
 func (s *IpamD) StartIPAMD(stopCh <-chan struct{}) error {
 	var err error
-	s.K8sClient, err = k8sclient.NewK8sHelper()
+	config, err := rest.InClusterConfig()
 	if err != nil {
-		klog.Errorln("Failed to get k8sclient")
+		klog.Errorln("Failed to get k8s config")
 		return err
 	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorln("Failed to get k8s clientset")
+		return err
+	}
+
+	s.K8sClient = k8sclient.NewK8sHelper(clientset)
 	err = s.K8sClient.Start(stopCh)
 	if err != nil {
 		klog.Errorln("Failed to start k8s controller")

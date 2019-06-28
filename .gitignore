@@ -2,3 +2,5 @@ bin/
 .idea/
 *.iml
 .vscode
+
+*.coverprofile

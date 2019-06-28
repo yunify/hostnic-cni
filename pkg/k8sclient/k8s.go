@@ -15,8 +15,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientsetcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 )
@@ -80,20 +80,8 @@ func (k *k8sHelper) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func NewK8sHelper() (K8sHelper, error) {
+func NewK8sHelper(clientset kubernetes.Interface) K8sHelper {
 	nodeName := os.Getenv(NodeNameEnvKey)
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorln("Failed to get k8s config")
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorln("Failed to get k8s clientset")
-		return nil, err
-	}
-
 	kubeInformerFactory := informers.NewSharedInformerFactory(clientset, time.Minute*1)
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
@@ -131,20 +119,21 @@ func NewK8sHelper() (K8sHelper, error) {
 		},
 		DeleteFunc: cont.handleObject,
 	})
-	return cont, nil
+	return cont
 }
 
 func (k *k8sHelper) UpdateNodeAnnotation(key, value string) error {
-	return wait.Poll(time.Second*2, time.Second*20, func() (done bool, err error) {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		node, err := k.GetCurrentNode()
 		if err != nil {
-			return
+			return err
 		}
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+
 		node.Annotations[key] = value
 		_, err = k.nodeInterface.Update(node)
-		if err == nil {
-			done = true
-		}
-		return
+		return err
 	})
 }
