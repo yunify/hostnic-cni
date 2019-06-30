@@ -12,10 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
+	coreosiptables "github.com/coreos/go-iptables/iptables"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/netlinkwrapper"
+	"github.com/yunify/hostnic-cni/pkg/networkutils/iptables"
 	"github.com/yunify/hostnic-cni/pkg/nswrapper"
 	"golang.org/x/sys/unix"
 	"k8s.io/klog"
@@ -99,24 +100,12 @@ type linuxNetwork struct {
 	connmark               uint32
 	vpnSupportEnabled      bool
 
-	netLink     netlinkwrapper.NetLink
-	ns          nswrapper.NS
-	newIptables func() (iptablesIface, error)
-	mainNICMark uint32
-	openFile    func(name string, flag int, perm os.FileMode) (stringWriteCloser, error)
-}
-
-type iptablesIface interface {
-	Exists(table, chain string, rulespec ...string) (bool, error)
-	Insert(table, chain string, pos int, rulespec ...string) error
-	Append(table, chain string, rulespec ...string) error
-	Delete(table, chain string, rulespec ...string) error
-	List(table, chain string) ([]string, error)
-	NewChain(table, chain string) error
-	ClearChain(table, chain string) error
-	DeleteChain(table, chain string) error
-	ListChains(table string) ([]string, error)
-	HasRandomFully() bool
+	netLink                  netlinkwrapper.NetLink
+	ns                       nswrapper.NS
+	newIptables              func() (iptables.IptablesIface, error)
+	mainNICMark              uint32
+	findPrimaryInterfaceName func(primaryMAC string) (string, error)
+	setProcSys               func(string, string) error
 }
 
 type snatType uint32
@@ -137,13 +126,12 @@ func New() NetworkAPIs {
 
 		netLink: netlinkwrapper.NewNetLink(),
 		ns:      nswrapper.NewNS(),
-		newIptables: func() (iptablesIface, error) {
-			ipt, err := iptables.New()
+		newIptables: func() (iptables.IptablesIface, error) {
+			ipt, err := coreosiptables.New()
 			return ipt, err
 		},
-		openFile: func(name string, flag int, perm os.FileMode) (stringWriteCloser, error) {
-			return os.OpenFile(name, flag, perm)
-		},
+		findPrimaryInterfaceName: findPrimaryInterfaceName,
+		setProcSys:               setProcSysByWritingFile,
 	}
 }
 
@@ -179,22 +167,10 @@ func findPrimaryInterfaceName(primaryMAC string) (string, error) {
 func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, primaryMAC string, primaryAddr *net.IP) error {
 	klog.V(1).Info("Setting up host network... ")
 
-	hostRule := n.netLink.NewRule()
-	hostRule.Dst = vpcCIDR
-	hostRule.Table = mainRoutingTable
-	hostRule.Priority = hostRulePriority
-	hostRule.Invert = true
-
-	// Cleanup previous rule first before CNI 1.3
-	err := n.netLink.RuleDel(hostRule)
-	if err != nil && !containsNoSuchRule(err) {
-		klog.Errorf("Failed to cleanup old host IP rule: %v", err)
-		return errors.Wrapf(err, "host network setup: failed to delete old host rule")
-	}
-
 	primaryIntf := "eth0"
+	var err error
 	if n.nodePortSupportEnabled {
-		primaryIntf, err = findPrimaryInterfaceName(primaryMAC)
+		primaryIntf, err = n.findPrimaryInterfaceName(primaryMAC)
 		if err != nil {
 			return errors.Wrapf(err, "failed to SetupHostNetwork")
 		}
@@ -217,7 +193,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		}
 	}
 
-	// If node port support is enabled, add a rule that will force force marked traffic out of the main NIC.  We then
+	// If node port support is enabled, add a rule that will force marked traffic out of the main NIC.  We then
 	// add iptables rules below that will mark traffic that needs this special treatment.  In particular NodePort
 	// traffic always comes in via the main NIC but response traffic would go out of the pod's assigned NIC if we
 	// didn't handle it specially. This is because the routing decision is done before the NodePort's DNAT is
@@ -230,14 +206,14 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	// If this is a restart, cleanup previous rule first
 	err = n.netLink.RuleDel(mainNICRule)
 	if err != nil && !containsNoSuchRule(err) {
-		klog.Errorf("Failed to cleanup old main NIC rule: %v", err)
+		klog.Errorf("Failed to cleanup old main NIC Rule: %v", err)
 		return errors.Wrapf(err, "host network setup: failed to delete old main NIC rule")
 	}
 
 	if n.nodePortSupportEnabled {
 		err = n.netLink.RuleAdd(mainNICRule)
 		if err != nil {
-			klog.Errorf("Failed to add host main NIC rule: %v", err)
+			klog.Errorf("Failed to add host main NIC Rule: %v", err)
 			return errors.Wrapf(err, "host network setup: failed to add main NIC rule")
 		}
 	}
@@ -262,14 +238,14 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	// build SNAT rules for outbound non-VPC traffic
 	klog.V(2).Infof("Setup Host Network: iptables -A POSTROUTING -m comment --comment \"QINGCLOUD SNAT CHAIN\" -j QINGCLOUD-SNAT-CHAIN-0")
 
-	var iptableRules []iptablesRule
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "first SNAT rules for non-VPC outbound traffic",
-		shouldExist: !n.useExternalSNAT,
-		table:       "nat",
-		chain:       "POSTROUTING",
-		rule: []string{
-			"-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-0",
+	var iptableRules []iptables.IptablesRule
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "first SNAT rules for non-VPC outbound traffic",
+		ShouldExist: !n.useExternalSNAT,
+		Table:       "nat",
+		Chain:       "POSTROUTING",
+		Rule: []string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0",
 		}})
 
 	for i, cidr := range vpcCIDRs {
@@ -279,12 +255,12 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 
 		klog.V(2).Infof("Setup Host Network: iptables -A %s ! -d %s -t nat -j %s", curChain, *cidr, nextChain)
 
-		iptableRules = append(iptableRules, iptablesRule{
-			name:        curName,
-			shouldExist: !n.useExternalSNAT,
-			table:       "nat",
-			chain:       curChain,
-			rule: []string{
+		iptableRules = append(iptableRules, iptables.IptablesRule{
+			Name:        curName,
+			ShouldExist: !n.useExternalSNAT,
+			Table:       "nat",
+			Chain:       curChain,
+			Rule: []string{
 				"!", "-d", *cidr, "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", nextChain,
 			}})
 	}
@@ -308,38 +284,38 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	}
 	//turn on the forward chain on the nics
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "accept traffic to/from nics in chain Forward",
-		shouldExist: true,
-		table:       "filter",
-		chain:       "FORWARD",
-		rule:        []string{"-i", "nic+", "-j", "ACCEPT"},
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "accept traffic to/from nics in chain Forward",
+		ShouldExist: true,
+		Table:       "filter",
+		Chain:       "FORWARD",
+		Rule:        []string{"-i", "nic+", "-j", "ACCEPT"},
 	})
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "accept traffic to/from nics in chain Forward",
-		shouldExist: true,
-		table:       "filter",
-		chain:       "FORWARD",
-		rule:        []string{"-o", "nic+", "-j", "ACCEPT"},
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "accept traffic to/from nics in chain Forward",
+		ShouldExist: true,
+		Table:       "filter",
+		Chain:       "FORWARD",
+		Rule:        []string{"-o", "nic+", "-j", "ACCEPT"},
 	})
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "last SNAT rule for non-VPC outbound traffic",
-		shouldExist: !n.useExternalSNAT,
-		table:       "nat",
-		chain:       lastChain,
-		rule:        snatRule,
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "last SNAT rule for non-VPC outbound traffic",
+		ShouldExist: !n.useExternalSNAT,
+		Table:       "nat",
+		Chain:       lastChain,
+		Rule:        snatRule,
 	})
 
 	klog.V(2).Infof("iptableRules: %v", iptableRules)
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "connmark for primary NIC",
-		shouldExist: n.nodePortSupportEnabled,
-		table:       "mangle",
-		chain:       "PREROUTING",
-		rule: []string{
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "connmark for primary NIC",
+		ShouldExist: n.nodePortSupportEnabled,
+		Table:       "mangle",
+		Chain:       "PREROUTING",
+		Rule: []string{
 			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
 			"-i", primaryIntf,
 			"-m", "addrtype", "--dst-type", "LOCAL", "--limit-iface-in",
@@ -347,45 +323,34 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		},
 	})
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        "connmark restore for primary NIC",
-		shouldExist: n.nodePortSupportEnabled,
-		table:       "mangle",
-		chain:       "PREROUTING",
-		rule: []string{
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "connmark restore for primary NIC",
+		ShouldExist: n.nodePortSupportEnabled,
+		Table:       "mangle",
+		Chain:       "PREROUTING",
+		Rule: []string{
 			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
 			"-i", "nic+", "-j", "CONNMARK", "--restore-mark", "--mask", fmt.Sprintf("%#x", n.mainNICMark),
 		},
 	})
 
-	iptableRules = append(iptableRules, iptablesRule{
-		name:        fmt.Sprintf("rule for primary address %s", primaryAddr),
-		shouldExist: false,
-		table:       "nat",
-		chain:       "POSTROUTING",
-		rule: []string{
-			"!", "-d", vpcCIDR.String(),
-			"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", primaryAddr.String()}})
-
 	for _, rule := range iptableRules {
-		klog.V(2).Infof("execute iptable rule : %s", rule.name)
+		klog.V(2).Infof("execute iptable rule : %s", rule.Name)
 
-		exists, err := ipt.Exists(rule.table, rule.chain, rule.rule...)
+		exists, err := ipt.Exists(rule.Table, rule.Chain, rule.Rule...)
 		if err != nil {
 			klog.Errorf("host network setup: failed to check existence of %v, %v", rule, err)
 			return errors.Wrapf(err, "host network setup: failed to check existence of %v", rule)
 		}
 
-		if !exists && rule.shouldExist {
-			err = ipt.Append(rule.table, rule.chain, rule.rule...)
+		if !exists && rule.ShouldExist {
+			err = ipt.Append(rule.Table, rule.Chain, rule.Rule...)
 			if err != nil {
 				klog.Errorf("host network setup: failed to add %v, %v", rule, err)
 				return errors.Wrapf(err, "host network setup: failed to add %v", rule)
 			}
-		} else if exists && !rule.shouldExist {
-			err = ipt.Delete(rule.table, rule.chain, rule.rule...)
+		} else if exists && !rule.ShouldExist {
+			err = ipt.Delete(rule.Table, rule.Chain, rule.Rule...)
 			if err != nil {
 				klog.Errorf("host network setup: failed to delete %v, %v", rule, err)
 				return errors.Wrapf(err, "host network setup: failed to delete %v", rule)
@@ -399,8 +364,8 @@ func containChainExistErr(err error) bool {
 	return strings.Contains(err.Error(), "Chain already exists")
 }
 
-func (n *linuxNetwork) setProcSys(key, value string) error {
-	f, err := n.openFile(key, os.O_WRONLY, 0644)
+func setProcSysByWritingFile(key, value string) error {
+	f, err := os.OpenFile(key, os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -411,17 +376,6 @@ func (n *linuxNetwork) setProcSys(key, value string) error {
 		return err
 	}
 	return f.Close()
-}
-
-type iptablesRule struct {
-	name         string
-	shouldExist  bool
-	table, chain string
-	rule         []string
-}
-
-func (r iptablesRule) String() string {
-	return fmt.Sprintf("%s/%s rule %s", r.table, r.chain, r.name)
 }
 
 func containsNoSuchRule(err error) bool {
@@ -742,7 +696,7 @@ func (n *linuxNetwork) DeleteRuleListBySrc(src net.IPNet) error {
 	klog.V(1).Infof("Remove current list [%v]", srcRuleList)
 	for _, rule := range srcRuleList {
 		if err := n.netLink.RuleDel(&rule); err != nil && !containsNoSuchRule(err) {
-			klog.Errorf("Failed to cleanup old IP rule: %v", err)
+			klog.Errorf("Failed to cleanup old IP Rule: %v", err)
 			return errors.Wrapf(err, "DeleteRuleListBySrc: failed to delete old rule")
 		}
 
@@ -770,7 +724,7 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 	for _, rule := range srcRuleList {
 		srcRuleTable = rule.Table
 		if err := n.netLink.RuleDel(&rule); err != nil && !containsNoSuchRule(err) {
-			klog.Errorf("Failed to cleanup old IP rule: %v", err)
+			klog.Errorf("Failed to cleanup old IP Rule: %v", err)
 			return errors.Wrapf(err, "UpdateRuleListBySrc: failed to delete old rule")
 		}
 		var toDst string
@@ -814,7 +768,7 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 
 		err = n.netLink.RuleAdd(podRule)
 		if err != nil {
-			klog.Errorf("Failed to add pod IP rule: %v", err)
+			klog.Errorf("Failed to add pod IP Rule: %v", err)
 			return errors.Wrapf(err, "UpdateRuleListBySrc: failed to add pod rule")
 		}
 		klog.V(1).Infof("UpdateRuleListBySrc: Successfully added pod rule[%v]", podRule)
@@ -831,4 +785,20 @@ func GetVPNNet(ip string) string {
 		Mask: net.IPv4Mask(255, 255, 255, 255),
 	}
 	return addr.String()
+}
+
+func NewFakeNetworkAPI(netlink netlinkwrapper.NetLink, iptableIface iptables.IptablesIface, findPrimaryName func(string) (string, error), setProcSys func(string, string) error) NetworkAPIs {
+	return &linuxNetwork{
+		useExternalSNAT:        useExternalSNAT(),
+		typeOfSNAT:             typeOfSNAT(),
+		nodePortSupportEnabled: nodePortSupportEnabled(),
+		mainNICMark:            getConnmark(),
+		netLink:                netlink,
+		ns:                     &nswrapper.FakeNsWrapper{},
+		newIptables: func() (iptables.IptablesIface, error) {
+			return iptableIface, nil
+		},
+		findPrimaryInterfaceName: findPrimaryName,
+		setProcSys:               setProcSys,
+	}
 }

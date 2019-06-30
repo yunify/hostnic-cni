@@ -96,13 +96,15 @@ github.com/onsi/ginkgo/internal/specrunner
 github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty
 # github.com/onsi/gomega v0.0.0-20190113212917-5533ce8a0da3
 github.com/onsi/gomega
+github.com/onsi/gomega/gstruct
 github.com/onsi/gomega/internal/assertion
 github.com/onsi/gomega/internal/asyncassertion
 github.com/onsi/gomega/internal/testingtsupport
 github.com/onsi/gomega/matchers
 github.com/onsi/gomega/types
-github.com/onsi/gomega/internal/oraclematcher
 github.com/onsi/gomega/format
+github.com/onsi/gomega/gstruct/errors
+github.com/onsi/gomega/internal/oraclematcher
 github.com/onsi/gomega/matchers/support/goraph/bipartitegraph
 github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
