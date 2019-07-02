@@ -1,4 +1,4 @@
-package mock
+package fake
 
 import (
 	"github.com/yunify/hostnic-cni/pkg/k8sclient"

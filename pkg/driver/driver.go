@@ -34,16 +34,26 @@ type NetworkAPIs interface {
 }
 
 type linuxNetwork struct {
-	netLink netlinkwrapper.NetLink
-	ns      nswrapper.NS
+	netLink          netlinkwrapper.NetLink
+	ns               nswrapper.NS
+	ip               ipwrapper.IP
+	containerNetlink netlinkwrapper.NetLink
+	networkClient    networkutils.NetworkAPIs
+}
+
+func newDriverNetworkAPI(netLink netlinkwrapper.NetLink, containerNetlink netlinkwrapper.NetLink, networkClient networkutils.NetworkAPIs, ns nswrapper.NS, ip ipwrapper.IP) NetworkAPIs {
+	return &linuxNetwork{
+		netLink:          netLink,
+		ns:               ns,
+		ip:               ip,
+		containerNetlink: containerNetlink,
+		networkClient:    networkClient,
+	}
 }
 
 // New creates linuxNetwork object
 func New() NetworkAPIs {
-	return &linuxNetwork{
-		netLink: netlinkwrapper.NewNetLink(),
-		ns:      nswrapper.NewNS(),
-	}
+	return newDriverNetworkAPI(netlinkwrapper.NewNetLink(), netlinkwrapper.NewNetLink(), networkutils.New(), nswrapper.NewNS(), ipwrapper.NewIP())
 }
 
 // createVethPairContext wraps the parameters and the method to create the
@@ -56,13 +66,13 @@ type createVethPairContext struct {
 	ip           ipwrapper.IP
 }
 
-func newCreateVethPairContext(contVethName string, hostVethName string, addr *net.IPNet) *createVethPairContext {
+func newCreateVethPairContext(contVethName string, hostVethName string, addr *net.IPNet, netLink netlinkwrapper.NetLink, ip ipwrapper.IP) *createVethPairContext {
 	return &createVethPairContext{
 		contVethName: contVethName,
 		hostVethName: hostVethName,
 		addr:         addr,
-		netLink:      netlinkwrapper.NewNetLink(),
-		ip:           ipwrapper.NewIP(),
+		netLink:      netLink,
+		ip:           ip,
 	}
 }
 
@@ -71,9 +81,10 @@ func newCreateVethPairContext(contVethName string, hostVethName string, addr *ne
 func (createVethContext *createVethPairContext) run(hostNS ns.NetNS) error {
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
-			Name:  createVethContext.contVethName,
-			Flags: net.FlagUp,
-			MTU:   ethernetMTU,
+			Name:   createVethContext.contVethName,
+			Flags:  net.FlagUp,
+			MTU:    ethernetMTU,
+			TxQLen: -1,
 		},
 		PeerName: createVethContext.hostVethName,
 	}
@@ -152,11 +163,11 @@ func (createVethContext *createVethPairContext) run(hostNS ns.NetNS) error {
 // SetupNS wires up linux networking for a pod's network
 func (os *linuxNetwork) SetupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, tunnelNet string, useExternalSNAT bool) error {
 	klog.V(2).Infof("SetupNS: hostVethName=%s,contVethName=%s, netnsPath=%s table=%d\n", hostVethName, contVethName, netnsPath, table)
-	return setupNS(hostVethName, contVethName, netnsPath, addr, table, vpcCIDRs, useExternalSNAT, tunnelNet, os.netLink, os.ns)
+	return setupNS(hostVethName, contVethName, netnsPath, addr, table, vpcCIDRs, useExternalSNAT, tunnelNet, os.netLink, os.containerNetlink, os.ns, os.ip)
 }
 
 func setupNS(hostVethName string, contVethName string, netnsPath string, addr *net.IPNet, table int, vpcCIDRs []string, useExternalSNAT bool, tunnelNet string,
-	netLink netlinkwrapper.NetLink, ns nswrapper.NS) error {
+	netLink netlinkwrapper.NetLink, containerNetlink netlinkwrapper.NetLink, ns nswrapper.NS, ip ipwrapper.IP) error {
 	// Clean up if hostVeth exists.
 	if oldHostVeth, err := netLink.LinkByName(hostVethName); err == nil {
 		if err = netLink.LinkDel(oldHostVeth); err != nil {
@@ -165,7 +176,7 @@ func setupNS(hostVethName string, contVethName string, netnsPath string, addr *n
 		klog.V(2).Infof("Clean up old hostVeth: %v\n", hostVethName)
 	}
 
-	createVethContext := newCreateVethPairContext(contVethName, hostVethName, addr)
+	createVethContext := newCreateVethPairContext(contVethName, hostVethName, addr, containerNetlink, ip)
 	if err := ns.WithNetNSPath(netnsPath, createVethContext.run); err != nil {
 		klog.Errorf("Failed to setup NS network %v", err)
 		return errors.Wrap(err, "setupNS network: failed to setup NS network")
@@ -281,10 +292,10 @@ func addContainerRule(netLink netlinkwrapper.NetLink, isToContainer bool, addr *
 // TeardownPodNetwork cleanup ip rules
 func (os *linuxNetwork) TeardownNS(addr *net.IPNet, table int) error {
 	klog.V(2).Infof("TeardownNS: addr %s, table %d", addr.String(), table)
-	return tearDownNS(addr, table, os.netLink)
+	return tearDownNS(addr, table, os.netLink, os.networkClient)
 }
 
-func tearDownNS(addr *net.IPNet, table int, netLink netlinkwrapper.NetLink) error {
+func tearDownNS(addr *net.IPNet, table int, netLink netlinkwrapper.NetLink, networkClient networkutils.NetworkAPIs) error {
 	// remove to-pod rule
 	toContainerRule := netLink.NewRule()
 	toContainerRule.Dst = addr
@@ -299,7 +310,7 @@ func tearDownNS(addr *net.IPNet, table int, netLink netlinkwrapper.NetLink) erro
 
 	if table > 0 {
 		// remove from-pod rule only for non main table
-		err := deleteRuleListBySrc(*addr)
+		err := deleteRuleListBySrc(networkClient, *addr)
 		if err != nil {
 			klog.Errorf("Failed to delete fromContainer for %s %v", addr.String(), err)
 			return errors.Wrapf(err, "delete NS network: failed to delete fromContainer rule for %s", addr.String())
@@ -320,8 +331,7 @@ func tearDownNS(addr *net.IPNet, table int, netLink netlinkwrapper.NetLink) erro
 	return nil
 }
 
-func deleteRuleListBySrc(src net.IPNet) error {
-	networkClient := networkutils.New()
+func deleteRuleListBySrc(networkClient networkutils.NetworkAPIs, src net.IPNet) error {
 	return networkClient.DeleteRuleListBySrc(src)
 }
 
