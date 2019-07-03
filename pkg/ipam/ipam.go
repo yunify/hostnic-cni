@@ -2,7 +2,6 @@ package ipam
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 )
 
@@ -25,7 +23,6 @@ const (
 	ipamdgRPCaddress = "127.0.0.1:41080"
 	metricsAddress   = "127.0.0.1:41081"
 	gracefulTimeout  = 120 * time.Second
-	instanceIDFile   = "/host/etc/qingcloud/instance-id"
 
 	defaultPoolSize    = 3
 	defaultMaxPoolSize = 10
@@ -47,17 +44,20 @@ type IpamD struct {
 	networkClient networkutils.NetworkAPIs
 
 	nodeInfo
-	poolSize          int
-	maxPoolSize       int
-	supportVPNTraffic bool
+	poolSize           int
+	maxPoolSize        int
+	supportVPNTraffic  bool
+	prepareCloudClient func() (qcclient.QingCloudAPI, error)
 }
 
-func NewIpamD() *IpamD {
+func NewIpamD(clientset kubernetes.Interface) *IpamD {
 	return &IpamD{
-		dataStore:     datastore.NewDataStore(),
-		networkClient: networkutils.New(),
-		poolSize:      defaultPoolSize,
-		maxPoolSize:   defaultMaxPoolSize,
+		dataStore:          datastore.NewDataStore(),
+		networkClient:      networkutils.New(),
+		poolSize:           defaultPoolSize,
+		maxPoolSize:        defaultMaxPoolSize,
+		K8sClient:          k8sclient.NewK8sHelper(clientset),
+		prepareCloudClient: prepareQingCloudClient,
 	}
 }
 
@@ -70,20 +70,22 @@ func (s *IpamD) vpcSubnets() []*string {
 	return vpcSubnets
 }
 
-func (s *IpamD) setup() error {
-	klog.V(2).Infoln("Get node instance id")
-	content, err := ioutil.ReadFile(instanceIDFile)
+func prepareQingCloudClient() (qcclient.QingCloudAPI, error) {
+	client, err := qcclient.NewQingCloudClient()
 	if err != nil {
-		return fmt.Errorf("Load instance-id from %s error: %v", instanceIDFile, err)
+		return nil, fmt.Errorf("Failed to initiate qingcloud api, err: %v", err)
 	}
-	s.InstanceID = string(content)
-	klog.V(2).Infoln("Get current network  info of this node")
-	s.qcClient, err = qcclient.NewQingCloudClient(s.InstanceID)
+	return client, nil
+}
+
+func (s *IpamD) setup() error {
+	var err error
+	s.qcClient, err = s.prepareCloudClient()
 	if err != nil {
-		klog.Errorln("Failed to initiate qingcloud api")
 		return err
 	}
-
+	s.InstanceID = s.qcClient.GetInstanceID()
+	klog.V(2).Infoln("Get current network  info of this node")
 	s.vpc, err = s.qcClient.GetNodeVPC()
 	if err != nil {
 		klog.Errorf("Failed to get vpc router of %s", s.InstanceID)
@@ -208,21 +210,7 @@ func (s *IpamD) setupNic(nic *types.HostNic) error {
 }
 
 func (s *IpamD) StartIPAMD(stopCh <-chan struct{}) error {
-	var err error
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorln("Failed to get k8s config")
-		return err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorln("Failed to get k8s clientset")
-		return err
-	}
-
-	s.K8sClient = k8sclient.NewK8sHelper(clientset)
-	err = s.K8sClient.Start(stopCh)
+	err := s.K8sClient.Start(stopCh)
 	if err != nil {
 		klog.Errorln("Failed to start k8s controller")
 		return err

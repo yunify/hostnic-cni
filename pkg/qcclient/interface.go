@@ -33,4 +33,5 @@ type QingCloudNetAPI interface {
 	GetVPCVxNets(string) ([]*types.VxNet, error)
 	JoinVPC(network, vxnetID, vpcID string) error
 	LeaveVPC(vxnetID, vpcID string) error
+	GetInstanceID() string
 }

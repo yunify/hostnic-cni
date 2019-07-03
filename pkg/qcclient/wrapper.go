@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"time"
+	"io/ioutil"
 
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/retry"
@@ -22,8 +23,9 @@ func init() {
 }
 
 const (
+	
 	nicPrefix = "hostnic_"
-
+     instanceIDFile   = "/host/etc/qingcloud/instance-id"
 	defaultOpTimeout     = 180 * time.Second
 	defaultWaitInterval  = 10 * time.Second
 	waitNicLocalTimeout  = 20 * time.Second
@@ -46,7 +48,11 @@ type qingcloudAPIWrapper struct {
 	instanceID string
 }
 
-func NewQingCloudClient(instanceID string) (QingCloudAPI, error) {
+func NewQingCloudClient() (QingCloudAPI, error) {
+	content, err := ioutil.ReadFile(instanceIDFile)
+	if err != nil {
+		return nil, fmt.Errorf("Load instance-id from %s error: %v", instanceIDFile, err)
+	}
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
 		return nil, err
@@ -82,9 +88,13 @@ func NewQingCloudClient(instanceID string) (QingCloudAPI, error) {
 		vxNetService:    vxNetService,
 		instanceService: instanceService,
 		vpcService:      vpcService,
-		instanceID:      instanceID,
+		instanceID:      string(content),
 	}
 	return p, nil
+}
+
+func (q *qingcloudAPIWrapper) GetInstanceID() string {
+	return q.instanceID
 }
 
 func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {

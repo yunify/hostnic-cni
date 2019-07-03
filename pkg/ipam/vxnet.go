@@ -42,6 +42,7 @@ func (s *IpamD) EnsureVxNet() error {
 		}
 		return err
 	}
+	s.vpc.VxNets = append(s.vpc.VxNets, vxnet)
 	klog.V(1).Infof("Vxnet created successfully")
 	return nil
 }
