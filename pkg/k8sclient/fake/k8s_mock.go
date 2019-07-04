@@ -6,6 +6,7 @@ import (
 )
 
 type FakeK8sHelper struct {
+	currentNode    string
 	nodeAnnotation map[string]string
 	currentPods    []*k8sclient.K8SPodInfo
 }
@@ -16,6 +17,7 @@ func (f *FakeK8sHelper) Start(stopCh <-chan struct{}) error {
 
 func (f *FakeK8sHelper) GetCurrentNode() (*corev1.Node, error) {
 	node := &corev1.Node{}
+	node.Name = f.currentNode
 	node.SetAnnotations(f.nodeAnnotation)
 	return node, nil
 }

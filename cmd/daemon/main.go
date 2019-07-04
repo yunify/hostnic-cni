@@ -26,6 +26,8 @@ import (
 
 	"github.com/coreos/go-systemd/daemon"
 	"github.com/yunify/hostnic-cni/pkg/ipam"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 )
 
@@ -44,9 +46,22 @@ func main() {
 			stopCh <- struct{}{}
 		}
 	}()
+
+	var err error
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Fatalf("Failed to get k8s config, err:%v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Fatalf("Failed to get k8s clientset, err:%v", err)
+	}
+
 	klog.V(1).Infoln("Starting IPAMD")
-	ipamd := ipam.NewIpamD()
-	err := ipamd.StartIPAMD(stopCh)
+	ipamd := ipam.NewIpamD(clientset)
+
+	err = ipamd.StartIPAMD(stopCh)
 	if err != nil {
 		klog.Fatalf("Failed to start ipamd, err: %s", err.Error())
 	}

@@ -125,7 +125,7 @@ var _ = Describe("Networkutils", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth0.Name = "eth0"
-		eth0.HardwareAddr = net.HardwareAddr(testMAC)
+		eth0.HardwareAddr, _ = net.ParseMAC(testMAC)
 		netlinkData.LinkAdd(eth0)
 		os.Setenv(envNodePortSupport, "false")
 		api := NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, setProcSys)
