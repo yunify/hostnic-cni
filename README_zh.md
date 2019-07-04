@@ -1,115 +1,50 @@
 # hostnic-cni
 
-[![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master)
+[![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master) [![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni) [![Go Report](https://goreportcard.com/badge/github.com/yunify/hostnic-cni)](https://goreportcard.com/report/github.com/yunify/hostnic-cni) [![License](https://img.shields.io/github/license/openshift/source-to-image.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
-[![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni)
 
 [English](README.md)|中文
 
-**hostnic-cni** 是一个 [Container Network Interface](https://github.com/containernetworking/cni) 插件。 本插件会直接调用 IaaS 的接口去创建网卡并且关联到容器的网络命名空间。当前支持的 IaaS：[QingCloud](http://qingcloud.com)，未来会支持更多。
+**hostnic-cni** 是一个 [Container Network Interface](https://github.com/containernetworking/cni) 插件。 本插件会直接调用 IaaS 的接口去创建网卡，并将容器的内部的接口连接到网卡上，不同Node上的Pod能够借助IaaS的SDN进行通讯。此插件的优点有：
 
-### 使用说明
+1. Pod通讯借助于IaaS平台SDN能力，相比于传统的CNI，能够处理更多流量，更大的吞吐量以及更低的延迟。
+2. Pod IP可直接被外部访问，安装此插件的kubernetes能够很方便对外提供容器服务
+3. Pod在跨二层Node中也能有更快的访问速度
+4. Hostnic也支持网络策略，提供本地的网络策略，同时用户也可以利用IaaS平台的VPC功能做更多的控制。
 
-1. 从 [CNI release 页面](https://github.com/containernetworking/cni/releases)  下载 CNI 包，解压到 /opt/cni/bin 下。
-1. 从 [release 页面](https://github.com/yunify/hostnic-cni/releases) 下载 hostnic 放置到 /opt/cni/bin/ 路径下。
-1. 增加 IaaS 的 sdk 配置文件
+## 插件原理
+
+[插件原理](docs/proposal.md)
+
+## 使用说明
+
+
+1. `hostnic`需要有在云平台上操作网络的权限，所以首先需要增加 IaaS 的 sdk 配置文件，并将其存储中kube-system中的`qcsecret`中。
 
     ```bash
-    cat >/etc/qingcloud/client.yaml <<EOF
+    cat >config.yaml <<EOF
     qy_access_key_id: "Your access key id"
     qy_secret_access_key: "Your secret access key"
     # your instance zone
     zone: "pek3a"
     EOF
+
+    ## 创建Secret
+    kubectl create secret generic qcsecret --from-file=./config.yaml -n kube-system
     ```
-    access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  
-1. 启动后台进程
+    access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  请参考https://docs.qingcloud.com/product/api/common/overview.html。如果是私有云，请按照下方示例配置更多的参数：
+    ```
+    qy_access_key_id: 'ACCESS_KEY_ID'
+    qy_secret_access_key: 'SECRET_ACCESS_KEY'
 
-    后台进程主要负责后台异步的进行网卡的申请销毁。给hostnic程序提供服务。它监听本地端口，维护网卡信息，并管理缓存网卡池
-    启动后台进程需要如下参数
-
+    host: 'api.xxxxx.com'
+    port: 443
+    protocol: 'https'
+    uri: '/iaas'
+    connection_retries: 3
+    ```
+2. 安装yaml文件，等待所有节点的hostnic起来即可
     ```bash
-    [root@i-zwa7jztl bin]# ./daemon start -h
-    hostnic-cni is a Container Network Interface plugin.
-
-    This plugin will create a new nic by IaaS api and attach to host,
-    then move the nic to container network namespace
-
-    Usage:
-      daemon start [flags]
-    
-    Flags:
-          --CleanUpCacheOnExit        Delete cached nic on exit
-          --PoolSize int              The size of nic pool (default 3)
-          --QyAccessFilePath string   Path of QingCloud Access file (default "/etc/qingcloud/client.yaml")
-      -h, --help                      help for start
-          --vxnets stringSlice        ids of vxnet
-    
-    Global Flags:
-          --bindAddr string     port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
-          --config string       config file (default is $HOME/.daemon.yaml)
-          --loglevel string     daemon process log level(debug,info,warn,error) (default "info")
-          --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
-
-    ```
-    其中 PoolSize 参数为当前进程为提高网卡挂载效率预先申请的网卡数，缺省为3个。  
-
-    例如
-
-    ```bash
-    ./bin/daemon start --bindAddr :31080 --vxnets vxnet-xxxxxxx,vxnet-xxxxxxx --PoolSize 3 --loglevel debug
-    INFO[0000] Collect existing nic as gateway cadidate     
-    DEBU[0000] Found nic 52:54:03:41:e9:16 on host          
-    DEBU[0000] Found nic 52:54:20:82:68:5c on host          
-    DEBU[0000] Found nic 52:54:0b:48:04:52 on host          
-    INFO[0000] Found following nic as gateway               
-    INFO[0000] vxnet: vxnet-oca1g0z gateway: 192.168.4.253  
-    INFO[0000] vxnet: vxnet-oilq879 gateway: 192.168.3.251  
-    INFO[0000] vxnet: vxnet-2n6g6gx gateway: 192.168.0.3    
-    DEBU[0002] start to wait until channel is not full.     
-    DEBU[0002] put 52:54:27:6b:17:65 into channel           
-    DEBU[0007] start to wait until channel is not full.     
-    DEBU[0007] put 52:54:57:83:d0:ab into channel           
-    DEBU[0011] start to wait until channel is not full.     
-    DEBU[0011] put 52:54:d6:86:46:d6 into channel           
-    DEBU[0015] start to wait until channel is not full.   
+    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/hostnic.yaml
     ```
 
-    后台进程会将缓冲池充满，并等待请求到来。
-
-1. 增加 cni 的配置
-
-    ```bash
-    cat >/etc/cni/net.d/10-hostnic.conf <<EOF
-    {
-        "cniVersion": "0.3.1",
-        "name": "hostnic",
-        "type": "hostnic",
-        "bindaddr":"localhost:31080",
-        "ipam":{
-          "routes":[{"dst":"kubernetes service cidr","gw":"hostip or 0.0.0.0"}]
-        },
-        "isGateway": true
-    }
-    EOF
-
-    cat >/etc/cni/net.d/99-loopback.conf <<EOF
-    {
-        "cniVersion": "0.2.0",
-        "type": "loopback"
-    }
-    EOF
-    ```
-
-### 配置说明
-
-* **ipam** 给nic设置路由条目。（可选）  
-* **bindaddr**  后台进程监听的服务器地址  
-* **dst** 无类域间路由标记中的目标子网  
-* **gw** 网关地址  
-
-以上 cni 配置文件及其可支持参数的具体说明以可以参考 [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md)
-
-### kubernetes用户的说明
-
-kubernetes管理集群时会给每一个服务分配一个集群ip地址。kube-proxy会负责服务负载均衡，由于默认的方案所有pod的网络请求通过主机的网卡转发后才会进入路由器。但给pod单独分配网卡后，流量不再经过kube-proxy，所有调用服务的请求会失败。这里我们提供设置路由的功能来解决这个问题。pod分配网卡后，用户可以指定将集群ip网段的请求转发给虚拟机，交由kube-proxy去处理。由于网关必须满足一定条件，用户可以指定网关为0.0.0.0，插件会自动寻找可用网管，如果都不满足条件，会自动分配一个。
