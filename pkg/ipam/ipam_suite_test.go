@@ -13,6 +13,11 @@ import (
 )
 
 func TestIpam(t *testing.T) {
+	// klog.InitFlags(nil)
+	// flag.Set("logtostderr", "true")
+	// flag.Set("v", "4")
+	// flag.Parse()
+	// klog.SetOutput(GinkgoWriter)
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Ipam Suite")
 }

@@ -9,10 +9,10 @@ import (
 const (
 	nodeIPPoolReconcileInterval = 60 * time.Second
 	decreaseIPPoolInterval      = 30 * time.Second
-	sleepDuration               = 10 * time.Second
+	defaultSleepDuration        = 10 * time.Second
 )
 
-func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}) {
+func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...time.Duration) {
 	klog.V(1).Infoln("Starting ip pool reconciling")
 	for {
 		select {
@@ -21,9 +21,13 @@ func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}) {
 			return
 		default:
 			klog.V(2).Infoln("Begin to reconcile nic pool")
-			time.Sleep(sleepDuration)
+			var sleep time.Duration
+			if len(sleepDuration) == 1 {
+				sleep = sleepDuration[0]
+			}
+			time.Sleep(sleep)
 			s.updateIPPoolIfRequired()
-			time.Sleep(sleepDuration)
+			time.Sleep(sleep)
 			s.nodeIPPoolReconcile()
 		}
 	}

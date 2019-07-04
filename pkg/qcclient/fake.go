@@ -14,10 +14,11 @@ func init() {
 }
 
 type FakeQingCloudAPI struct {
-	InstanceID string
-	Nics       map[string]*types.HostNic
-	VxNets     map[string]*types.VxNet
-	VPC        *types.VPC
+	InstanceID       string
+	Nics             map[string]*types.HostNic
+	VxNets           map[string]*types.VxNet
+	VPC              *types.VPC
+	AfterCreatingNIC func(*types.HostNic) error
 }
 
 func NewFakeQingCloudAPI(instanceID string, vpc *types.VPC) *FakeQingCloudAPI {
@@ -37,7 +38,7 @@ func generateMAC() string {
 	}
 	// Set the local bit
 	buf[0] |= 2
-	return string(buf)
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
 }
 
 func (f *FakeQingCloudAPI) CreateNic(vxnet string) (*types.HostNic, error) {
@@ -71,6 +72,10 @@ func (f *FakeQingCloudAPI) CreateNic(vxnet string) (*types.HostNic, error) {
 		IsPrimary:    false,
 	}
 	f.Nics[mac] = nic
+	err := f.AfterCreatingNIC(nic)
+	if err != nil {
+		return nil, err
+	}
 	return nic, nil
 }
 
