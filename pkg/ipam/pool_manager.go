@@ -17,7 +17,7 @@ func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...ti
 	for {
 		select {
 		case <-stopCh:
-			klog.V(1).Infoln("Recieve stop signal, stop pool manager")
+			klog.V(1).Infoln("Receive stop signal, stop pool manager")
 			return
 		default:
 			klog.V(2).Infoln("Begin to reconcile nic pool")
