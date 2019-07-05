@@ -89,7 +89,7 @@ type NetworkAPIs interface {
 	UseExternalSNAT() bool
 	GetRuleList() ([]netlink.Rule, error)
 	GetRuleListBySrc(ruleList []netlink.Rule, src net.IPNet) ([]netlink.Rule, error)
-	UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNet, toCIDRs []string, toFlag bool) error
+	UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNet, toCIDRs []string, toFlag bool, table int) error
 	DeleteRuleListBySrc(src net.IPNet) error
 }
 
@@ -525,7 +525,7 @@ func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR st
 	if err = netLink.LinkSetMTU(link, ethernetMTU); err != nil {
 		return errors.Wrapf(err, "setupNICNetwork: failed to set MTU for %s", nicIP)
 	}
-
+	// TODO: due to the bug of iaas, we must set it down if it is up.
 	if err = netLink.LinkSetUp(link); err != nil {
 		return errors.Wrapf(err, "setupNICNetwork: failed to bring up NIC %s", nicIP)
 	}
@@ -710,8 +710,8 @@ func (n *linuxNetwork) DeleteRuleListBySrc(src net.IPNet) error {
 }
 
 // UpdateRuleListBySrc modify IP rules that have a matching source IP
-func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNet, toCIDRs []string, useExternalSNAT bool) error {
-	klog.V(3).Infof("Update Rule List[%v] for source[%v] with toCIDRs[%v], useExternalSNAT[%v]", ruleList, src, toCIDRs, useExternalSNAT)
+func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNet, toCIDRs []string, toFlag bool, table int) error {
+	klog.V(3).Infof("Update Rule List[%v] for source[%v] with toCIDRs[%v], toFlag[%v]", ruleList, src, toCIDRs, toFlag)
 
 	srcRuleList, err := n.GetRuleListBySrc(ruleList, src)
 	if err != nil {
@@ -735,11 +735,28 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 	}
 
 	if len(srcRuleList) == 0 {
-		klog.V(2).Info("UpdateRuleListBySrc: empty list, no need to update")
+		klog.Warningln("UpdateRuleListBySrc: empty list, the rule is broken, try to rebuild")
+		for _, cidr := range toCIDRs {
+			podRule := n.netLink.NewRule()
+			_, podRule.Dst, _ = net.ParseCIDR(cidr)
+			podRule.Src = &src
+			podRule.Table = table
+			podRule.Priority = fromPodRulePriority
+
+			err = n.netLink.RuleAdd(podRule)
+			if IsRuleExistsError(err) {
+				klog.Warningf("Rule already exists [%v]", podRule)
+			} else {
+				if err != nil {
+					klog.Errorf("Failed to add pod IP rule [%v]: %v", podRule, err)
+					return errors.Wrapf(err, "setupNS: failed to add pod rule [%v]", podRule)
+				}
+			}
+		}
+		klog.V(1).Infof("Rules for %s rebuilding done", src.String())
 		return nil
 	}
-
-	if useExternalSNAT {
+	if toFlag {
 		for _, cidr := range toCIDRs {
 			podRule := n.netLink.NewRule()
 			_, podRule.Dst, _ = net.ParseCIDR(cidr)
@@ -776,6 +793,7 @@ func (n *linuxNetwork) UpdateRuleListBySrc(ruleList []netlink.Rule, src net.IPNe
 	return nil
 }
 
+// GetVPNNet return the ip from the vpn tunnel, which in most time is the x.x.255.254
 func GetVPNNet(ip string) string {
 	i := net.ParseIP(ip).To4()
 	i[2] = 255
@@ -787,6 +805,7 @@ func GetVPNNet(ip string) string {
 	return addr.String()
 }
 
+// NewFakeNetworkAPI is used by unit test
 func NewFakeNetworkAPI(netlink netlinkwrapper.NetLink, iptableIface iptables.IptablesIface, findPrimaryName func(string) (string, error), setProcSys func(string, string) error) NetworkAPIs {
 	return &linuxNetwork{
 		useExternalSNAT:        useExternalSNAT(),
@@ -801,4 +820,20 @@ func NewFakeNetworkAPI(netlink netlinkwrapper.NetLink, iptableIface iptables.Ipt
 		findPrimaryInterfaceName: findPrimaryName,
 		setProcSys:               setProcSys,
 	}
+}
+
+// ContainsNoSuchRule report whether the rule is not exist
+func ContainsNoSuchRule(err error) bool {
+	if errno, ok := err.(syscall.Errno); ok {
+		return errno == syscall.ENOENT
+	}
+	return false
+}
+
+// IsRuleExistsError report whether the rule is exist
+func IsRuleExistsError(err error) bool {
+	if errno, ok := err.(syscall.Errno); ok {
+		return errno == syscall.EEXIST
+	}
+	return false
 }

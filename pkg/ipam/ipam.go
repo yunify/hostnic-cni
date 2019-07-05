@@ -50,6 +50,7 @@ type IpamD struct {
 	prepareCloudClient func() (qcclient.QingCloudAPI, error)
 }
 
+// NewIpamD create a new IpamD object with default settings
 func NewIpamD(clientset kubernetes.Interface) *IpamD {
 	return &IpamD{
 		dataStore:          datastore.NewDataStore(),
@@ -181,8 +182,12 @@ func (s *IpamD) prepareLocalPods(pods []*k8sclient.K8SPodInfo) error {
 		}
 		//append vpn net
 		pbVPCcidrs = append(pbVPCcidrs, networkutils.GetVPNNet(ip.IP))
-
-		err = s.networkClient.UpdateRuleListBySrc(rules, srcIPNet, pbVPCcidrs, !s.networkClient.UseExternalSNAT())
+		table := s.getNicIndexByIP(ip.IP)
+		if table == -1 {
+			klog.Errorf("Cannot get device number of %+v", ip)
+			continue
+		}
+		err = s.networkClient.UpdateRuleListBySrc(rules, srcIPNet, pbVPCcidrs, !s.networkClient.UseExternalSNAT(), table)
 		if err != nil {
 			klog.Errorf("UpdateRuleListBySrc in nodeInit() failed for IP %s: %v", ip.IP, err)
 		}
@@ -235,4 +240,16 @@ func (s *IpamD) StartGrpcServer() error {
 	grpc_prometheus.Register(grpcServer)
 	go grpcServer.Serve(listener)
 	return nil
+}
+
+func (s *IpamD) getNicIndexByIP(ip string) int {
+	nics := s.dataStore.GetNICInfos().NICIPPools
+	for _, nic := range nics {
+		for i := range nic.IPv4Addresses {
+			if i == ip {
+				return nic.DeviceNumber
+			}
+		}
+	}
+	return -1
 }

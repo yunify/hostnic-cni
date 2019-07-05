@@ -63,7 +63,7 @@ spec:
       tolerations:
       - operator: Exists
       containers:
-      - image: magicsong/hostnic:075c705
+      - image: magicsong/hostnic:4b1b4ee
         imagePullPolicy: Always
         ports:
         - containerPort: 61678

@@ -2,7 +2,6 @@ package driver
 
 import (
 	"net"
-	"syscall"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/pkg/errors"
@@ -246,7 +245,7 @@ func setupNS(hostVethName string, contVethName string, netnsPath string, addr *n
 				podRule.Priority = fromContainerRulePriority
 
 				err = netLink.RuleAdd(podRule)
-				if isRuleExistsError(err) {
+				if networkutils.IsRuleExistsError(err) {
 					klog.Warningf("Rule already exists [%v]", podRule)
 				} else {
 					if err != nil {
@@ -278,7 +277,7 @@ func addContainerRule(netLink netlinkwrapper.NetLink, isToContainer bool, addr *
 	containerRule.Priority = priority
 
 	err := netLink.RuleDel(containerRule)
-	if err != nil && !containsNoSuchRule(err) {
+	if err != nil && !networkutils.ContainsNoSuchRule(err) {
 		return errors.Wrapf(err, "addContainerRule: failed to delete old container rule for %s", addr.String())
 	}
 
@@ -333,18 +332,4 @@ func tearDownNS(addr *net.IPNet, table int, netLink netlinkwrapper.NetLink, netw
 
 func deleteRuleListBySrc(networkClient networkutils.NetworkAPIs, src net.IPNet) error {
 	return networkClient.DeleteRuleListBySrc(src)
-}
-
-func containsNoSuchRule(err error) bool {
-	if errno, ok := err.(syscall.Errno); ok {
-		return errno == syscall.ENOENT
-	}
-	return false
-}
-
-func isRuleExistsError(err error) bool {
-	if errno, ok := err.(syscall.Errno); ok {
-		return errno == syscall.EEXIST
-	}
-	return false
 }

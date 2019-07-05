@@ -20,8 +20,8 @@ func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...ti
 			klog.V(1).Infoln("Receive stop signal, stop pool manager")
 			return
 		default:
-			klog.V(2).Infoln("Begin to reconcile nic pool")
-			var sleep time.Duration
+			klog.V(3).Infoln("Begin to reconcile nic pool")
+			sleep := defaultSleepDuration
 			if len(sleepDuration) == 1 {
 				sleep = sleepDuration[0]
 			}

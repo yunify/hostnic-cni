@@ -1,6 +1,6 @@
 # hostnic-cni
 
-[![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master) [![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni) [![Go Report](https://goreportcard.com/badge/github.com/yunify/hostnic-cni)](https://goreportcard.com/report/github.com/yunify/hostnic-cni) [![License](https://img.shields.io/github/license/openshift/source-to-image.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+[![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master) [![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni) [![Go Report](https://goreportcard.com/badge/github.com/yunify/hostnic-cni)](https://goreportcard.com/report/github.com/yunify/hostnic-cni) [![License](https://img.shields.io/github/license/openshift/source-to-image.svg)](https://www.apache.org/licenses/LICENSE-2.0.html) [![codecov](https://codecov.io/gh/yunify/hostnic-cni/branch/master/graph/badge.svg)](https://codecov.io/gh/yunify/hostnic-cni)
 
 
 [English](README.md)|中文
