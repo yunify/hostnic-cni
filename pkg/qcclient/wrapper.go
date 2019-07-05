@@ -2,11 +2,11 @@ package qcclient
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"strings"
 	"time"
-	"io/ioutil"
 
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/retry"
@@ -23,9 +23,8 @@ func init() {
 }
 
 const (
-	
-	nicPrefix = "hostnic_"
-     instanceIDFile   = "/host/etc/qingcloud/instance-id"
+	nicPrefix            = "hostnic_"
+	instanceIDFile       = "/host/etc/qingcloud/instance-id"
 	defaultOpTimeout     = 180 * time.Second
 	defaultWaitInterval  = 10 * time.Second
 	waitNicLocalTimeout  = 20 * time.Second
