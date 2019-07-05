@@ -225,7 +225,7 @@ var _ = Describe("Networkutils", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rules).To(HaveLen(5))
 		Expect(api.DeleteRuleListBySrc(*sourceIP)).ShouldNot(HaveOccurred())
-		Expect(ruleList).To(HaveLen(4))
+		Expect(netlinkData.Rules).To(HaveLen(4))
 	})
 })
 

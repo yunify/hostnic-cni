@@ -2,16 +2,10 @@ package fake
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
-	"time"
 
 	"github.com/vishvananda/netlink"
 )
-
-func init() {
-	rand.Seed(time.Now().Unix())
-}
 
 type FakeNetlink struct {
 	Links    map[string]netlink.Link
@@ -191,9 +185,6 @@ func (f *FakeNetlink) LinkSetMTU(link netlink.Link, mtu int) error {
 }
 
 func (f *FakeNetlink) FindPrimaryInterfaceName(mac string) (string, error) {
-	if rand.Int()%2 == 0 {
-		return "", fmt.Errorf("Random Error")
-	}
 	for _, link := range f.Links {
 		if string(link.Attrs().HardwareAddr) == mac {
 			return link.Attrs().Name, nil
