@@ -1,6 +1,7 @@
 IMAGE_NAME ?=magicsong/hostnic:v0.0.1
 
 ARCH ?= $(shell uname -m)
+pgks ?= $(shell go list -mod=vendor ./pkg/... | grep -v rpc)
 
 ifeq ($(ARCH),aarch64)
   ARCH = arm64
@@ -16,7 +17,7 @@ docker-unit-test: fmt vet
 	docker run --rm -e GO111MODULE=on  -v "${PWD}":/root/myapp -w /root/myapp golang:1.12 make unit-test 
 
 unit-test:
-	$(BUILD_ENV) go test -mod=vendor -v -coverprofile=coverage.txt -covermode=atomic ./pkg/...  
+	$(BUILD_ENV) go test -mod=vendor -v -coverprofile=coverage.txt -covermode=atomic  $(pgks)
 
 fmt:
 	go fmt ./pkg/... ./cmd/...
