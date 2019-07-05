@@ -224,6 +224,8 @@ var _ = Describe("Networkutils", func() {
 		rules, err := api.GetRuleListBySrc(ruleList, *sourceIP)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rules).To(HaveLen(5))
+		Expect(api.DeleteRuleListBySrc(*sourceIP)).ShouldNot(HaveOccurred())
+		Expect(ruleList).To(HaveLen(4))
 	})
 })
 
