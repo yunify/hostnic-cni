@@ -18,9 +18,11 @@ import (
 )
 
 const (
+	// NodeNameEnvKey is env to get the name of current node
 	NodeNameEnvKey = "MY_NODE_NAME"
 )
 
+// K8sHelper is used to commucate with k8s apiserver
 type K8sHelper interface {
 	Start(stopCh <-chan struct{}) error
 	GetCurrentNode() (*corev1.Node, error)

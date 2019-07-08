@@ -7,10 +7,11 @@
 
 **hostnic-cni** 是一个 [Container Network Interface](https://github.com/containernetworking/cni) 插件。 本插件会直接调用 IaaS 的接口去创建网卡，并将容器的内部的接口连接到网卡上，不同Node上的Pod能够借助IaaS的SDN进行通讯。此插件的优点有：
 
-1. Pod通讯借助于IaaS平台SDN能力，相比于传统的CNI，能够处理更多流量，更大的吞吐量以及更低的延迟。
-2. Pod IP可直接被外部访问，安装此插件的kubernetes能够很方便对外提供容器服务
-3. Pod在跨二层Node中也能有更快的访问速度
-4. Hostnic也支持网络策略，提供本地的网络策略，同时用户也可以利用IaaS平台的VPC功能做更多的控制。
+1. **更强大**： Pod通讯借助于IaaS平台SDN能力，相比于传统的CNI，能够处理更多流量，更大的吞吐量以及更低的延迟。
+2. **更灵活**：大部分插件的PodIP对外不可访问，对于一些需要PodIP的服务比如Spring Cloud原生的插件无法使用。Hostnic中Pod可直接被外部访问，能够作为企业的容器服务平台的基础设施。同时PodIP也可以静态配置，方便企业管控。
+3. **更快速**：Pod在跨二层Node中也能有和二层通讯的访问速度，跨网段跨Region的集群内部Pod之间的访问速度更快
+4. **更安全**：Hostnic也支持网络策略，提供本地的网络策略，同时用户也可以利用IaaS平台的VPC功能做更多的控制。可以利用IaaS平台的网卡监控对网络流量进行监控和限制
+5. **更稳定**：集成IaaS平台的LoadBalancer，相比于原生的nodeport的方式更稳定，也不需要用到大端口。
 
 ## 插件原理
 
