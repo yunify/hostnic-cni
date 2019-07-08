@@ -231,6 +231,10 @@ var _ = Describe("Ipam", func() {
 			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
 		}), Equal([]string{
 			"!", "-d", podVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
+		}), Equal([]string{
+			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
+		}), Equal([]string{
+			"!", "-d", podVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
 		}))
 		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(orMatch)
 		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(orMatch)
