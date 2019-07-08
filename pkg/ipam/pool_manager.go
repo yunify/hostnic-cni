@@ -12,6 +12,7 @@ const (
 	defaultSleepDuration        = 10 * time.Second
 )
 
+// StartReconcileIPPool will start reconciling ip pool
 func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...time.Duration) {
 	klog.V(1).Infoln("Starting ip pool reconciling")
 	for {

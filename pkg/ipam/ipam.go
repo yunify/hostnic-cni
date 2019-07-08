@@ -36,6 +36,7 @@ type nodeInfo struct {
 	vpc        *types.VPC
 }
 
+// IpamD is the core manager in hostnic which store pod ips and nics
 type IpamD struct {
 	dataStore *datastore.DataStore
 
@@ -214,6 +215,7 @@ func (s *IpamD) setupNic(nic *types.HostNic) error {
 	return nil
 }
 
+// StartIPAMD will start all long-running components in IpamD
 func (s *IpamD) StartIPAMD(stopCh <-chan struct{}) error {
 	err := s.K8sClient.Start(stopCh)
 	if err != nil {
@@ -224,6 +226,7 @@ func (s *IpamD) StartIPAMD(stopCh <-chan struct{}) error {
 	return s.setup()
 }
 
+// StartGrpcServer starting the GRPC server
 func (s *IpamD) StartGrpcServer() error {
 	listener, err := net.Listen("tcp", ipamdgRPCaddress)
 	if err != nil {

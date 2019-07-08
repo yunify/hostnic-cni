@@ -63,8 +63,8 @@ spec:
       tolerations:
       - operator: Exists
       containers:
-      - image: magicsong/hostnic:v0.0.1
-        imagePullPolicy: Always
+      - image: kubespheredev/hostnic:v1.0.0-alpha
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 61678
           name: metrics
