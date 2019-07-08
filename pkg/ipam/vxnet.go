@@ -9,9 +9,11 @@ import (
 )
 
 const (
+	// NodeAnnotationVxNet will tell hostnic the node which vxnet to use when creating nic
 	NodeAnnotationVxNet = "node.beta.kubernetes.io/vxnet"
 )
 
+// EnsureVxNet guarantee a vxnet for a node
 func (s *IpamD) EnsureVxNet() error {
 	node, err := s.K8sClient.GetCurrentNode()
 	if err != nil {

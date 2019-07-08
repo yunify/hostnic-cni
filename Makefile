@@ -1,5 +1,6 @@
-IMAGE_NAME ?=magicsong/hostnic:v0.0.1
-
+VERSION ?=v1.0.0-alpha
+IMAGE_NAME ?=kubesphere/hostnic
+DEV_IMAGE_NAME ?=kubespheredev/hostnic
 ARCH ?= $(shell uname -m)
 pgks ?= $(shell go list -mod=vendor ./pkg/... | grep -v rpc)
 
@@ -30,8 +31,12 @@ build-binary: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/daemon/main.go
 
 build-docker: build-binary
-	docker build -t $(IMAGE_NAME) .
-	docker push $(IMAGE_NAME)
+	docker build -t $(IMAGE_NAME):$(VERSION) .
+	docker push $(IMAGE_NAME):$(VERSION)
 
 debug: vet fmt
 	./hack/debug.sh
+
+release-staging: docker-unit-test
+	docker build -t $(DEV_IMAGE_NAME):$(VERSION) .
+	docker push $(DEV_IMAGE_NAME):$(VERSION)

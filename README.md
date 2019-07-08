@@ -2,118 +2,54 @@
 
 [![codebeat badge](https://codebeat.co/badges/33b711c7-0d90-4023-8bb1-db32ec32e4b7)](https://codebeat.co/projects/github-com-yunify-hostnic-cni-master) [![Build Status](https://travis-ci.org/yunify/hostnic-cni.svg?branch=master)](https://travis-ci.org/yunify/hostnic-cni) [![Go Report](https://goreportcard.com/badge/github.com/yunify/hostnic-cni)](https://goreportcard.com/report/github.com/yunify/hostnic-cni) [![License](https://img.shields.io/github/license/openshift/source-to-image.svg)](https://www.apache.org/licenses/LICENSE-2.0.html) [![codecov](https://codecov.io/gh/yunify/hostnic-cni/branch/master/graph/badge.svg)](https://codecov.io/gh/yunify/hostnic-cni)
 
-English|[中文](README_zh.md)
 
-**hostnic-cni** is a [Container Network Interface](https://github.com/containernetworking/cni) plugin. This plugin will create a new nic by IaaS api and attach to host, then move the nic to container network namespace. Support IaaS :[QingCloud](http://qingcloud.com).
+中文 | [English](README_en.md)
 
-### Usage
+**hostnic-cni** 是一个 [Container Network Interface](https://github.com/containernetworking/cni) 插件。 本插件会直接调用 IaaS 的接口去创建网卡，并将容器的内部的接口连接到网卡上，不同Node上的Pod能够借助IaaS的SDN进行通讯。此插件的优点有：
 
-1. Download CNI package from [CNI release page](https://github.com/containernetworking/cni/releases) and extract to /opt/cni/bin/.
-1. Download hostnic from  [release page](https://github.com/yunify/hostnic-cni/releases) , and put hostnic to /opt/cni/bin/
-1. Add cloud provider config
+1. Pod通讯借助于IaaS平台SDN能力，相比于传统的CNI，能够处理更多流量，更大的吞吐量以及更低的延迟。
+2. Pod IP可直接被外部访问，安装此插件的kubernetes能够很方便对外提供容器服务
+3. Pod在跨二层Node中也能有更快的访问速度
+4. Hostnic也支持网络策略，提供本地的网络策略，同时用户也可以利用IaaS平台的VPC功能做更多的控制。
+
+## 插件原理
+
+[插件原理](docs/proposal.md)
+
+## 使用说明
+
+
+1. `hostnic`需要有在云平台上操作网络的权限，所以首先需要增加 IaaS 的 sdk 配置文件，并将其存储中kube-system中的`qcsecret`中。
 
     ```bash
-    cat >/etc/qingcloud/client.yaml <<EOF
+    cat >config.yaml <<EOF
     qy_access_key_id: "Your access key id"
     qy_secret_access_key: "Your secret access key"
     # your instance zone
     zone: "pek3a"
     EOF
+
+    ## 创建Secret
+    kubectl create secret generic qcsecret --from-file=./config.yaml -n kube-system
     ```
-    Make sure you have requested the API access_key/secret_access_key through QingCloud console.  
-    
-1. Launch daemon process
+    access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  请参考https://docs.qingcloud.com/product/api/common/overview.html。默认是配置文件指向青云公网api server，如果是私有云，请按照下方示例配置更多的参数：
+    ```
+    qy_access_key_id: 'ACCESS_KEY_ID'
+    qy_secret_access_key: 'SECRET_ACCESS_KEY'
 
-    Daemon process is used as a nic manager which allocates and destroys nics in the background. It serves requests from hostcni and maintain nic info and nic cache pool.
-
-    it accepts a few params. As listed below.
-
+    host: 'api.xxxxx.com'
+    port: 443
+    protocol: 'https'
+    uri: '/iaas'
+    connection_retries: 3
+    ```
+2. 安装yaml文件，等待所有节点的hostnic起来即可
     ```bash
-    [root@i-zwa7jztl bin]# ./daemon start -h
-    hostnic-cni is a Container Network Interface plugin.
-
-    This plugin will create a new nic by IaaS api and attach to host,
-    then move the nic to container network namespace
-
-    Usage:
-      daemon start [flags]
-    
-    Flags:
-          --CleanUpCacheOnExit        Delete cached nic on exit
-          --PoolSize int              The size of nic pool (default 3)
-          --QyAccessFilePath string   Path of QingCloud Access file (default "/etc/qingcloud/client.yaml")
-      -h, --help                      help for start
-          --vxnets stringSlice        ids of vxnet
-    
-    Global Flags:
-          --bindAddr string     port of daemon process(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 ) (default ":31080")
-          --config string       config file (default is $HOME/.daemon.yaml)
-          --loglevel string     daemon process log level(debug,info,warn,error) (default "info")
-          --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
-
-    ```
-    The parameter PoolSize is used to tell the daemon process how many nic should be created and put into pool beforehand, the default size is 3.  
-
-    e.g.
-
-    ```bash
-    ./bin/daemon start --bindAddr :31080 --vxnets vxnet-xxxxxxx,vxnet-xxxxxxx --PoolSize 3 --loglevel debug
-    INFO[0000] Collect existing nic as gateway cadidate     
-    DEBU[0000] Found nic 52:54:03:41:e9:16 on host          
-    DEBU[0000] Found nic 52:54:20:82:68:5c on host          
-    DEBU[0000] Found nic 52:54:0b:48:04:52 on host          
-    INFO[0000] Found following nic as gateway               
-    INFO[0000] vxnet: vxnet-oca1g0z gateway: 192.168.4.253  
-    INFO[0000] vxnet: vxnet-oilq879 gateway: 192.168.3.251  
-    INFO[0000] vxnet: vxnet-2n6g6gx gateway: 192.168.0.3    
-    DEBU[0002] start to wait until channel is not full.     
-    DEBU[0002] put 52:54:27:6b:17:65 into channel           
-    DEBU[0007] start to wait until channel is not full.     
-    DEBU[0007] put 52:54:57:83:d0:ab into channel           
-    DEBU[0011] start to wait until channel is not full.     
-    DEBU[0011] put 52:54:d6:86:46:d6 into channel           
-    DEBU[0015] start to wait until channel is not full.   
+    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/hostnic.yaml
     ```
 
-    The daemon process would fill nic pool with pre-allocated nics and wait until new request comes
-    
-1. Add cni config
+## 已知的问题
+1. 由于目前iaas不支持多IP网卡，所以每个Node上只能挂载62个Pod(除去主网卡)，对于一般规模的集群已经足够了。
+2. 由于一个已知的BUG，在青云上多网卡主机重启会修改默认路由。所以需要在/etc/rc.local中添加一个指向主网卡`eth0`默认路由，比如`ip route replace default via 192.168.1.1 dev eth0`
+3. 由于Linux的内核的问题，偶尔会出现一个网卡在重启之后消失的情况，这个时候需要去控制台手动重新挂载这个网卡
 
-    ```bash
-    cat >/etc/cni/net.d/10-hostnic.conf <<EOF
-    {
-        "cniVersion": "0.3.1",
-        "name": "hostnic",
-        "type": "hostnic",
-        "bindaddr":"localhost:31080",
-        "ipam":{
-          "routes":[{"dst":"kubernetes service cidr","gw":"hostip or 0.0.0.0"}]
-        },
-        "isGateway": true
-    }
-    EOF
-
-    cat >/etc/cni/net.d/99-loopback.conf <<EOF
-    {
-        "cniVersion": "0.2.0",
-        "type": "loopback"
-    }
-    EOF
-    ```
-
-### CNI config Description
-
-* **ipam** add custom routing rules for nic, (optional)  
-* **bindaddr** server addr where daemon listens to  
-* **dst** destination subnet specified in CIDR notation  
-* **gw** IP of the gateway. If omitted, a default gateway is assumed (as determined by the CNI plugin).  
-
-For more information about CNI configuration and related parameters, please refer to [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md).  
-
-### Special notes for Kubernetes users
-
-Hostnic may not work as expected when it is used with Kubernetes framework due to the constrains in the design of kubernetes. However, we've provided a work around to help users setup kubernetes cluster.
-
-When a new service is defined in kubernetes cluster, it will get a cluster ip. And kube-proxy will maintain a port mapping tables on host machine to redirect service request to corresponding pod. And all of the network payload will be routed to host machine before it is sent to router and the service request will be handled correctly. In this way, kubernetes helps user achieve high availability of service. However, when the pod is attached to network directly(this is what hostnic did), Service ip is not recognied by router and service requests will not be processed.
-
-So we need to find a way to redirect service request to host machine through vpc. Here we implemented a feature to write routing rules defined in network configuration to newly created network interface. And if the host machine doesn't have a nic which is under pod's subnet, you can just set gateway to 0.0.0.0 and network plugin will allocate a new nic which will be used as a gateway, and replace 0.0.0.0 with gateway's ip address automatically.

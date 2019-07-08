@@ -15,12 +15,14 @@ type GRPCServerHandler struct {
 	ipamd *IpamD
 }
 
+// NewGRPCServerHandler create a new GRPC handler in IPAMD
 func NewGRPCServerHandler(ipamd *IpamD) *GRPCServerHandler {
 	return &GRPCServerHandler{
 		ipamd: ipamd,
 	}
 }
 
+// AddNetwork handle add pod request
 func (s *GRPCServerHandler) AddNetwork(context context.Context, in *rpc.AddNetworkRequest) (*rpc.AddNetworkReply, error) {
 	klog.V(1).Infof("Received AddNetwork for NS %s, Pod %s, NameSpace %s, Container %s, ifname %s",
 		in.Netns, in.K8S_POD_NAME, in.K8S_POD_NAMESPACE, in.K8S_POD_INFRA_CONTAINER_ID, in.IfName)
@@ -54,6 +56,7 @@ func (s *GRPCServerHandler) AddNetwork(context context.Context, in *rpc.AddNetwo
 	return &resp, nil
 }
 
+// DelNetwork handle del pod request
 func (s *GRPCServerHandler) DelNetwork(context context.Context, in *rpc.DelNetworkRequest) (*rpc.DelNetworkReply, error) {
 	klog.V(1).Infof("Received DelNetwork for IP %s, Pod %s, Namespace %s, Container %s",
 		in.IPv4Addr, in.K8S_POD_NAME, in.K8S_POD_NAMESPACE, in.K8S_POD_INFRA_CONTAINER_ID)
