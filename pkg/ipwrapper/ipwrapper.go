@@ -7,6 +7,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// IP is a wrapper for
 type IP interface {
 	AddDefaultRoute(gw net.IP, dev netlink.Link) error
 }
@@ -14,6 +15,7 @@ type IP interface {
 type ipRoute struct {
 }
 
+// NewIP create a wrapper for "github.com/containernetworking/plugins/pkg/ip"
 func NewIP() IP {
 	return &ipRoute{}
 }
