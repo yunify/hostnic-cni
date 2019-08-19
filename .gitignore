@@ -5,3 +5,4 @@ bin/
 
 *.coverprofile
 coverage.txt
+.DS_Store

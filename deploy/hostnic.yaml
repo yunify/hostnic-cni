@@ -1,5 +1,4 @@
 apiVersion: rbac.authorization.k8s.io/v1
-# kubernetes versions before 1.8.0 should use rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: hostnic-node
@@ -22,7 +21,6 @@ metadata:
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-# kubernetes versions before 1.8.0 should use rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: hostnic-node
@@ -38,7 +36,6 @@ subjects:
 
 kind: DaemonSet
 apiVersion: apps/v1
-# kubernetes versions before 1.9.0 should use extensions/v1beta1
 metadata:
   name: hostnic-node
   namespace: kube-system
@@ -64,7 +61,7 @@ spec:
       - operator: Exists
       containers:
       - image: kubespheredev/hostnic:v1.0.0-alpha
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 61678
           name: metrics
@@ -90,8 +87,6 @@ spec:
           name: cni-net-dir
         - mountPath: /host/var/log
           name: log-dir
-        - mountPath: /var/run/docker.sock
-          name: dockersock
         - mountPath: /root/.qingcloud/
           name: apiaccesskey
           readOnly: true
@@ -108,9 +103,6 @@ spec:
       - name: log-dir
         hostPath:
           path: /var/log
-      - name: dockersock
-        hostPath:
-          path: /var/run/docker.sock
       - name:  apiaccesskey
         secret:
           secretName: qcsecret
