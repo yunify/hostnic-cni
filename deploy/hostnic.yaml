@@ -60,7 +60,7 @@ spec:
       tolerations:
       - operator: Exists
       containers:
-      - image: kubespheredev/hostnic:v1.0.0-alpha2
+      - image: kubesphere/hostnic:v1.0.0-alpha2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 61678
