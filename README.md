@@ -49,6 +49,11 @@
     kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/hostnic.yaml
     ```
 
+3. (**可选**)启用Network Policy，建议安装
+hostnic支持network policy，如果需要，执行下面的命令即可
+    ```bash
+    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/policy.yaml
+    ```
 ## 已知的问题
 1. 由于目前iaas不支持多IP网卡，所以每个Node上只能挂载62个Pod(除去主网卡)，对于一般规模的集群已经足够了。
 2. 由于一个已知的BUG，在青云上多网卡主机重启会修改默认路由。所以需要在/etc/rc.local中添加一个指向主网卡`eth0`默认路由，比如`ip route replace default via 192.168.1.1 dev eth0`
