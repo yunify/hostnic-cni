@@ -76,6 +76,7 @@ func (s *IpamD) tryAllocateNIC() {
 		klog.Errorf("Failed to create a nic in %s, err: %s", s.vxnet.ID, err.Error())
 		return
 	}
+	//tag nic
 	err = s.setupNic(nic)
 	if err != nil {
 		klog.Errorf("Failed to setup nic in host, err: %s", err.Error())

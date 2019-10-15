@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"github.com/yunify/hostnic-cni/pkg/errors"
+	"github.com/yunify/hostnic-cni/pkg/qcclient/colors"
 	"github.com/yunify/hostnic-cni/pkg/retry"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"github.com/yunify/qingcloud-sdk-go/client"
@@ -20,6 +22,11 @@ import (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+}
+
+type LabelResourceConfig struct {
+	ClusterName string
+	ExtraLabels []string
 }
 
 const (
@@ -43,11 +50,19 @@ type qingcloudAPIWrapper struct {
 	vxNetService    *service.VxNetService
 	instanceService *service.InstanceService
 	vpcService      *service.RouterService
+	tagSerivce      *service.TagService
 
-	instanceID string
+	userID        string
+	instanceID    string
+	clusterName   string
+	extraLabels   []string
+	vxnetLabelID  string
+	nicLabelID    string
+	labelResource bool
 }
 
-func NewQingCloudClient() (QingCloudAPI, error) {
+// NewQingCloudClient create a qingcloud client to manipulate cloud resources
+func NewQingCloudClient(labelConfig *LabelResourceConfig) (QingCloudAPI, error) {
 	content, err := ioutil.ReadFile(instanceIDFile)
 	if err != nil {
 		return nil, fmt.Errorf("Load instance-id from %s error: %v", instanceIDFile, err)
@@ -81,15 +96,74 @@ func NewQingCloudClient() (QingCloudAPI, error) {
 		return nil, err
 	}
 	vpcService, _ := qcService.Router(qsdkconfig.Zone)
+	tagService, _ := qcService.Tag(qsdkconfig.Zone)
+
+	//useid
+	api, _ := qcService.Accesskey(qsdkconfig.Zone)
+	output, err := api.DescribeAccessKeys(&service.DescribeAccessKeysInput{
+		AccessKeys: []*string{&qsdkconfig.AccessKeyID},
+	})
+	if err != nil {
+		klog.Errorf("Failed to get userID")
+		return nil, err
+	}
+	if len(output.AccessKeySet) == 0 {
+		err = fmt.Errorf("AccessKey %s have not userid", qsdkconfig.AccessKeyID)
+		return nil, err
+	}
 	p := &qingcloudAPIWrapper{
 		nicService:      nicService,
 		jobService:      jobService,
 		vxNetService:    vxNetService,
 		instanceService: instanceService,
 		vpcService:      vpcService,
+		tagSerivce:      tagService,
+		userID:          *output.AccessKeySet[0].Owner,
 		instanceID:      string(content),
 	}
+	if labelConfig != nil {
+		klog.V(2).Infoln("Ensuring labels")
+		p.labelResource = true
+		p.clusterName = labelConfig.ClusterName
+		p.extraLabels = labelConfig.ExtraLabels
+		err = p.ensureLabels()
+		if err != nil {
+			klog.Errorf("Failed to create neccessary labels, labels will be disabled. Error: %s", err.Error())
+			p.labelResource = false
+		}
+	}
+
 	return p, nil
+}
+
+func (q *qingcloudAPIWrapper) ensureLabels() error {
+	toEnsureLabels := []string{fmt.Sprintf("hostnic-vxnet-%s", q.clusterName), fmt.Sprintf("hostnic-nic-%s", q.clusterName)}
+	dests := []*string{&q.vxnetLabelID, &q.nicLabelID}
+	for index := 0; index < len(toEnsureLabels); index++ {
+		if err := q.ensureLabel(toEnsureLabels[index], dests[index]); err != nil {
+			klog.Errorf("Failed to ensure label %s", toEnsureLabels[index])
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *qingcloudAPIWrapper) ensureLabel(label string, des *string) error {
+	l, err := q.GetTagByLabel(label)
+	if err != nil {
+		if errors.IsResourceNotFound(err) {
+			id, err := q.CreateTag(label, colors.RandomColor())
+			if err != nil {
+				klog.Errorf("Failed to create tag %s", label)
+				return err
+			}
+			*des = id
+		}
+		klog.Errorln("Failed to get tag by label")
+		return err
+	}
+	*des = l.ID
+	return nil
 }
 
 func (q *qingcloudAPIWrapper) GetInstanceID() string {
@@ -110,7 +184,10 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 	if *output.RetCode == 0 && len(output.Nics) > 0 {
 		qcnic := output.Nics[0]
 		var hostnic *types.HostNic
-
+		err = q.tagResource(q.nicLabelID, *qcnic.NICID, types.ResourceTypeNic)
+		if err != nil {
+			klog.Errorf("Failed to attach labels to nic %s, will continue. Error: %s", *qcnic.NICID, err.Error())
+		}
 		retry.Do(5, time.Second*3, func() error {
 			hostNics, err := q.GetNics([]string{*qcnic.NICID})
 			if err != nil {
@@ -137,6 +214,22 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 		return hostnic, nil
 	}
 	return nil, fmt.Errorf("Failed to creat nic, error: %s", *output.Message)
+}
+
+func (q *qingcloudAPIWrapper) tagResource(tagid, resourceid string, resourceType types.ResourceType) error {
+	if q.labelResource {
+		err := q.TagResources(tagid, resourceType, resourceid)
+		if err != nil {
+			return err
+		}
+		for _, extraLabel := range q.extraLabels {
+			err = q.TagResources(extraLabel, resourceType, resourceid)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (q *qingcloudAPIWrapper) GetAttachedNICs(vxnet string) ([]*types.HostNic, error) {
@@ -250,7 +343,7 @@ func (q *qingcloudAPIWrapper) GetVxNet(vxNet string) (*types.VxNet, error) {
 		return nil, err
 	}
 	if len(output) == 0 {
-		return nil, fmt.Errorf(ErrorVxNetNotFound)
+		return nil, errors.NewResourceNotFoundError(types.ResourceTypeVxnet, vxNet)
 	}
 	return output[0], nil
 }
@@ -311,6 +404,10 @@ func (q *qingcloudAPIWrapper) CreateVxNet(name string) (*types.VxNet, error) {
 		return nil, err
 	}
 	if *output.RetCode == 0 {
+		err = q.tagResource(q.vxnetLabelID, *output.VxNets[0], types.ResourceTypeVxnet)
+		if err != nil {
+			klog.Errorf("Failed to attach labels to vxnet %s, will continue. Error: %s", *output.VxNets[0], err.Error())
+		}
 		return &types.VxNet{
 			Name: name,
 			ID:   *output.VxNets[0],
@@ -360,7 +457,7 @@ func (q *qingcloudAPIWrapper) GetVPC(id string) (*types.VPC, error) {
 		return nil, err
 	}
 	if len(output.RouterSet) == 0 {
-		return nil, fmt.Errorf(ErrorVPCNotFound)
+		return nil, errors.NewResourceNotFoundError(types.ResourceTypeVPC, id)
 	}
 	vpc := &types.VPC{
 		ID: *output.RouterSet[0].RouterID,
@@ -475,4 +572,95 @@ func (q *qingcloudAPIWrapper) GetPrimaryNIC() (*types.HostNic, error) {
 		}
 	}
 	return nil, fmt.Errorf("Could not find the primary nic of instance %s", q.instanceID)
+}
+
+func (q *qingcloudAPIWrapper) GetTagByLabel(label string) (*types.Tag, error) {
+	input := &service.DescribeTagsInput{
+		SearchWord: &label,
+		Verbose:    service.Int(1),
+	}
+	output, err := q.tagSerivce.DescribeTags(input)
+	if err != nil {
+		return nil, err
+	}
+	for _, tag := range output.TagSet {
+		if *tag.Owner == q.userID && *tag.TagName == label {
+			taggedResource := make([]*types.TaggedResource, *tag.ResourceCount)
+			for index, resource := range tag.ResourceTagPairs {
+				taggedResource[index] = &types.TaggedResource{
+					ResourceType: types.ResourceType(*resource.ResourceType),
+					ResourceID:   *resource.ResourceID,
+				}
+			}
+			return &types.Tag{
+				Label:           label,
+				ID:              *tag.TagID,
+				TaggedResources: taggedResource,
+			}, nil
+		}
+	}
+	return nil, errors.NewResourceNotFoundError(types.ResourceTypeTag, label)
+}
+
+func (q *qingcloudAPIWrapper) GetTagByID(id string) (*types.Tag, error) {
+	input := &service.DescribeTagsInput{
+		Tags:    []*string{&id},
+		Verbose: service.Int(1),
+	}
+	output, err := q.tagSerivce.DescribeTags(input)
+	if err != nil {
+		return nil, err
+	}
+	for _, tag := range output.TagSet {
+		taggedResource := make([]*types.TaggedResource, *tag.ResourceCount)
+		for index, resource := range tag.ResourceTagPairs {
+			taggedResource[index] = &types.TaggedResource{
+				ResourceType: types.ResourceType(*resource.ResourceType),
+				ResourceID:   *resource.ResourceID,
+			}
+		}
+		return &types.Tag{
+			Label:           *tag.TagName,
+			ID:              *tag.TagID,
+			TaggedResources: taggedResource,
+		}, nil
+	}
+	return nil, errors.NewResourceNotFoundError(types.ResourceTypeTag, id)
+}
+
+func (q *qingcloudAPIWrapper) CreateTag(label, color string) (string, error) {
+	input := &service.CreateTagInput{
+		Color:   &color,
+		TagName: &label,
+	}
+	output, err := q.tagSerivce.CreateTag(input)
+	if err != nil {
+		return "", err
+	}
+	if *output.RetCode != 0 {
+		return "", fmt.Errorf("Failed to create tag %s, err: %s", label, *output.Message)
+	}
+	return *output.TagID, nil
+}
+
+func (q *qingcloudAPIWrapper) TagResources(tagid string, resourceType types.ResourceType, ids ...string) error {
+	tags := make([]*service.ResourceTagPair, len(ids))
+	for index, id := range ids {
+		tags[index] = &service.ResourceTagPair{
+			ResourceID:   service.String(id),
+			ResourceType: service.String(string(resourceType)),
+			TagID:        &tagid,
+		}
+	}
+	input := &service.AttachTagsInput{
+		ResourceTagPairs: tags,
+	}
+	output, err := q.tagSerivce.AttachTags(input)
+	if err != nil {
+		return err
+	}
+	if *output.RetCode != 0 {
+		return fmt.Errorf("Failed to attach tags,err: %s", *output.Message)
+	}
+	return nil
 }

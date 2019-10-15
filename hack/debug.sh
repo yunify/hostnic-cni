@@ -41,7 +41,7 @@ if [ $SKIP_BUILD == "no" ]; then
 fi
 
 echo "Generating yaml"
-sed -e 's@image: .*@image: '"${IMG}"'@' deploy/hostnic.yaml > $DEST
+sed -e 's@image: .*@image: '"${IMG}"'@' -e "s/IfNotPresent/Always/g" deploy/hostnic.yaml > $DEST
 kubectl apply -f $DEST
 
 

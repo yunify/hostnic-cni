@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/yunify/hostnic-cni/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/types"
 )
 
@@ -14,10 +15,12 @@ func init() {
 }
 
 type FakeQingCloudAPI struct {
-	InstanceID       string
-	Nics             map[string]*types.HostNic
-	VxNets           map[string]*types.VxNet
-	VPC              *types.VPC
+	InstanceID string
+	Nics       map[string]*types.HostNic
+	VxNets     map[string]*types.VxNet
+	VPC        *types.VPC
+
+	Tags             map[string]*types.Tag
 	AfterCreatingNIC func(*types.HostNic) error
 }
 
@@ -182,4 +185,41 @@ func (f *FakeQingCloudAPI) LeaveVPC(vxnetID, vpcID string) error {
 
 func (f *FakeQingCloudAPI) GetInstanceID() string {
 	return f.InstanceID
+}
+
+func (f *FakeQingCloudAPI) GetTagByLabel(label string) (*types.Tag, error) {
+	for _, v := range f.Tags {
+		if v.Label == label {
+			return v, nil
+		}
+	}
+	return nil, errors.NewResourceNotFoundError(types.ResourceTypeTag, label)
+}
+
+func (f *FakeQingCloudAPI) TagResources(tagid string, resourceType types.ResourceType, ids ...string) error {
+	if tag, ok := f.Tags[tagid]; ok {
+		for _, id := range ids {
+			tag.TaggedResources = append(tag.TaggedResources, &types.TaggedResource{
+				ResourceID:   id,
+				ResourceType: resourceType,
+			})
+		}
+	}
+	return errors.NewResourceNotFoundError(types.ResourceTypeTag, tagid)
+}
+
+func (f *FakeQingCloudAPI) CreateTag(label, color string) (string, error) {
+	f.Tags[label] = &types.Tag{
+		Label:           label,
+		ID:              label,
+		TaggedResources: []*types.TaggedResource{},
+	}
+	return label, nil
+}
+
+func (f *FakeQingCloudAPI) GetTagByID(id string) (*types.Tag, error) {
+	if tag, ok := f.Tags[id]; ok {
+		return tag, nil
+	}
+	return nil, errors.NewResourceNotFoundError(types.ResourceTypeTag, id)
 }

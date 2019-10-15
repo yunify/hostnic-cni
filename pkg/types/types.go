@@ -53,3 +53,26 @@ type VPC struct {
 	ID      string
 	VxNets  []*VxNet
 }
+
+type ResourceType string
+
+const (
+	ResourceTypeInstance ResourceType = "instance"
+	ResourceTypeVxnet    ResourceType = "vxnet"
+	ResourceTypeNic      ResourceType = "nic"
+	ResourceTypeTag      ResourceType = "tag"
+	ResourceTypeVPC      ResourceType = "vpc"
+)
+
+// Tag including resources which have same labels
+type Tag struct {
+	Label           string
+	ID              string
+	TaggedResources []*TaggedResource
+}
+
+// TaggedResource is the result returned by GetTagXX, showing the resources under the tag
+type TaggedResource struct {
+	ResourceType
+	ResourceID string
+}

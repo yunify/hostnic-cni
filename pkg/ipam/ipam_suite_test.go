@@ -22,7 +22,7 @@ func TestIpam(t *testing.T) {
 	RunSpecs(t, "Ipam Suite")
 }
 
-func NewFakeIPAM(netapi networkutils.NetworkAPIs, clientset kubernetes.Interface, prepareCloud func() (qcclient.QingCloudAPI, error)) *IpamD {
+func NewFakeIPAM(netapi networkutils.NetworkAPIs, clientset kubernetes.Interface, prepareCloud func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)) *IpamD {
 	return &IpamD{
 		dataStore:          datastore.NewDataStore(),
 		networkClient:      netapi,

@@ -2,15 +2,10 @@ package qcclient
 
 import "github.com/yunify/hostnic-cni/pkg/types"
 
-const (
-	ErrorVxNetNotFound = "Cannot find the vxnet in the cloud"
-	ErrorNicNotFound   = "Cannot find the nic in the cloud"
-	ErrorVPCNotFound   = "Cannot find the vpc in the cloud"
-)
-
 // QingCloudAPI is a wrapper interface of qingcloud api
 type QingCloudAPI interface {
 	QingCloudNetAPI
+	QingCloudTagAPI
 }
 
 // QingCloudNetAPI  do dirty works on  net interface on qingcloud
@@ -34,4 +29,12 @@ type QingCloudNetAPI interface {
 	JoinVPC(network, vxnetID, vpcID string) error
 	LeaveVPC(vxnetID, vpcID string) error
 	GetInstanceID() string
+}
+
+// QingCloudTagAPI do dirty works of tags on qingcloud
+type QingCloudTagAPI interface {
+	TagResources(tagid string, resourceType types.ResourceType, ids ...string) error
+	CreateTag(label, color string) (string, error)
+	GetTagByLabel(label string) (*types.Tag, error)
+	GetTagByID(id string) (*types.Tag, error)
 }

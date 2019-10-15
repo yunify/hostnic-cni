@@ -3,6 +3,8 @@ package ipam
 import (
 	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -26,6 +28,10 @@ const (
 
 	defaultPoolSize    = 3
 	defaultMaxPoolSize = 10
+	defaultClusterName = "kubernetes"
+
+	envExtraTags   = "HOSTNIC_EXTRA_TAGS"
+	envClusterName = "HOSTNIC_CLUSTER_NAME"
 )
 
 type nodeInfo struct {
@@ -45,10 +51,14 @@ type IpamD struct {
 	networkClient networkutils.NetworkAPIs
 
 	nodeInfo
+
+	extraTags          []string
+	clusterName        string
+	disableLabel       bool
 	poolSize           int
 	maxPoolSize        int
 	supportVPNTraffic  bool
-	prepareCloudClient func() (qcclient.QingCloudAPI, error)
+	prepareCloudClient func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)
 }
 
 // NewIpamD create a new IpamD object with default settings
@@ -72,17 +82,37 @@ func (s *IpamD) vpcSubnets() []*string {
 	return vpcSubnets
 }
 
-func prepareQingCloudClient() (qcclient.QingCloudAPI, error) {
-	client, err := qcclient.NewQingCloudClient()
+func prepareQingCloudClient(config *qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error) {
+	client, err := qcclient.NewQingCloudClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to initiate qingcloud api, err: %v", err)
 	}
 	return client, nil
 }
 
+func (s *IpamD) parseEnv() {
+	t := os.Getenv(envExtraTags)
+	if t != "" {
+		s.extraTags = strings.Split(t, ",")
+	}
+	s.clusterName = os.Getenv(envClusterName)
+	if s.clusterName == "" {
+		s.clusterName = defaultClusterName
+	}
+}
 func (s *IpamD) setup() error {
+	s.parseEnv()
 	var err error
-	s.qcClient, err = s.prepareCloudClient()
+	var labelConfig *qcclient.LabelResourceConfig
+	if s.disableLabel {
+		labelConfig = nil
+	} else {
+		labelConfig = &qcclient.LabelResourceConfig{
+			ClusterName: s.clusterName,
+			ExtraLabels: s.extraTags,
+		}
+	}
+	s.qcClient, err = s.prepareCloudClient(labelConfig)
 	if err != nil {
 		return err
 	}
