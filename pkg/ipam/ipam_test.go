@@ -99,7 +99,7 @@ var _ = Describe("Ipam", func() {
 		node := &corev1.Node{}
 		node.Name = nodeName
 		clientset = fake.NewSimpleClientset(node)
-		prepareCloud := func() (qcclient.QingCloudAPI, error) {
+		prepareCloud := func(config *qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error) {
 			return qcapi, nil
 		}
 		ipamd := NewFakeIPAM(fakeNetworkClient, clientset, prepareCloud)
@@ -207,7 +207,7 @@ var _ = Describe("Ipam", func() {
 		eth2.HardwareAddr, _ = net.ParseMAC(nic2Mac)
 		netlinkData.LinkAdd(eth2)
 
-		prepareCloud := func() (qcclient.QingCloudAPI, error) {
+		prepareCloud := func(config *qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error) {
 			return qcapi, nil
 		}
 		ipamd := NewFakeIPAM(fakeNetworkClient, clientset, prepareCloud)
@@ -262,7 +262,7 @@ var _ = Describe("Ipam", func() {
 			return nil
 		}
 
-		prepareCloud := func() (qcclient.QingCloudAPI, error) {
+		prepareCloud := func(config *qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error) {
 			return qcapi, nil
 		}
 

@@ -23,7 +23,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/json-iterator/go v0.0.0-20180701071628-ab8a2e0c74be // indirect
-	github.com/mitchellh/go-homedir v1.1.0
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
@@ -32,17 +32,17 @@ require (
 	github.com/orcaman/concurrent-map v0.0.0-20190314100340-2693aad1ed75 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v0.9.2
-	github.com/sirupsen/logrus v1.4.1
-	github.com/spf13/cobra v0.0.3
-	github.com/spf13/viper v1.3.2
+	github.com/sirupsen/logrus v1.4.1 // indirect
+	github.com/spf13/cobra v0.0.3 // indirect
+	github.com/spf13/viper v1.3.2 // indirect
 	github.com/vishvananda/netlink v1.0.0
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
-	github.com/yunify/qingcloud-sdk-go v2.0.0-alpha.35.0.20190531093213-c8f8d40dd479+incompatible
-	golang.org/x/net v0.0.0-20190503192946-f4e77d36d62c
-	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4 // indirect
+	github.com/yunify/qingcloud-sdk-go v0.0.0-20190806070725-5b519baeba90
+	golang.org/x/net v0.0.0-20190620200207-3b0461eec859
 	golang.org/x/sys v0.0.0-20190312061237-fead79001313
 	golang.org/x/text v0.3.1-0.20181227161524-e6919f6577db // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
+	golang.org/x/tools/gopls v0.1.7 // indirect
 	google.golang.org/grpc v1.20.1
 	gopkg.in/inf.v0 v0.9.0 // indirect
 	k8s.io/api v0.0.0-20190313235455-40a48860b5ab

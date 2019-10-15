@@ -3,16 +3,18 @@
 function CleanUp() {
     echo "===== Deleting HOSTNIC-AGENT ==========="
     rm -f /host/opt/cni/bin/hostnic
-    rm -f  /host/etc/cni/net.d/10-ahostnic.conf
+    rm -f  /host/etc/cni/net.d/10-ahostnic.conflist
     rm -f /host/etc/cni/net.d/99-loopback.conf
 }
 
 trap CleanUp EXIT SIGINT SIGQUIT
 
 echo "===== Starting installing HOSTNIC-CNI ========="
+CleanUp
 
 cp /app/hostnic /host/opt/cni/bin/
-cp /app/10-ahostnic.conf /host/etc/cni/net.d/
+cp /app/portmap /host/opt/cni/bin/
+cp /app/10-ahostnic.conflist /host/etc/cni/net.d/
 cp /app/99-loopback.conf /host/etc/cni/net.d/
 
 

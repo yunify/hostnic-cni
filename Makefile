@@ -40,3 +40,12 @@ debug: vet fmt
 release-staging: docker-unit-test
 	docker build -t $(DEV_IMAGE_NAME):$(VERSION) .
 	docker push $(DEV_IMAGE_NAME):$(VERSION)
+
+# Download portmap plugin
+download-portmap:
+	mkdir -p tmp/downloads
+	mkdir -p tmp/plugins
+	curl -L -o tmp/downloads/cni-plugins-$(ARCH).tgz https://github.com/containernetworking/plugins/releases/download/v0.7.5/cni-plugins-$(ARCH)-v0.7.5.tgz
+	tar -vxf tmp/downloads/cni-plugins-$(ARCH).tgz -C tmp/plugins
+	cp tmp/plugins/portmap bin/portmap
+	rm -rf tmp

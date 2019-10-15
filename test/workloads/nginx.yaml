@@ -19,3 +19,18 @@ spec:
         image: nginx:alpine
         ports:
         - containerPort: 80
+
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name:  nginx-service
+spec:
+  selector:
+    app:  myapp
+  type:  ClusterIP
+  ports:
+  - name:  http
+    port:  80
+    targetPort:  80
