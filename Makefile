@@ -1,4 +1,4 @@
-VERSION ?=v1.0.0-alpha2
+VERSION ?=v1.0.0-alpha3
 IMAGE_NAME ?=kubesphere/hostnic
 DEV_IMAGE_NAME ?=kubespheredev/hostnic
 ARCH ?= $(shell uname -m)
