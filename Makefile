@@ -49,3 +49,6 @@ download-portmap:
 	tar -vxf tmp/downloads/cni-plugins-$(ARCH).tgz -C tmp/plugins
 	cp tmp/plugins/portmap bin/portmap
 	rm -rf tmp
+
+generate-prototype: 
+	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto

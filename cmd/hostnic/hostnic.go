@@ -162,11 +162,12 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs, grpcW rpcwrapper.G
 	}
 
 	if !r.Success {
-		klog.Errorf("Failed to assign an IP address to pod %s, namespace %s container %s",
+		klog.Errorf("Failed to assign an IP address to pod %s, namespace %s container %s,err: %s",
 			string(k8sArgs.K8S_POD_NAME),
 			string(k8sArgs.K8S_POD_NAMESPACE),
-			string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID))
-		return fmt.Errorf("add cmd: failed to assign an IP address to container")
+			string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID),
+			r.Message)
+		return fmt.Errorf("add cmd: failed to assign an IP address to container, err: %s", r.Message)
 	}
 
 	klog.V(1).Infof("Received add network response for pod %s namespace %s container %s: %s, table %d, external-SNAT: %v, vpcCIDR: %v",

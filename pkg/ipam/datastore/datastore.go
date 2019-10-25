@@ -26,6 +26,8 @@ const (
 	// DuplicateIPError is an error when caller tries to add an duplicate IP address to data store
 	DuplicateIPError = "datastore: duplicated IP"
 
+	// DeviceNumberUnknownError is an error when the device number is not valid
+	DeviceNumberUnknownError = "datastore: unknown device number of nic"
 	// UnknownIPError is an error when caller tries to delete an IP which is unknown to data store
 	UnknownIPError = "datastore: unknown IP"
 
@@ -147,6 +149,9 @@ func NewDataStore() *DataStore {
 
 // AddNIC add NIC to data store
 func (ds *DataStore) AddNIC(nicID string, deviceNumber int, isPrimary bool) error {
+	if deviceNumber <= 0 {
+		return errors.New(DeviceNumberUnknownError)
+	}
 	ds.lock.Lock()
 	defer ds.lock.Unlock()
 
