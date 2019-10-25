@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -30,8 +31,11 @@ const (
 	defaultMaxPoolSize = 10
 	defaultClusterName = "kubernetes"
 
-	envExtraTags   = "HOSTNIC_EXTRA_TAGS"
-	envClusterName = "HOSTNIC_CLUSTER_NAME"
+	envExtraTags      = "HOSTNIC_EXTRA_TAGS"
+	envClusterName    = "HOSTNIC_CLUSTER_NAME"
+	envVethPrefix     = "HOSTNIC_VETH_PREFIX"
+	defaultVethPrefix = "nic"
+	configFileName    = "/host/etc/cni/net.d/10-ahostnic.conflist"
 )
 
 type nodeInfo struct {
@@ -58,6 +62,7 @@ type IpamD struct {
 	poolSize           int
 	maxPoolSize        int
 	supportVPNTraffic  bool
+	vethPrefix         string
 	prepareCloudClient func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)
 }
 
@@ -98,6 +103,10 @@ func (s *IpamD) parseEnv() {
 	s.clusterName = os.Getenv(envClusterName)
 	if s.clusterName == "" {
 		s.clusterName = defaultClusterName
+	}
+	s.vethPrefix = os.Getenv(envVethPrefix)
+	if s.vethPrefix == "" {
+		s.vethPrefix = defaultVethPrefix
 	}
 }
 func (s *IpamD) setup() error {
@@ -225,7 +234,16 @@ func (s *IpamD) prepareLocalPods(pods []*k8sclient.K8SPodInfo) error {
 	}
 	return nil
 }
+
 func (s *IpamD) setupNic(nic *types.HostNic) error {
+	//check device number
+	if nic.DeviceNumber <= 0 {
+		link, err := types.LinkByMacAddr(nic.HardwareAddr)
+		if err != nil {
+			return err
+		}
+		nic.DeviceNumber = link.Attrs().Index
+	}
 	err := s.dataStore.AddNIC(nic.ID, nic.DeviceNumber, nic.IsPrimary)
 	if err != nil && err.Error() != datastore.DuplicatedNICError {
 		return errors.Wrapf(err, "failed to add NIC %s to data store", nic.ID)
@@ -285,4 +303,40 @@ func (s *IpamD) getNicIndexByIP(ip string) int {
 		}
 	}
 	return -1
+}
+
+func (s *IpamD) WriteCNIConfig() error {
+	f, err := os.Create(configFileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var conf struct {
+		CniVersion string `json:"cniVersion"`
+		VethPrefix string `json:"vethPrefix,omitempty"`
+	}
+	conf.CniVersion = "0.3.1"
+	//TODO can be user defined
+	conf.VethPrefix = s.vethPrefix
+	templ :=
+		`{
+	"cniVersion": "{{.CniVersion}}",
+	"name": "hostnic-cni",
+	"plugins": [
+		{
+		"name": "hostnic",
+		"type": "hostnic",
+		"vethPrefix": "{{.VethPrefix}}"
+		},
+		{
+		"type": "portmap",
+		"capabilities": {"portMappings": true},
+		"snat": true
+		}]
+}`
+	t, err := template.New("cni-config").Parse(templ)
+	if err != nil {
+		return err
+	}
+	return t.Execute(f, &conf)
 }

@@ -71,5 +71,10 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to start grpc server, err: %s", err.Error())
 	}
+	klog.V(1).Infoln("Writing hostnic configlist")
+	err = ipamd.WriteCNIConfig()
+	if err != nil {
+		klog.Fatalf("Failed to write CNI configlist")
+	}
 	select {}
 }

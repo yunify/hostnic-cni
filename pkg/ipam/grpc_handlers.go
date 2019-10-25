@@ -51,7 +51,9 @@ func (s *GRPCServerHandler) AddNetwork(context context.Context, in *rpc.AddNetwo
 		UseExternalSNAT: false,
 		VPCcidrs:        subnets,
 	}
-
+	if err != nil {
+		resp.Message = err.Error()
+	}
 	klog.V(1).Infof("Send AddNetworkReply: IPv4Addr %s, DeviceNumber: %d, err: %v", addr, deviceNumber, err)
 	return &resp, nil
 }
@@ -77,6 +79,9 @@ func (s *GRPCServerHandler) DelNetwork(context context.Context, in *rpc.DelNetwo
 		}
 	}
 	klog.V(1).Infof("Send DelNetworkReply: IPv4Addr %s, DeviceNumber: %d, err: %v", ip, deviceNumber, err)
-
-	return &rpc.DelNetworkReply{Success: err == nil, IPv4Addr: ip, DeviceNumber: int32(deviceNumber)}, nil
+	resp := &rpc.DelNetworkReply{Success: err == nil, IPv4Addr: ip, DeviceNumber: int32(deviceNumber)}
+	if err != nil {
+		resp.Message = err.Error()
+	}
+	return resp, nil
 }
