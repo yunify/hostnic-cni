@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/yunify/hostnic-cni/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"k8s.io/klog"
 )
@@ -12,6 +13,10 @@ const (
 	// NodeAnnotationVxNet will tell hostnic the node which vxnet to use when creating nic
 	NodeAnnotationVxNet = "node.beta.kubernetes.io/vxnet"
 )
+
+func NameForVxnet(node string) string {
+	return fmt.Sprintf("HOSTNIC_%s_vxnet", node)
+}
 
 // EnsureVxNet guarantee a vxnet for a node
 func (s *IpamD) EnsureVxNet() error {
@@ -29,6 +34,24 @@ func (s *IpamD) EnsureVxNet() error {
 		s.vxnet = v
 		return nil
 	}
+	exsitVxnet, err := s.qcClient.GetVxNetByName(NameForVxnet(s.NodeName))
+	if err != nil {
+		if !errors.IsResourceNotFound(err) {
+			klog.Warningln("Failed to get vxnet by name")
+			return err
+		}
+	} else {
+		klog.V(1).Info("successfully get exsiting vxnet for pods")
+		if exsitVxnet.RouterID == "" {
+			err = s.joinVPC(exsitVxnet)
+			if err != nil {
+				klog.Errorf("Failed to join exsit vxnet %s to vpc %s", exsitVxnet.ID, s.vpc.ID)
+				return err
+			}
+		}
+		s.vxnet = exsitVxnet
+		return nil
+	}
 	klog.V(1).Infof("Will creating a new vxnet for node %s, this will take up one minute", s.NodeName)
 	vxnet, err := s.createNewVxnet()
 	if err != nil {
@@ -44,21 +67,15 @@ func (s *IpamD) EnsureVxNet() error {
 		}
 		return err
 	}
-	s.vpc.VxNets = append(s.vpc.VxNets, vxnet)
 	klog.V(1).Infof("Vxnet created successfully")
 	return nil
 }
 
-func (s *IpamD) createNewVxnet() (*types.VxNet, error) {
-	vxnet, err := s.qcClient.CreateVxNet(fmt.Sprintf("HOSTNIC_%s_vxnet", s.nodeInfo.NodeName))
-	if err != nil {
-		klog.Errorln("Failed to call create Vxnet")
-		return nil, err
-	}
+func (s *IpamD) joinVPC(vxnet *types.VxNet) error {
 	vxnets, err := s.qcClient.GetVPCVxNets(s.vpc.ID)
 	if err != nil {
 		klog.Errorf("Failed to get vxnets in the vpc %s", s.vpc.ID)
-		return nil, err
+		return err
 	}
 	ip := chooseIPFromVxnet(*s.vpc.Network, vxnets)
 	if ip != nil {
@@ -66,11 +83,24 @@ func (s *IpamD) createNewVxnet() (*types.VxNet, error) {
 		err = s.qcClient.JoinVPC(ip.String(), vxnet.ID, s.vpc.ID)
 		if err != nil {
 			klog.Errorf("Failed to join vxnet %s to vpc %s", vxnet.ID, s.vpc.ID)
-			return nil, err
+			return err
 		}
-		return vxnet, nil
 	}
-	return nil, fmt.Errorf("Could not join any vxnets in this vpc %s", s.vpc.ID)
+	s.vpc.VxNets = append(s.vpc.VxNets, vxnet)
+	return err
+}
+
+func (s *IpamD) createNewVxnet() (*types.VxNet, error) {
+	vxnet, err := s.qcClient.CreateVxNet(NameForVxnet(s.NodeName))
+	if err != nil {
+		klog.Errorln("Failed to call create Vxnet")
+		return nil, err
+	}
+	err = s.joinVPC(vxnet)
+	if err != nil {
+		return nil, fmt.Errorf("Could not join vxnet %s in this vpc %s, err: %s", vxnet.ID, s.vpc.ID, err.Error())
+	}
+	return vxnet, nil
 }
 
 func chooseIPFromVxnet(ipnet net.IPNet, vxnets []*types.VxNet) *net.IPNet {

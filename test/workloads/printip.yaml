@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: printip
+  labels:
+    app: printip
+spec:
+  selector:
+    matchLabels:
+      app: printip
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: printip
+    spec:
+      containers:
+      - name: name
+        image: magicsong/printip:v1
+        ports:
+        - containerPort: 8080
+
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name:  printip-service
+spec:
+  selector:
+    app:  printip
+  type:  ClusterIP
+  ports:
+  - name:  http
+    port:  80
+    targetPort:  8080

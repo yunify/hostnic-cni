@@ -228,9 +228,18 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	for i := 0; i <= len(vpcCIDRs); i++ {
 		chain := fmt.Sprintf("QINGCLOUD-SNAT-CHAIN-%d", i)
 		klog.V(2).Infof("Setup Host Network: iptables -N %s -t nat", chain)
-		if err = ipt.NewChain("nat", chain); err != nil && !containChainExistErr(err) {
-			klog.Errorf("ipt.NewChain error for chain [%s]: %v", chain, err)
-			return errors.Wrapf(err, "host network setup: failed to add chain")
+		if err = ipt.NewChain("nat", chain); err != nil {
+			if containChainExistErr(err) {
+				klog.V(1).Infof("Clear chain %s before insert rule", chain)
+				err = ipt.ClearChain("nat", chain)
+				if err != nil {
+					klog.Errorf("Failed to clear chain %s", chain)
+					return err
+				}
+			} else {
+				klog.Errorf("ipt.NewChain error for chain [%s]: %v", chain, err)
+				return errors.Wrapf(err, "host network setup: failed to add chain")
+			}
 		}
 		chains = append(chains, chain)
 	}
@@ -268,6 +277,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	lastChain := chains[len(chains)-1]
 	// Prepare the Desired Rule for SNAT Rule
 	snatRule := []string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
+
 		"-m", "addrtype", "!", "--dst-type", "LOCAL",
 		"-j", "SNAT", "--to-source", primaryAddr.String()}
 	if n.typeOfSNAT == randomHashSNAT {
@@ -283,6 +293,21 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		}
 	}
 	//turn on the forward chain on the nics
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+		ShouldExist: true,
+		Table:       "filter",
+		Chain:       "FORWARD",
+		Rule:        []string{"-i", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	})
+
+	iptableRules = append(iptableRules, iptables.IptablesRule{
+		Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+		ShouldExist: true,
+		Table:       "filter",
+		Chain:       "FORWARD",
+		Rule:        []string{"-o", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	})
 
 	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "accept traffic to/from nics in chain Forward",

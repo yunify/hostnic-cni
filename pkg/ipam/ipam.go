@@ -327,11 +327,6 @@ func (s *IpamD) WriteCNIConfig() error {
 		"name": "hostnic",
 		"type": "hostnic",
 		"vethPrefix": "{{.VethPrefix}}"
-		},
-		{
-		"type": "portmap",
-		"capabilities": {"portMappings": true},
-		"snat": true
 		}]
 }`
 	t, err := template.New("cni-config").Parse(templ)

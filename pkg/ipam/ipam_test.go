@@ -5,11 +5,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/vishvananda/netlink"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/k8sclient"
 	fakenetlink "github.com/yunify/hostnic-cni/pkg/netlinkwrapper/fake"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
