@@ -3,6 +3,9 @@ package ipam
 import (
 	"fmt"
 	"net"
+	"time"
+
+	"github.com/yunify/hostnic-cni/pkg/retry"
 
 	"github.com/yunify/hostnic-cni/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/types"
@@ -96,9 +99,11 @@ func (s *IpamD) createNewVxnet() (*types.VxNet, error) {
 		klog.Errorln("Failed to call create Vxnet")
 		return nil, err
 	}
-	err = s.joinVPC(vxnet)
+	err = retry.Do(5, time.Second*5, func() error {
+		return s.joinVPC(vxnet)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("Could not join vxnet %s in this vpc %s, err: %s", vxnet.ID, s.vpc.ID, err.Error())
+		return nil, err
 	}
 	return vxnet, nil
 }

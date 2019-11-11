@@ -293,21 +293,21 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		}
 	}
 	//turn on the forward chain on the nics
-	iptableRules = append(iptableRules, iptables.IptablesRule{
-		Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
-		ShouldExist: true,
-		Table:       "filter",
-		Chain:       "FORWARD",
-		Rule:        []string{"-i", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
-	})
+	// iptableRules = append(iptableRules, iptables.IptablesRule{
+	// 	Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+	// 	ShouldExist: true,
+	// 	Table:       "filter",
+	// 	Chain:       "FORWARD",
+	// 	Rule:        []string{"-i", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	// })
 
-	iptableRules = append(iptableRules, iptables.IptablesRule{
-		Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
-		ShouldExist: true,
-		Table:       "filter",
-		Chain:       "FORWARD",
-		Rule:        []string{"-o", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
-	})
+	// iptableRules = append(iptableRules, iptables.IptablesRule{
+	// 	Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+	// 	ShouldExist: true,
+	// 	Table:       "filter",
+	// 	Chain:       "FORWARD",
+	// 	Rule:        []string{"-o", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	// })
 
 	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "accept traffic to/from nics in chain Forward",
@@ -333,7 +333,9 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		Rule:        snatRule,
 	})
 
-	klog.V(2).Infof("iptableRules: %v", iptableRules)
+	for _, iptablerule := range iptableRules {
+		klog.V(2).Infof("Preparing iptables rule: %s", iptablerule.String())
+	}
 
 	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "connmark for primary NIC",
@@ -584,15 +586,6 @@ func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR st
 			return errors.Wrap(err, "setupNICNetwork: failed to delete IP addr from NIC")
 		}
 	}
-
-	// nicAddr := &net.IPNet{
-	// 	IP:   net.ParseIP(nicIP),
-	// 	Mask: ipnet.Mask,
-	// }
-	// // klog.V(2).Infof("Adding Primary IP address %s ", nicAddr.String())
-	// // if err = netLink.AddrAdd(link, &netlink.Addr{IPNet: nicAddr}); err != nil {
-	// // 	return errors.Wrap(err, "setupNICNetwork: failed to add IP addr to NIC")
-	// // }
 
 	klog.V(2).Infof("Setting up NIC's default gateway %v", gw)
 	routes := []netlink.Route{

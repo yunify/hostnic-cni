@@ -24,6 +24,7 @@ func Do(maxRetries int, interval time.Duration, fn Func) error {
 		if attempt > maxRetries {
 			return errMaxRetriesReached
 		}
+		time.Sleep(interval)
 	}
 }
 
