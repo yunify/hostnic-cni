@@ -305,6 +305,10 @@ func (s *IpamD) getNicIndexByIP(ip string) int {
 	return -1
 }
 
+func (s *IpamD) GetCurrentAddressInfo() (int, int) {
+	return s.dataStore.GetStats()
+}
+
 func (s *IpamD) WriteCNIConfig() error {
 	f, err := os.Create(configFileName)
 	if err != nil {
@@ -327,11 +331,6 @@ func (s *IpamD) WriteCNIConfig() error {
 		"name": "hostnic",
 		"type": "hostnic",
 		"vethPrefix": "{{.VethPrefix}}"
-		},
-		{
-		"type": "portmap",
-		"capabilities": {"portMappings": true},
-		"snat": true
 		}]
 }`
 	t, err := template.New("cni-config").Parse(templ)
@@ -339,4 +338,39 @@ func (s *IpamD) WriteCNIConfig() error {
 		return err
 	}
 	return t.Execute(f, &conf)
+}
+
+func Start(clientset *kubernetes.Clientset, stopCh chan struct{}) error {
+	klog.V(1).Infoln("Starting IPAMD")
+	ipamd := NewIpamD(clientset)
+
+	err := ipamd.StartIPAMD(stopCh)
+	if err != nil {
+		return err
+	}
+	go ipamd.StartReconcileIPPool(stopCh)
+	klog.V(1).Infoln("Starting Grpc server")
+	err = ipamd.StartGrpcServer()
+	if err != nil {
+		return fmt.Errorf("Failed to start grpc server, err: %s", err.Error())
+	}
+	klog.V(1).Infoln("Writing hostnic configlist")
+
+	//waiting for nics, just wait 20s before starting to check
+	time.Sleep(time.Second * 20)
+	err = retry.Do(10, time.Second*5, func() error {
+		if total, assigned := ipamd.dataStore.GetStats(); total > assigned {
+			err = ipamd.WriteCNIConfig()
+			if err != nil {
+				return fmt.Errorf("Failed to write CNI configlist, err: %s", err.Error())
+			}
+			return nil
+		}
+		klog.Infoln("DataStore has no enough ip address, waiting")
+		return fmt.Errorf("DataStore has no enough pods")
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -228,9 +228,18 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	for i := 0; i <= len(vpcCIDRs); i++ {
 		chain := fmt.Sprintf("QINGCLOUD-SNAT-CHAIN-%d", i)
 		klog.V(2).Infof("Setup Host Network: iptables -N %s -t nat", chain)
-		if err = ipt.NewChain("nat", chain); err != nil && !containChainExistErr(err) {
-			klog.Errorf("ipt.NewChain error for chain [%s]: %v", chain, err)
-			return errors.Wrapf(err, "host network setup: failed to add chain")
+		if err = ipt.NewChain("nat", chain); err != nil {
+			if containChainExistErr(err) {
+				klog.V(1).Infof("Clear chain %s before insert rule", chain)
+				err = ipt.ClearChain("nat", chain)
+				if err != nil {
+					klog.Errorf("Failed to clear chain %s", chain)
+					return err
+				}
+			} else {
+				klog.Errorf("ipt.NewChain error for chain [%s]: %v", chain, err)
+				return errors.Wrapf(err, "host network setup: failed to add chain")
+			}
 		}
 		chains = append(chains, chain)
 	}
@@ -268,6 +277,7 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 	lastChain := chains[len(chains)-1]
 	// Prepare the Desired Rule for SNAT Rule
 	snatRule := []string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
+
 		"-m", "addrtype", "!", "--dst-type", "LOCAL",
 		"-j", "SNAT", "--to-source", primaryAddr.String()}
 	if n.typeOfSNAT == randomHashSNAT {
@@ -283,6 +293,21 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		}
 	}
 	//turn on the forward chain on the nics
+	// iptableRules = append(iptableRules, iptables.IptablesRule{
+	// 	Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+	// 	ShouldExist: true,
+	// 	Table:       "filter",
+	// 	Chain:       "FORWARD",
+	// 	Rule:        []string{"-i", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	// })
+
+	// iptableRules = append(iptableRules, iptables.IptablesRule{
+	// 	Name:        "accept traffic to/from nics in chain Forward in RELATED,ESTABLISHED",
+	// 	ShouldExist: true,
+	// 	Table:       "filter",
+	// 	Chain:       "FORWARD",
+	// 	Rule:        []string{"-o", "nic+", "-m", "comment", "--comment", "hostnic forwarding conntrack rule", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	// })
 
 	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "accept traffic to/from nics in chain Forward",
@@ -308,7 +333,9 @@ func (n *linuxNetwork) SetupHostNetwork(vpcCIDR *net.IPNet, vpcCIDRs []*string, 
 		Rule:        snatRule,
 	})
 
-	klog.V(2).Infof("iptableRules: %v", iptableRules)
+	for _, iptablerule := range iptableRules {
+		klog.V(2).Infof("Preparing iptables rule: %s", iptablerule.String())
+	}
 
 	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "connmark for primary NIC",
@@ -559,15 +586,6 @@ func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR st
 			return errors.Wrap(err, "setupNICNetwork: failed to delete IP addr from NIC")
 		}
 	}
-
-	// nicAddr := &net.IPNet{
-	// 	IP:   net.ParseIP(nicIP),
-	// 	Mask: ipnet.Mask,
-	// }
-	// // klog.V(2).Infof("Adding Primary IP address %s ", nicAddr.String())
-	// // if err = netLink.AddrAdd(link, &netlink.Addr{IPNet: nicAddr}); err != nil {
-	// // 	return errors.Wrap(err, "setupNICNetwork: failed to add IP addr to NIC")
-	// // }
 
 	klog.V(2).Infof("Setting up NIC's default gateway %v", gw)
 	routes := []netlink.Route{

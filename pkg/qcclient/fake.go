@@ -208,6 +208,15 @@ func (f *FakeQingCloudAPI) TagResources(tagid string, resourceType types.Resourc
 	return errors.NewResourceNotFoundError(types.ResourceTypeTag, tagid)
 }
 
+func (f *FakeQingCloudAPI) GetVxNetByName(name string) (*types.VxNet, error) {
+	for _, vxnet := range f.VxNets {
+		if vxnet.Name == name {
+			return vxnet, nil
+		}
+	}
+	return nil, errors.NewResourceNotFoundError(types.ResourceTypeVxnet, name)
+}
+
 func (f *FakeQingCloudAPI) CreateTag(label, color string) (string, error) {
 	f.Tags[label] = &types.Tag{
 		Label:           label,

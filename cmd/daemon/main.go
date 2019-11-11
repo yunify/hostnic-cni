@@ -57,24 +57,9 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to get k8s clientset, err:%v", err)
 	}
-
-	klog.V(1).Infoln("Starting IPAMD")
-	ipamd := ipam.NewIpamD(clientset)
-
-	err = ipamd.StartIPAMD(stopCh)
+	err = ipam.Start(clientset, stopCh)
 	if err != nil {
-		klog.Fatalf("Failed to start ipamd, err: %s", err.Error())
-	}
-	go ipamd.StartReconcileIPPool(stopCh)
-	klog.V(1).Infoln("Starting Grpc server")
-	err = ipamd.StartGrpcServer()
-	if err != nil {
-		klog.Fatalf("Failed to start grpc server, err: %s", err.Error())
-	}
-	klog.V(1).Infoln("Writing hostnic configlist")
-	err = ipamd.WriteCNIConfig()
-	if err != nil {
-		klog.Fatalf("Failed to write CNI configlist")
+		klog.Fatalf("Failed to start ipamd, err:%v", err)
 	}
 	select {}
 }
