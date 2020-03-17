@@ -1,0 +1,17 @@
+FROM golang:1.14-alpine
+
+#ENV GOPATH /go
+#ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
+
+RUN apk --no-cache add iptables bash git  ca-certificates \
+    && mkdir -p "$GOPATH/src" "$GOPATH/bin" \
+    && chmod -R 777 "$GOPATH" \
+    && go get github.com/derekparker/delve/cmd/dlv \
+    && update-ca-certificates 2>/dev/null || true
+WORKDIR /app
+
+ADD bin .
+ADD config .
+ADD scripts .
+
+ENTRYPOINT [ "/app/install_hostnic_debug.sh" ]
