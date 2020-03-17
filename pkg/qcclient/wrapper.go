@@ -36,7 +36,7 @@ const (
 	defaultWaitInterval  = 10 * time.Second
 	waitNicLocalTimeout  = 20 * time.Second
 	waitNicLocalInterval = 2 * time.Second
-	nicNumLimit          = 60
+	nicNumLimit          = 64
 
 	retryTimes    = 3
 	retryInterval = time.Second * 5
