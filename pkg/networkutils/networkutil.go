@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net"
 	"os"
@@ -536,6 +537,31 @@ func (n *linuxNetwork) SetupNICNetwork(nicIP string, nicMAC string, nicTable int
 	return setupNICNetwork(nicIP, nicMAC, nicTable, nicSubnetCIDR, n.netLink, retryLinkByMacInterval)
 }
 
+func killDhclient(nicName string) error {
+	filename := fmt.Sprintf("/var/run/dhclient.%s.pid", nicName)
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("error reading %s: %s", filename, err)
+	}
+
+	pid, err := strconv.ParseInt(string(content[:len(content)-1]), 10, 64);
+	if  err != nil {
+		return fmt.Errorf("pid file %s has a invalid value: %s", filename, err)
+	}
+
+	filename = fmt.Sprintf("/proc/%d/cmdline", pid)
+	content, err = ioutil.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("error reading %s: %s", filename, err)
+	}
+	if ! strings.Contains(string(content[:len(content)-1]), "dhclient") {
+		return nil
+	}
+
+	p, _ := os.FindProcess(int(pid))
+	return p.Kill()
+}
+
 func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR string, netLink netlinkwrapper.NetLink, retryLinkByMacInterval time.Duration) error {
 	if nicTable == 0 {
 		klog.V(2).Infof("Skipping set up NIC network for primary interface %s", nicIP)
@@ -547,6 +573,11 @@ func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR st
 	link, err := LinkByMac(nicMAC, netLink, retryLinkByMacInterval)
 	if err != nil {
 		return errors.Wrapf(err, "setupNICNetwork: failed to find the link which uses MAC address %s", nicMAC)
+	}
+
+	nicName := link.Attrs().Name;
+	if err = killDhclient(nicName); err != nil {
+		klog.Warningf("Please make sure to kill the dhclient process for %s: %s", nicName, err);
 	}
 
 	if err = netLink.LinkSetMTU(link, ethernetMTU); err != nil {
