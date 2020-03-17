@@ -596,6 +596,8 @@ func setupNICNetwork(nicIP string, nicMAC string, nicTable int, nicSubnetCIDR st
 			Scope:     netlink.SCOPE_LINK,
 			Table:     nicTable,
 		},
+		//TODO: find out which kernel bug will cause the problem below.
+		//In centos 7.5 (kernel 3.10.0-862),  the following route will fail to add.
 		// Route all other traffic via the host's NIC IP
 		{
 			LinkIndex: deviceNumber,
