@@ -31,12 +31,12 @@ build-binary: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/daemon/main.go
 
 build-binary-debug: vet fmt
-    $(BUILD_ENV) go build  -gcflags "all=-N -l"  -o bin/hostnic cmd/hostnic/hostnic.go
-    $(BUILD_ENV) go build -gcflags "all=-N -l"  -o bin/hostnic-agent cmd/daemon/main.go
+	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic cmd/hostnic/hostnic.go
+	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic-agent cmd/daemon/main.go
 
 build-docker-debug: build-binary-debug
-    docker build -f ./Dockerfile.debug -t 192.168.0.5:5000/$(IMAGE_NAME):$(VERSION) .
-    docker push 192.168.0.5:5000/$(IMAGE_NAME):$(VERSION)
+	docker build -f ./Dockerfile.debug -t 192.168.0.5:5000/$(IMAGE_NAME):$(VERSION) .
+	docker push 192.168.0.5:5000/$(IMAGE_NAME):$(VERSION)
 
 build-docker: build-binary
 	docker build -t $(IMAGE_NAME):$(VERSION) .
