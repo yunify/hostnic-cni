@@ -66,6 +66,7 @@ type IpamD struct {
 	prepareCloudClient func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)
 }
 
+//TODO: High and low water mark should be settable
 // NewIpamD create a new IpamD object with default settings
 func NewIpamD(clientset kubernetes.Interface) *IpamD {
 	return &IpamD{

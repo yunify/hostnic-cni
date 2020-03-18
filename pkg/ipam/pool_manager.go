@@ -80,6 +80,8 @@ func (s *IpamD) tryAllocateNIC() {
 	err = s.setupNic(nic)
 	if err != nil {
 		klog.Errorf("Failed to setup nic in host, err: %s", err.Error())
+		s.qcClient.DeleteNic(nic.ID)
+		return
 	}
 	klog.V(2).Infoln("Allocate nic successfully")
 }

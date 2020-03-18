@@ -213,7 +213,7 @@ func (q *qingcloudAPIWrapper) CreateNic(vxnet string) (*types.HostNic, error) {
 		}
 		return hostnic, nil
 	}
-	return nil, fmt.Errorf("Failed to creat nic, error: %s", *output.Message)
+	return nil, fmt.Errorf("Failed to create nic, error: %s", *output.Message)
 }
 
 func (q *qingcloudAPIWrapper) tagResource(tagid, resourceid string, resourceType types.ResourceType) error {
@@ -414,27 +414,6 @@ func (q *qingcloudAPIWrapper) CreateVxNet(name string) (*types.VxNet, error) {
 		}, nil
 	}
 	return nil, fmt.Errorf("Failed to create vxnet %s,err:%s", name, *output.Message)
-}
-
-func (q *qingcloudAPIWrapper) GetVxNetByName(name string) (*types.VxNet, error) {
-	input := &service.DescribeVxNetsInput{SearchWord: &name, Owner: &q.userID}
-	output, err := q.vxNetService.DescribeVxNets(input)
-	if err != nil {
-		return nil, err
-	}
-	if *output.RetCode == 0 {
-		for _, qcVxNet := range output.VxNetSet {
-			if *qcVxNet.VxNetName == name {
-				vxnetItem := &types.VxNet{ID: *qcVxNet.VxNetID, RouterID: *qcVxNet.VpcRouterID}
-				if qcVxNet.Router != nil {
-					vxnetItem.GateWay = *qcVxNet.Router.ManagerIP
-					_, vxnetItem.Network, _ = net.ParseCIDR(*qcVxNet.Router.IPNetwork)
-				}
-				return vxnetItem, nil
-			}
-		}
-	}
-	return nil, errors.NewResourceNotFoundError(types.ResourceTypeVxnet, name)
 }
 
 func (q *qingcloudAPIWrapper) GetNodeVPC() (*types.VPC, error) {

@@ -2,12 +2,12 @@ package ipam
 
 import (
 	"fmt"
+	"github.com/yunify/hostnic-cni/pkg/errors"
 	"net"
 	"time"
 
 	"github.com/yunify/hostnic-cni/pkg/retry"
 
-	"github.com/yunify/hostnic-cni/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/types"
 	"k8s.io/klog"
 )
@@ -23,12 +23,16 @@ func NameForVxnet(node string) string {
 
 // EnsureVxNet guarantee a vxnet for a node
 func (s *IpamD) EnsureVxNet() error {
+	var vxnet *types.VxNet
+
 	node, err := s.K8sClient.GetCurrentNode()
 	if err != nil {
 		klog.Errorf("Failed to get current node")
 		return err
 	}
 	s.NodeName = node.Name
+
+	//Prefer to use user provided, otherwise use default value
 	if vxnet, ok := node.Annotations[NodeAnnotationVxNet]; ok {
 		v, err := s.qcClient.GetVxNet(vxnet)
 		if err != nil {
@@ -37,7 +41,8 @@ func (s *IpamD) EnsureVxNet() error {
 		s.vxnet = v
 		return nil
 	}
-	exsitVxnet, err := s.qcClient.GetVxNetByName(NameForVxnet(s.NodeName))
+
+	exsitVxnet, err := s.qcClient.GetVxNet(NameForVxnet(s.NodeName))
 	if err != nil {
 		if !errors.IsResourceNotFound(err) {
 			klog.Warningln("Failed to get vxnet by name")
@@ -53,14 +58,16 @@ func (s *IpamD) EnsureVxNet() error {
 			}
 		}
 		s.vxnet = exsitVxnet
-		return nil
+		goto annotation
 	}
 	klog.V(1).Infof("Will creating a new vxnet for node %s, this will take up one minute", s.NodeName)
-	vxnet, err := s.createNewVxnet()
+	vxnet, err = s.createNewVxnet()
 	if err != nil {
 		return err
 	}
 	s.vxnet = vxnet
+
+	annotation:
 	err = s.K8sClient.UpdateNodeAnnotation(NodeAnnotationVxNet, vxnet.ID)
 	if err != nil {
 		klog.Errorf("Could not update nodes annotations, will delete this vxnet %s", vxnet.ID)

@@ -18,7 +18,6 @@ type QingCloudNetAPI interface {
 	//DeleteNic delete nic from host
 	DeleteNics(nicIDs []string) error
 	GetVxNet(vxNet string) (*types.VxNet, error)
-	GetVxNetByName(name string) (*types.VxNet, error)
 	GetVxNets([]string) ([]*types.VxNet, error)
 	DeleteVxNet(string) error
 	GetNics([]string) ([]*types.HostNic, error)
