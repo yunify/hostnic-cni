@@ -10,24 +10,26 @@ type QingCloudAPI interface {
 
 // QingCloudNetAPI  do dirty works on  net interface on qingcloud
 type QingCloudNetAPI interface {
-	//CreateNicInVxnet create network interface card in vxnet and attach to host
-	CreateNic(vxnet string) (*types.HostNic, error)
-	DeleteNic(nicID string) error
-
+	CreateNicsAndAttach(vxnet types.VxNet, count int) ([]*types.HostNic, error) //not attach
+	DeleteNic(nicID string) error  //not deattach
+	DeleteNics(nicIDs []string) error  //not deattach
+	DeattachNic(nicIDs string) error
+	GetNics([]string) ([]*types.HostNic, error)
 	GetPrimaryNIC() (*types.HostNic, error)
-	//DeleteNic delete nic from host
-	DeleteNics(nicIDs []string) error
+	GetAttachedNICs(string) ([]*types.HostNic, error)
+
 	GetVxNet(vxNet string) (*types.VxNet, error)
 	GetVxNets([]string) ([]*types.VxNet, error)
 	DeleteVxNet(string) error
-	GetNics([]string) ([]*types.HostNic, error)
 	CreateVxNet(name string) (*types.VxNet, error)
-	GetAttachedNICs(string) ([]*types.HostNic, error)
+
 	GetVPC(string) (*types.VPC, error)
-	GetNodeVPC() (*types.VPC, error)
 	GetVPCVxNets(string) ([]*types.VxNet, error)
+	GetNodeVPC() (*types.VPC, error)
+	GetNodeVxnet(vxnetName string) (string, error)
 	JoinVPC(network, vxnetID, vpcID string) error
-	LeaveVPC(vxnetID, vpcID string) error
+	LeaveVPCAndDelete(vxnetID, vpcID string) error
+
 	GetInstanceID() string
 }
 

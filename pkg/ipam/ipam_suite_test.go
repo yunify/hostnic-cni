@@ -8,7 +8,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/ipam/datastore"
 	"github.com/yunify/hostnic-cni/pkg/k8sclient"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
-	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -22,7 +21,7 @@ func TestIpam(t *testing.T) {
 	RunSpecs(t, "Ipam Suite")
 }
 
-func NewFakeIPAM(netapi networkutils.NetworkAPIs, clientset kubernetes.Interface, prepareCloud func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)) *IpamD {
+func NewFakeIPAM(netapi networkutils.NetworkAPIs, clientset kubernetes.Interface, prepareCloud prepareCloudClientType) *IpamD {
 	return &IpamD{
 		dataStore:          datastore.NewDataStore(),
 		networkClient:      netapi,

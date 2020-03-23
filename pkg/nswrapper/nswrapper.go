@@ -17,5 +17,4 @@ func NewNS() NS {
 
 func (*nsType) WithNetNSPath(nspath string, toRun func(ns.NetNS) error) error {
 	return ns.WithNetNSPath(nspath, toRun)
-
 }

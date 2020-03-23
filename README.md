@@ -58,4 +58,6 @@ hostnic支持network policy，如果需要，执行下面的命令即可
 1. 由于目前iaas不支持多IP网卡，所以每个Node上只能挂载62个Pod(除去主网卡)，对于一般规模的集群已经足够了。
 2. 由于一个已知的BUG，在青云上多网卡主机重启会修改默认路由。所以需要在/etc/rc.local中添加一个指向主网卡`eth0`默认路由，比如`ip route replace default via 192.168.1.1 dev eth0`
 3. 由于Linux的内核的问题，偶尔会出现一个网卡在重启之后消失的情况，这个时候需要去控制台手动重新挂载这个网卡
+4. 由于很多系统中默认开启NetworkManager服务， 当vnic中ip被删除掉之后， 该服务仍然会通过dhcp定期获取ip, 这样也会导致pod不可访问。
+所以需要停止NetworkManager服务。 
 

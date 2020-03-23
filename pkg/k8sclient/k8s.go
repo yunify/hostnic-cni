@@ -2,6 +2,8 @@ package k8sclient
 
 import (
 	"fmt"
+	"github.com/yunify/hostnic-cni/pkg/types"
+	v1 "k8s.io/api/core/v1"
 	"os"
 	"time"
 
@@ -45,17 +47,30 @@ func (k *k8sHelper) GetCurrentNode() (*corev1.Node, error) {
 }
 
 func (k *k8sHelper) Start(stopCh <-chan struct{}) error {
+	nodeUpdate := func (old interface{}, new interface{}) {
+		oldNode := old.(*v1.Node)
+		newNode := new.(*v1.Node)
+
+		newAnnotation := newNode.Annotations[types.NodeAnnotationVxNet]
+		oldAnnotation := oldNode.Annotations[types.NodeAnnotationVxNet]
+		if newAnnotation != oldAnnotation {
+			klog.Infof("k8s node update: from  %s:%s to %s:%s", oldNode.Name, oldAnnotation, newNode, newAnnotation )
+			types.NodeNotify <- newAnnotation
+		}
+	}
+	k.nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: nodeUpdate,
+	})
+
 	go k.nodeInformer.Informer().Run(stopCh)
 	go k.podInformer.Informer().Run(stopCh)
 
-	// Start the informer factories to begin populating the informer caches
-	klog.V(1).Infoln("Starting pod controller")
-	go k.podInformer.Informer().Run(stopCh)
 	// Wait for the caches to be synced before starting workers
 	klog.V(2).Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, k.podSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
+
 	return nil
 }
 

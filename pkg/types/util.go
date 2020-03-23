@@ -20,13 +20,10 @@ package types
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 )
-
-func StringPtr(str string) *string {
-	return &str
-}
 
 func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 	links, err := netlink.LinkList()
@@ -41,3 +38,9 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 	}
 	return nil, fmt.Errorf("Can not find link by address: %s", macAddr)
 }
+
+// Make sure macAddr is valid
+func FormatMacAddr(macAddr string) string {
+	return fmt.Sprintf("enx%s",strings.ReplaceAll(macAddr, ":",  ""))
+}
+

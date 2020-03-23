@@ -53,6 +53,7 @@ func (s *GRPCServerHandler) AddNetwork(context context.Context, in *rpc.AddNetwo
 	}
 	if err != nil {
 		resp.Message = err.Error()
+		s.ipamd.trigCh <- udevNotify{}
 	}
 	klog.V(1).Infof("Send AddNetworkReply: IPv4Addr %s, DeviceNumber: %d, err: %v", addr, deviceNumber, err)
 	return &resp, nil
@@ -83,5 +84,6 @@ func (s *GRPCServerHandler) DelNetwork(context context.Context, in *rpc.DelNetwo
 	if err != nil {
 		resp.Message = err.Error()
 	}
+	s.ipamd.trigCh <- udevNotify{}
 	return resp, nil
 }

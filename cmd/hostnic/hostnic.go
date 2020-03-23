@@ -36,7 +36,6 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/pkg/errors"
 	"github.com/yunify/hostnic-cni/pkg/driver"
-	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/rpcwrapper"
 	"google.golang.org/grpc"
@@ -181,7 +180,9 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs, grpcW rpcwrapper.G
 	// build hostVethName
 	// Note: the maximum length for linux interface name is 15
 	hostVethName := generateHostVethName(conf.VethPrefix, string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-	err = driverClient.SetupNS(hostVethName, args.IfName, args.Netns, addr, int(r.DeviceNumber), r.VPCcidrs, networkutils.GetVPNNet(r.IPv4Addr), r.UseExternalSNAT)
+	driverClient.Setup(hostVethName, args.IfName, addr)
+	err = driverClient.SetupNS(args.Netns, addr, int(r.DeviceNumber), r.UseExternalSNAT)
+
 
 	if err != nil {
 		klog.Errorf("Failed SetupPodNetwork for pod %s namespace %s container %s: %v",

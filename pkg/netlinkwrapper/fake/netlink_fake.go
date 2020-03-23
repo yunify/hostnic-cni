@@ -3,6 +3,7 @@ package fake
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 )
@@ -20,6 +21,47 @@ func (f *FakeNetlink) LinkByName(name string) (netlink.Link, error) {
 		return l, nil
 	}
 	return nil, fmt.Errorf("Netlink %s not found", name)
+}
+
+// LinkByName gets a link object given the device name
+func (f *FakeNetlink) LinkByIndex(index int) (netlink.Link, error) {
+	for _, link := range f.Links {
+		if link.Attrs().Index == index {
+			return link, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *FakeNetlink) LinkByMac(mac string) (netlink.Link, error) {
+	for _, link := range f.Links {
+		if  strings.Compare(mac, link.Attrs().HardwareAddr.String()) == 0  {
+			return link, nil
+		}
+	}
+	return nil, fmt.Errorf("no entry")
+}
+
+func (f *FakeNetlink) LinkDelByName(name string) error {
+	return nil
+}
+func (f *FakeNetlink) RuleListBySrc(src net.IPNet) ([]netlink.Rule, error) {
+	return nil, nil
+}
+func (f *FakeNetlink) DeleteRuleBySrc(src net.IPNet) error {
+	for key, rule := range f.Rules {
+		if rule.Src.String() == src.String() {
+			delete(f.Rules, key)
+		}
+	}
+	return nil
+}
+
+func (f *FakeNetlink) Init() {
+	return
+}
+func (f *FakeNetlink) Error() error {
+	return nil
 }
 
 // LinkSetNsFd is equivalent to `ip link set $link netns $ns`
@@ -182,15 +224,6 @@ func (f *FakeNetlink) RuleList(family int) ([]netlink.Rule, error) {
 func (f *FakeNetlink) LinkSetMTU(link netlink.Link, mtu int) error {
 	f.Links[link.Attrs().Name].Attrs().MTU = mtu
 	return nil
-}
-
-func (f *FakeNetlink) FindPrimaryInterfaceName(mac string) (string, error) {
-	for _, link := range f.Links {
-		if string(link.Attrs().HardwareAddr) == mac {
-			return link.Attrs().Name, nil
-		}
-	}
-	return "", fmt.Errorf("PrimaryInterfaceName not found")
 }
 
 func NewFakeNetlink() *FakeNetlink {

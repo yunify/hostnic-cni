@@ -3,9 +3,6 @@ package ipam
 import (
 	"fmt"
 	"net"
-	"os"
-	"strings"
-	"text/template"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -27,7 +24,8 @@ const (
 	metricsAddress   = "127.0.0.1:41081"
 	gracefulTimeout  = 120 * time.Second
 
-	defaultPoolSize    = 3
+	defaultPoolSize    = 5
+	defaultNICStep     = 5
 	defaultMaxPoolSize = 10
 	defaultClusterName = "kubernetes"
 
@@ -46,24 +44,34 @@ type nodeInfo struct {
 	vpc        *types.VPC
 }
 
+type prepareCloudClientType func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)
+
 // IpamD is the core manager in hostnic which store pod ips and nics
 type IpamD struct {
 	dataStore *datastore.DataStore
 
-	K8sClient     k8sclient.K8sHelper
-	qcClient      qcclient.QingCloudAPI
+	K8sClient k8sclient.K8sHelper
+
 	networkClient networkutils.NetworkAPIs
 
 	nodeInfo
 
-	extraTags          []string
-	clusterName        string
-	disableLabel       bool
-	poolSize           int
-	maxPoolSize        int
-	supportVPNTraffic  bool
-	vethPrefix         string
-	prepareCloudClient func(*qcclient.LabelResourceConfig) (qcclient.QingCloudAPI, error)
+	//For pool manager
+	poolSize    int
+	maxPoolSize int
+	trigCh      chan udevNotify
+	pendingNic  map[string]*types.HostNic
+	deletingNic map[string]string
+
+	supportVPNTraffic bool
+	extraTags         []string
+	clusterName       string
+	disableLabel      bool
+
+	vethPrefix string
+
+	prepareCloudClient prepareCloudClientType
+	qcClient           qcclient.QingCloudAPI
 }
 
 //TODO: High and low water mark should be settable
@@ -72,8 +80,11 @@ func NewIpamD(clientset kubernetes.Interface) *IpamD {
 	return &IpamD{
 		dataStore:          datastore.NewDataStore(),
 		networkClient:      networkutils.New(),
+		pendingNic:         make(map[string]*types.HostNic),
+		deletingNic:        make(map[string]string),
 		poolSize:           defaultPoolSize,
 		maxPoolSize:        defaultMaxPoolSize,
+		trigCh:             make(chan udevNotify),
 		K8sClient:          k8sclient.NewK8sHelper(clientset),
 		prepareCloudClient: prepareQingCloudClient,
 	}
@@ -96,24 +107,13 @@ func prepareQingCloudClient(config *qcclient.LabelResourceConfig) (qcclient.Qing
 	return client, nil
 }
 
-func (s *IpamD) parseEnv() {
-	t := os.Getenv(envExtraTags)
-	if t != "" {
-		s.extraTags = strings.Split(t, ",")
-	}
-	s.clusterName = os.Getenv(envClusterName)
-	if s.clusterName == "" {
-		s.clusterName = defaultClusterName
-	}
-	s.vethPrefix = os.Getenv(envVethPrefix)
-	if s.vethPrefix == "" {
-		s.vethPrefix = defaultVethPrefix
-	}
-}
 func (s *IpamD) setup() error {
-	s.parseEnv()
 	var err error
 	var labelConfig *qcclient.LabelResourceConfig
+
+	s.parseEnv()
+
+	//set up qingcloud client
 	if s.disableLabel {
 		labelConfig = nil
 	} else {
@@ -126,28 +126,38 @@ func (s *IpamD) setup() error {
 	if err != nil {
 		return err
 	}
+
+	//set up node info
 	s.InstanceID = s.qcClient.GetInstanceID()
-	klog.V(2).Infoln("Get current network  info of this node")
-	s.vpc, err = s.qcClient.GetNodeVPC()
-	if err != nil {
-		klog.Errorf("Failed to get vpc router of %s", s.InstanceID)
-		return err
-	}
-	err = s.EnsureVxNet()
-	if err != nil {
-		klog.Errorf("Failed to ensure vxnet of instance %s", s.InstanceID)
-		return err
-	}
+
 	s.primaryNic, err = s.qcClient.GetPrimaryNIC()
 	if err != nil {
 		klog.Errorf("Failed to get primary nic")
 		return err
 	}
-	klog.V(2).Infoln("Setup host network")
+	primaryVxnetId := s.primaryNic.VxNet.ID
+	vxnet, err := s.qcClient.GetVxNet(primaryVxnetId)
+	if err != nil {
+		return err
+	}
+	s.primaryNic.VxNet = vxnet
 
+	klog.Infoln("Get current network  info of this node")
+	s.vpc, err = s.qcClient.GetNodeVPC()
+	if err != nil {
+		klog.Errorf("Failed to get vpc router of %s", s.InstanceID)
+		return err
+	}
+
+	err = s.EnsureVxNet()
+	if err != nil {
+		klog.Errorf("Failed to ensure vxnet of instance %s", s.InstanceID)
+		return err
+	}
+
+	klog.V(2).Infoln("Setup host network")
 	primaryIP := net.ParseIP(s.primaryNic.Address)
-	//setup host network
-	err = s.networkClient.SetupHostNetwork(s.vpc.Network, s.vpcSubnets(), s.primaryNic.HardwareAddr, &primaryIP)
+	err = s.networkClient.SetupHostNetwork(s.primaryNic.HardwareAddr, &primaryIP)
 	if err != nil {
 		klog.Error("Failed to setup host network", err)
 		return errors.Wrap(err, "ipamd init: failed to setup host network")
@@ -166,7 +176,20 @@ func (s *IpamD) setup() error {
 		}
 		klog.V(2).Infof("Set up nic %s done", nic.ID)
 	}
+
+	err = s.prepareLocalPods()
+	if err != nil {
+		klog.Errorln("Failed to set up exsit pods")
+		return err
+	}
+
+	klog.V(1).Infoln("IpamD: Everything is ready")
+	return nil
+}
+
+func (s *IpamD) prepareLocalPods() error {
 	var pods []*k8sclient.K8SPodInfo
+	var err error
 	//process local pods
 	retry.Do(5, time.Second*5, func() error {
 		pods, err = s.K8sClient.GetCurrentNodePods()
@@ -187,21 +210,6 @@ func (s *IpamD) setup() error {
 		return errors.New("Should retry")
 	})
 	klog.V(1).Infoln("Prepare local pods")
-	err = s.prepareLocalPods(pods)
-	if err != nil {
-		klog.Errorln("Failed to set up exsit pods")
-		return err
-	}
-	klog.V(1).Infoln("IpamD: Everything is ready")
-	return nil
-}
-
-func (s *IpamD) prepareLocalPods(pods []*k8sclient.K8SPodInfo) error {
-	rules, err := s.networkClient.GetRuleList()
-	if err != nil {
-		klog.Errorf("During ipamd init: failed to retrieve IP rule list %v", err)
-		return nil
-	}
 
 	for _, ip := range pods {
 		if ip.IP == "" {
@@ -213,35 +221,18 @@ func (s *IpamD) prepareLocalPods(pods []*k8sclient.K8SPodInfo) error {
 		if err != nil {
 			klog.Warningf("During ipamd init, failed to use pod IP %s returned from Kubelet %v", ip.IP, err)
 		}
-
-		// Update ip rules in case there is a change in VPC CIDRs, AWS_VPC_K8S_CNI_EXTERNALSNAT setting
-		srcIPNet := net.IPNet{IP: net.ParseIP(ip.IP), Mask: net.IPv4Mask(255, 255, 255, 255)}
-
-		var pbVPCcidrs []string
-		for _, cidr := range s.vpcSubnets() {
-			pbVPCcidrs = append(pbVPCcidrs, *cidr)
-		}
-		//append vpn net
-		pbVPCcidrs = append(pbVPCcidrs, networkutils.GetVPNNet(ip.IP))
-		table := s.getNicIndexByIP(ip.IP)
-		if table == -1 {
-			klog.Errorf("Cannot get device number of %+v", ip)
-			continue
-		}
-		err = s.networkClient.UpdateRuleListBySrc(rules, srcIPNet, pbVPCcidrs, !s.networkClient.UseExternalSNAT(), table)
-		if err != nil {
-			klog.Errorf("UpdateRuleListBySrc in nodeInit() failed for IP %s: %v", ip.IP, err)
-		}
 	}
 	return nil
 }
 
 func (s *IpamD) setupNic(nic *types.HostNic) error {
 	//check device number
+	//TODO： use netlink wrap
 	if nic.DeviceNumber <= 0 {
 		link, err := types.LinkByMacAddr(nic.HardwareAddr)
 		if err != nil {
-			return err
+			s.pendingNic[types.FormatMacAddr(nic.HardwareAddr)] = nic
+			return nil
 		}
 		nic.DeviceNumber = link.Attrs().Index
 	}
@@ -294,69 +285,28 @@ func (s *IpamD) StartGrpcServer() error {
 	return nil
 }
 
-func (s *IpamD) getNicIndexByIP(ip string) int {
-	nics := s.dataStore.GetNICInfos().NICIPPools
-	for _, nic := range nics {
-		for i := range nic.IPv4Addresses {
-			if i == ip {
-				return nic.DeviceNumber
-			}
-		}
-	}
-	return -1
-}
-
-func (s *IpamD) GetCurrentAddressInfo() (int, int) {
-	return s.dataStore.GetStats()
-}
-
-func (s *IpamD) WriteCNIConfig() error {
-	f, err := os.Create(configFileName)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	var conf struct {
-		CniVersion string `json:"cniVersion"`
-		VethPrefix string `json:"vethPrefix,omitempty"`
-	}
-	conf.CniVersion = "0.3.1"
-	//TODO can be user defined
-	conf.VethPrefix = s.vethPrefix
-	templ :=
-		`{
-	"cniVersion": "{{.CniVersion}}",
-	"name": "hostnic-cni",
-	"plugins": [
-		{
-		"name": "hostnic",
-		"type": "hostnic",
-		"vethPrefix": "{{.VethPrefix}}"
-		}]
-}`
-	t, err := template.New("cni-config").Parse(templ)
-	if err != nil {
-		return err
-	}
-	return t.Execute(f, &conf)
-}
 
 func Start(clientset *kubernetes.Clientset, stopCh chan struct{}) error {
-	klog.V(1).Infoln("Starting IPAMD")
 	ipamd := NewIpamD(clientset)
 
+	klog.Infoln("Starting IPAMD")
 	err := ipamd.StartIPAMD(stopCh)
 	if err != nil {
 		return err
 	}
+
+	go ipamd.monitor()
 	go ipamd.StartReconcileIPPool(stopCh)
-	klog.V(1).Infoln("Starting Grpc server")
+	go ipamd.updateVxnet()
+
+	klog.Infoln("Starting Grpc server")
 	err = ipamd.StartGrpcServer()
 	if err != nil {
 		return fmt.Errorf("Failed to start grpc server, err: %s", err.Error())
 	}
-	klog.V(1).Infoln("Writing hostnic configlist")
 
+
+	klog.Infoln("Writing hostnic configlist")
 	//waiting for nics, just wait 20s before starting to check
 	time.Sleep(time.Second * 20)
 	err = retry.Do(10, time.Second*5, func() error {
@@ -373,5 +323,7 @@ func Start(clientset *kubernetes.Clientset, stopCh chan struct{}) error {
 	if err != nil {
 		return err
 	}
+
+	//success
 	return nil
 }

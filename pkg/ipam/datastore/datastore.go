@@ -307,6 +307,9 @@ func incrementAssignedCount(ds *DataStore, nic *NICIPPool, addr *AddressInfo) {
 
 // GetStats returns total number of IP addresses and number of assigned IP addresses
 func (ds *DataStore) GetStats() (int, int) {
+	ds.lock.Lock()
+	defer ds.lock.Unlock()
+
 	return ds.total, ds.assigned
 }
 
