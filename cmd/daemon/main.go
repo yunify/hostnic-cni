@@ -20,6 +20,7 @@ package main
 
 import (
 	"flag"
+	"github.com/yunify/hostnic-cni/pkg/types"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,6 +36,7 @@ func init() {
 	klog.InitFlags(nil)
 	flag.Parse()
 }
+
 func main() {
 	stopCh := make(chan struct{})
 	stopSignal := make(chan os.Signal)
@@ -57,9 +59,14 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to get k8s clientset, err:%v", err)
 	}
-	err = ipam.Start(clientset, stopCh)
+	err = ipam.Start(clientset, types.StopCh)
 	if err != nil {
 		klog.Fatalf("Failed to start ipamd, err:%v", err)
 	}
-	select {}
+
+	select {
+	case <- stopCh:
+		klog.Info("Daemon exit")
+		os.Exit(0)
+	}
 }

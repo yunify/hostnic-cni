@@ -17,6 +17,8 @@ func init() {
 type FakeQingCloudAPI struct {
 	InstanceID string
 	Nics       map[string]*types.HostNic
+	seq			int
+
 	VxNets     map[string]*types.VxNet
 	VPC        *types.VPC
 
@@ -44,42 +46,56 @@ func generateMAC() string {
 	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
 }
 
-func (f *FakeQingCloudAPI) CreateNic(vxnet string) (*types.HostNic, error) {
-	v := f.VxNets[vxnet]
+func (f *FakeQingCloudAPI) CreateNicsAndAttach(vxnet types.VxNet, count int) ([]*types.HostNic, error) {
 	var ip net.IP
+	var err error
+	var nics []*types.HostNic
+	v := f.VxNets[vxnet.ID]
 	n := v.Network.IP.To4()
-	for {
-		i := rand.Int31n(253) + 2
-		dup := make(net.IP, len(n))
-		copy(dup, n)
-		dup[3] = byte(i)
-		var notgood bool
-		for _, nic := range f.Nics {
-			if nic.Address == dup.String() {
-				notgood = true
+
+	for i := 0; i < count; i++ {
+		for {
+			i := rand.Int31n(253) + 2
+			dup := make(net.IP, len(n))
+			copy(dup, n)
+			dup[3] = byte(i)
+			var notgood bool
+			for _, nic := range f.Nics {
+				if nic.Address == dup.String() {
+					notgood = true
+					break
+				}
+			}
+			if !notgood {
+				ip = dup
 				break
 			}
 		}
-		if !notgood {
-			ip = dup
-			break
+		mac := generateMAC()
+		nic := &types.HostNic{
+			ID:           mac,
+			VxNet:        v,
+			Address:      ip.String(),
+			HardwareAddr: mac,
+			DeviceNumber: len(f.Nics),
+			IsPrimary:    false,
 		}
+		f.Nics[mac] = nic
+		err = f.AfterCreatingNIC(nic)
+		nics = append(nics, nic)
 	}
-	mac := generateMAC()
-	nic := &types.HostNic{
-		ID:           mac,
-		VxNet:        v,
-		Address:      ip.String(),
-		HardwareAddr: mac,
-		DeviceNumber: len(f.Nics),
-		IsPrimary:    false,
-	}
-	f.Nics[mac] = nic
-	err := f.AfterCreatingNIC(nic)
 	if err != nil {
 		return nil, err
 	}
-	return nic, nil
+	return nics, nil
+}
+
+func (q *FakeQingCloudAPI) DeattachNic(nicIDs string) error {
+	return nil
+}
+
+func (q *FakeQingCloudAPI) GetNodeVxnet(vxnetName string) (string, error) {
+	return "", nil
 }
 
 func (f *FakeQingCloudAPI) DeleteNic(nicID string) error {
@@ -178,8 +194,9 @@ func (f *FakeQingCloudAPI) JoinVPC(network, vxnetID, vpcID string) error {
 	f.VxNets[vxnetID].RouterID = vpcID
 	return nil
 }
-func (f *FakeQingCloudAPI) LeaveVPC(vxnetID, vpcID string) error {
+func (f *FakeQingCloudAPI) LeaveVPCAndDelete(vxnetID, vpcID string) error {
 	f.VxNets[vxnetID].RouterID = ""
+	delete(f.VxNets, vxnetID)
 	return nil
 }
 

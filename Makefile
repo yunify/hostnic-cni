@@ -1,6 +1,7 @@
 VERSION ?=v1.0.0-alpha3
 IMAGE_NAME ?=kubesphere/hostnic
 DEV_IMAGE_NAME ?=kubespheredev/hostnic
+REPO ?=hub.docker.com
 ARCH ?= $(shell uname -m)
 pgks ?= $(shell go list -mod=vendor ./pkg/... | grep -v rpc)
 
@@ -30,9 +31,17 @@ build-binary: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic cmd/hostnic/hostnic.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/daemon/main.go
 
+build-binary-debug: vet fmt
+	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic cmd/hostnic/hostnic.go
+	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic-agent cmd/daemon/main.go
+
+build-docker-debug: build-binary-debug
+	docker build -f ./Dockerfile.debug -t $(REPO)/$(IMAGE_NAME):$(VERSION) .
+	docker push $(REPO)/$(IMAGE_NAME):$(VERSION)
+
 build-docker: build-binary
-	docker build -t $(IMAGE_NAME):$(VERSION) .
-	docker push $(IMAGE_NAME):$(VERSION)
+	docker build -t $(REPO)/$(IMAGE_NAME):$(VERSION) .
+	docker push $(REPO)/$(IMAGE_NAME):$(VERSION)
 
 debug: vet fmt
 	./hack/debug.sh

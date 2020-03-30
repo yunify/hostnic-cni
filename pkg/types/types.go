@@ -22,6 +22,11 @@ import (
 	"net"
 )
 
+const (
+	// NodeAnnotationVxNet will tell hostnic the node which vxnet to use when creating nic
+	NodeAnnotationVxNet = "node.beta.kubernetes.io/vxnet"
+)
+
 type HostNic struct {
 	ID           string `json:"id"`
 	VxNet        *VxNet `json:"vxNet"`
@@ -75,4 +80,10 @@ type Tag struct {
 type TaggedResource struct {
 	ResourceType
 	ResourceID string
+}
+
+
+type IpsetVxnet struct {
+	action string
+	VxNets  []*VxNet
 }

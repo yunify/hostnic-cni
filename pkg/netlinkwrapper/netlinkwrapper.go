@@ -1,15 +1,22 @@
 package netlinkwrapper
 
 import (
-	"syscall"
-
 	"github.com/vishvananda/netlink"
+	neterror "github.com/yunify/hostnic-cni/pkg/errors"
+	"golang.org/x/sys/unix"
+	"k8s.io/klog"
+	"net"
+	"syscall"
 )
 
 // NetLink wraps methods used from the vishvananda/netlink package
 type NetLink interface {
+	Init()
+	Error() error
 	// LinkByName gets a link object given the device name
 	LinkByName(name string) (netlink.Link, error)
+	//LinkByIndex gets a link object given the index
+	LinkByIndex(index int) (netlink.Link, error)
 	// LinkSetNsFd is equivalent to `ip link set $link netns $ns`
 	LinkSetNsFd(link netlink.Link, fd int) error
 	// ParseAddr parses an address string
@@ -50,9 +57,15 @@ type NetLink interface {
 	RuleList(family int) ([]netlink.Rule, error)
 	// LinkSetMTU is equivalent to `ip link set dev $link mtu $mtu`
 	LinkSetMTU(link netlink.Link, mtu int) error
+	LinkByMac(mac string) (netlink.Link, error)
+	LinkDelByName(name string) error
+	RuleListBySrc(src net.IPNet) ([]netlink.Rule, error)
+	DeleteRuleBySrc(src net.IPNet) error
 }
 
 type netLink struct {
+	//TODO: add ip version
+	err 	error
 }
 
 // NewNetLink creates a new NetLink object
@@ -60,88 +73,265 @@ func NewNetLink() NetLink {
 	return &netLink{}
 }
 
-func (*netLink) LinkAdd(link netlink.Link) error {
-	return netlink.LinkAdd(link)
+func (n *netLink) Init() {
+	n.err = nil
 }
 
-func (*netLink) LinkByName(name string) (netlink.Link, error) {
-	return netlink.LinkByName(name)
+func (n *netLink) Error() error{
+	return n.err
 }
 
-func (*netLink) LinkSetNsFd(link netlink.Link, fd int) error {
-	return netlink.LinkSetNsFd(link, fd)
+// GetRuleListBySrc returns IP rules with matching source IP
+func (n *netLink) RuleListBySrc(src net.IPNet) ([]netlink.Rule, error) {
+	ruleList, _ := n.RuleList(unix.AF_INET)
+
+	if n.err != nil {
+		return nil, nil
+	}
+
+	var srcRuleList []netlink.Rule
+	for _, rule := range ruleList {
+		if rule.Src != nil && rule.Src.IP.Equal(src.IP) {
+			srcRuleList = append(srcRuleList, rule)
+		}
+	}
+	return srcRuleList, nil
 }
 
-func (*netLink) ParseAddr(s string) (*netlink.Addr, error) {
-	return netlink.ParseAddr(s)
+func (n *netLink) DeleteRuleBySrc(src net.IPNet) error {
+	rules, _ := n.RuleListBySrc(src)
+
+	if n.err != nil {
+		return nil
+	}
+
+	for _, rule := range rules {
+		n.RuleDel(&rule)
+	}
+
+	return n.err
 }
 
-func (*netLink) AddrAdd(link netlink.Link, addr *netlink.Addr) error {
-	return netlink.AddrAdd(link, addr)
+func (n *netLink) LinkDelByName(name string) error {
+	old, _ := n.LinkByName(name)
+
+	if n.err != nil {
+		return n.err
+	}
+
+	n.LinkDel(old)
+
+	return n.err
+
 }
 
-func (*netLink) AddrDel(link netlink.Link, addr *netlink.Addr) error {
-	return netlink.AddrDel(link, addr)
+// LinkByMac returns linux netlink based on interface MAC
+func (n *netLink) LinkByMac(mac string) (netlink.Link, error) {
+	links, _ := n.LinkList()
+
+	if n.err != nil {
+		return nil, n.err
+	}
+
+	for _, link := range links {
+		if mac == link.Attrs().HardwareAddr.String() {
+			return link, nil
+		}
+	}
+
+	return nil, nil
 }
 
-func (*netLink) LinkSetUp(link netlink.Link) error {
-	return netlink.LinkSetUp(link)
+func (n *netLink) LinkAdd(link netlink.Link) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkAdd(link)
+	return n.err
 }
 
-func (*netLink) LinkList() ([]netlink.Link, error) {
-	return netlink.LinkList()
+func (n *netLink) LinkByName(name string) (netlink.Link, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	link, err  := netlink.LinkByName(name)
+	if err != nil {
+		klog.Errorf("Cannot index link by name %s, err: %s", name, err)
+	}
+	n.err = err
+	return link, err
 }
 
-func (*netLink) LinkSetDown(link netlink.Link) error {
-	return netlink.LinkSetDown(link)
+func (n *netLink) LinkByIndex(index int) (netlink.Link, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	link, err  := netlink.LinkByIndex(index)
+	n.err = err
+	return link, err
 }
 
-func (*netLink) RouteList(link netlink.Link, family int) ([]netlink.Route, error) {
-	return netlink.RouteList(link, family)
+func (n *netLink) LinkSetNsFd(link netlink.Link, fd int) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkSetNsFd(link, fd)
+	return n.err
 }
 
-func (*netLink) RouteAdd(route *netlink.Route) error {
-	return netlink.RouteAdd(route)
+func (n *netLink) ParseAddr(s string) (*netlink.Addr, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	addr, err := netlink.ParseAddr(s)
+	n.err = err
+	return addr, err
 }
 
-func (*netLink) RouteReplace(route *netlink.Route) error {
-	return netlink.RouteReplace(route)
+func (n *netLink) AddrAdd(link netlink.Link, addr *netlink.Addr) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.AddrAdd(link, addr)
+	return n.err
 }
 
-func (*netLink) RouteDel(route *netlink.Route) error {
-	return netlink.RouteDel(route)
+func (n *netLink) AddrDel(link netlink.Link, addr *netlink.Addr) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.AddrDel(link, addr)
+	return n.err
 }
 
-func (*netLink) AddrList(link netlink.Link, family int) ([]netlink.Addr, error) {
-	return netlink.AddrList(link, family)
+func (n *netLink) LinkSetUp(link netlink.Link) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkSetUp(link)
+	return n.err
 }
 
-func (*netLink) NeighAdd(neigh *netlink.Neigh) error {
-	return netlink.NeighAdd(neigh)
+func (n *netLink) LinkList() ([]netlink.Link, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	link, err  := netlink.LinkList()
+	n.err = err
+	return link, err
 }
 
-func (*netLink) LinkDel(link netlink.Link) error {
-	return netlink.LinkDel(link)
+func (n *netLink) LinkSetDown(link netlink.Link) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkSetDown(link)
+	return n.err
+}
+
+func (n *netLink) RouteList(link netlink.Link, family int) ([]netlink.Route, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	route, err  := netlink.RouteList(link, family)
+	n.err = err
+	return route, err
+}
+
+func (n *netLink) RouteAdd(route *netlink.Route) error {
+	if n.err != nil {
+		return nil
+	}
+	err := netlink.RouteAdd(route)
+	if IsRouteExistsError(err) {
+		n.err = nil
+	}
+	return n.err
+}
+
+func (n *netLink) RouteReplace(route *netlink.Route) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.RouteReplace(route)
+	return n.err
+}
+
+func (n *netLink) RouteDel(route *netlink.Route) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.RouteDel(route)
+	return n.err
+}
+
+func (n *netLink) AddrList(link netlink.Link, family int) ([]netlink.Addr, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	addr, err  := netlink.AddrList(link, family)
+	n.err =err
+	return addr, err
+}
+
+func (n *netLink) NeighAdd(neigh *netlink.Neigh) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.NeighAdd(neigh)
+	return n.err
+}
+
+func (n *netLink) LinkDel(link netlink.Link) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkDel(link)
+	return n.err
 }
 
 func (*netLink) NewRule() *netlink.Rule {
 	return netlink.NewRule()
 }
 
-func (*netLink) RuleAdd(rule *netlink.Rule) error {
-	return netlink.RuleAdd(rule)
+func (n *netLink) RuleAdd(rule *netlink.Rule) error {
+	if n.err != nil {
+		return nil
+	}
+	if n.err = netlink.RuleAdd(rule); n.err != nil {
+		klog.Errorf("Add rule [%+v]", rule)
+	}
+
+	return n.err
 }
 
-func (*netLink) RuleDel(rule *netlink.Rule) error {
-	return netlink.RuleDel(rule)
+func (n *netLink) RuleDel(rule *netlink.Rule) error {
+	if n.err != nil {
+		return nil
+	}
+	err := netlink.RuleDel(rule)
+	if err != nil && !neterror.ContainsNoSuchRule(err) {
+		klog.Errorf("Failed delete rule: err: %s , [%v]", rule, err)
+		n.err = err
+	}
+	return n.err
 }
 
-func (*netLink) RuleList(family int) ([]netlink.Rule, error) {
-	return netlink.RuleList(family)
+func (n *netLink) RuleList(family int) ([]netlink.Rule, error) {
+	if n.err != nil {
+		return nil, nil
+	}
+	rules, err  := netlink.RuleList(family)
+	n.err = err
+	return rules, err
 }
 
-func (*netLink) LinkSetMTU(link netlink.Link, mtu int) error {
-	return netlink.LinkSetMTU(link, mtu)
+func (n *netLink) LinkSetMTU(link netlink.Link, mtu int) error {
+	if n.err != nil {
+		return nil
+	}
+	n.err = netlink.LinkSetMTU(link, mtu)
+	return n.err
 }
 
 // IsNotExistsError returns true if the error type is syscall.ESRCH

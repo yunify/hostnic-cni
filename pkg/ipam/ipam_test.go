@@ -41,9 +41,10 @@ var (
 		RouterID: RouterID,
 	}
 	nodePrimaryNIC = &types.HostNic{
-		ID:           primaryIntMac,
-		VxNet:        nodeVxNet,
-		DeviceNumber: 0,
+		ID:    primaryIntMac,
+		VxNet: nodeVxNet,
+		//TODO:这里是ifindex，注意在setupns的时候可能会重复， 所以添加路由的时候注意判断路由存在
+		DeviceNumber: 1,
 		IsPrimary:    true,
 		Address:      primaryIP,
 	}
@@ -65,7 +66,7 @@ var _ = Describe("Ipam", func() {
 		qcapi.Nics[primaryIntMac] = nodePrimaryNIC
 		iptablesData = iptables.NewFakeIPTables()
 		netlinkData = fakenetlink.NewFakeNetlink()
-		fakeNetworkClient = networkutils.NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, func(string, string) error { return nil })
+		fakeNetworkClient = networkutils.NewFakeNetworkAPI(netlinkData, iptablesData, func(string, string) error { return nil })
 	})
 
 	It("will choose right ip net", func() {
@@ -115,25 +116,18 @@ var _ = Describe("Ipam", func() {
 		Expect(podVxnet.Network).ShouldNot(Equal(nodeVxNet.Network))
 
 		//test setup hostnetwork
-
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
-				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-0": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-1": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-2": HaveLen(1),
+				"POSTROUTING":          HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN": HaveLen(1),
 			},
 		))
-		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0"}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(Equal([]string{
-			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
+		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
+		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT",
+			"-m", "set", "!", "--match-set", "hostnic-ippools", "dst",
+			"-j", "SNAT", "--to-source", primaryIP, "--random",
 		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(Equal([]string{
-			"!", "-d", podVxnet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-2"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", primaryIP, "--random"}))
 	})
 
 	It("Should work when there are some pods existing", func() {
@@ -183,7 +177,7 @@ var _ = Describe("Ipam", func() {
 		nic2 := &types.HostNic{
 			ID:           nic2Mac,
 			VxNet:        podVxNet,
-			HardwareAddr: nic1Mac,
+			HardwareAddr: nic2Mac,
 			Address:      "192.168.2.3",
 			DeviceNumber: 3,
 		}
@@ -196,6 +190,7 @@ var _ = Describe("Ipam", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth1.Name = "eth1"
+		eth1.Index = 2
 		eth1.HardwareAddr, _ = net.ParseMAC(nic1Mac)
 		netlinkData.LinkAdd(eth1)
 		//prepare local nics
@@ -203,6 +198,7 @@ var _ = Describe("Ipam", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth2.Name = "eth2"
+		eth2.Index = 3
 		eth2.HardwareAddr, _ = net.ParseMAC(nic2Mac)
 		netlinkData.LinkAdd(eth2)
 
@@ -210,37 +206,24 @@ var _ = Describe("Ipam", func() {
 			return qcapi, nil
 		}
 		ipamd := NewFakeIPAM(fakeNetworkClient, clientset, prepareCloud)
-		stopCh := make(chan struct{})
-		Expect(ipamd.StartIPAMD(stopCh)).ShouldNot(HaveOccurred())
+		Expect(ipamd.StartIPAMD(types.StopCh)).ShouldNot(HaveOccurred())
 		defer func() {
-			stopCh <- struct{}{}
+			types.StopCh <- struct{}{}
 		}()
 		//test setup hostnetwork
 
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
-				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-0": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-1": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-2": HaveLen(1),
+				"POSTROUTING":          HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN": HaveLen(1),
 			},
 		))
-		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0"}))
-		orMatch := Or(Equal([]string{
-			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
-		}), Equal([]string{
-			"!", "-d", podVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}), Equal([]string{
-			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}), Equal([]string{
-			"!", "-d", podVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
+		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
+		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT",
+			"-m", "set", "!", "--match-set", "hostnic-ippools", "dst",
+			"-j", "SNAT", "--to-source", primaryIP, "--random",
 		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(orMatch)
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(orMatch)
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).ShouldNot(Equal(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-2"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", primaryIP, "--random"}))
 
 		Eventually(func() int { return ipamd.dataStore.GetNICInfos().TotalIPs }, time.Second*20, time.Second*4).Should(Equal(2))
 		Expect(ipamd.dataStore.GetNICInfos().AssignedIPs).To(Equal(2))
@@ -266,12 +249,12 @@ var _ = Describe("Ipam", func() {
 		}
 
 		ipamd := NewFakeIPAM(fakeNetworkClient, clientset, prepareCloud)
-		stopCh := make(chan struct{})
-		Expect(ipamd.StartIPAMD(stopCh)).ShouldNot(HaveOccurred())
+		Expect(ipamd.StartIPAMD(types.StopCh)).ShouldNot(HaveOccurred())
 		defer func() {
-			stopCh <- struct{}{}
+			types.StopCh <- struct{}{}
 		}()
 		Expect(qcapi.VxNets).To(HaveLen(2))
+		Expect(qcapi.Nics).To(HaveLen(1))
 		node, err := ipamd.K8sClient.GetCurrentNode()
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(node.Annotations).To(HaveKey(NodeAnnotationVxNet))
@@ -279,26 +262,19 @@ var _ = Describe("Ipam", func() {
 		Expect(podVxnet.Network).ShouldNot(Equal(nodeVxNet.Network))
 
 		//test setup hostnetwork
-
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
-				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-0": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-1": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-2": HaveLen(1),
+				"POSTROUTING":          HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN": HaveLen(1),
 			},
 		))
-		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0"}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(Equal([]string{
-			"!", "-d", nodeVxNet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
+		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
+		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT",
+			"-m", "set", "!", "--match-set", "hostnic-ippools", "dst",
+			"-j", "SNAT", "--to-source", primaryIP, "--random",
 		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(Equal([]string{
-			"!", "-d", podVxnet.Network.String(), "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-2"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", primaryIP, "--random"}))
-		go ipamd.StartReconcileIPPool(stopCh, time.Second)
+		go ipamd.StartReconcileIPPool(types.StopCh, time.Second)
 		Eventually(func() int { return ipamd.dataStore.GetNICInfos().TotalIPs }, time.Second*20, time.Second*4).Should(Equal(defaultPoolSize))
 		Eventually(func() int { return ipamd.dataStore.GetNICInfos().AssignedIPs }, time.Second*20, time.Second*4).Should(Equal(0))
 	})

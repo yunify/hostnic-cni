@@ -2,6 +2,8 @@ package errors
 
 import (
 	"fmt"
+	"strings"
+	"syscall"
 
 	"github.com/yunify/hostnic-cni/pkg/types"
 )
@@ -64,3 +66,25 @@ func IsCommonServerError(e error) bool {
 	}
 	return false
 }
+
+
+// ContainsNoSuchRule report whether the rule is not exist
+func ContainsNoSuchRule(err error) bool {
+	if errno, ok := err.(syscall.Errno); ok {
+		return errno == syscall.ENOENT
+	}
+	return false
+}
+
+// IsRuleExistsError report whether the rule is exist
+func IsRuleExistsError(err error) bool {
+	if errno, ok := err.(syscall.Errno); ok {
+		return errno == syscall.EEXIST
+	}
+	return false
+}
+
+func ContainChainExistErr(err error) bool {
+	return strings.Contains(err.Error(), "Chain already exists")
+}
+

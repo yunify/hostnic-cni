@@ -1,7 +1,6 @@
 package networkutils
 
 import (
-	"fmt"
 	"net"
 	"os"
 
@@ -51,14 +50,12 @@ var _ = Describe("Networkutils", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth0.Name = "eth0"
-		eth0.HardwareAddr = net.HardwareAddr(testMAC)
+		eth0.HardwareAddr, _ = net.ParseMAC(testMAC)
 		netlinkData.LinkAdd(eth0)
 		os.Setenv(envNodePortSupport, "true")
-		api := NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, setProcSys)
+		api := NewFakeNetworkAPI(netlinkData, iptablesData, setProcSys)
 		//prepare setup network parameter
-		testSubnet1 := "10.10.1.0/24"
-		testSubnet2 := "10.10.2.0/24"
-		err := api.SetupHostNetwork(testVPC, []*string{&testSubnet1, &testSubnet2}, testMAC, &testNICIP)
+		err := api.SetupHostNetwork(testMAC, &testNICIP)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		//rule check
@@ -69,25 +66,20 @@ var _ = Describe("Networkutils", func() {
 		mainNICRule.Priority = hostRulePriority
 		rules, _ := netlinkData.RuleList(0)
 		Expect(rules[0]).To(Equal(*mainNICRule))
+
 		//nat chains check
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
 				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-0": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-1": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-2": HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN":   HaveLen(1),
 			},
 		))
-		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0"}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(Equal([]string{
-			"!", "-d", "10.10.1.0/24", "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
+		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
+		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT",
+			"-m", "set", "!", "--match-set", ipsetName, "dst",
+			"-j", "SNAT", "--to-source", testNICIP.String(), "--random",
 		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(Equal([]string{
-			"!", "-d", "10.10.2.0/24", "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-2"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", testnicIP, "--random"}))
 
 		// filter chain check
 		Expect(iptablesData.Data["filter"]).To(MatchAllKeys(
@@ -95,25 +87,34 @@ var _ = Describe("Networkutils", func() {
 				"FORWARD": HaveLen(2),
 			},
 		))
-		Expect(iptablesData.Data["filter"]["FORWARD"][0].Rule).To(Equal([]string{"-i", "nic+", "-j", "ACCEPT"}))
-		Expect(iptablesData.Data["filter"]["FORWARD"][1].Rule).To(Equal([]string{"-o", "nic+", "-j", "ACCEPT"}))
+		Expect(iptablesData.Data["filter"]["FORWARD"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD FORWARD", "-i", "nic+", "-j", "ACCEPT"}))
+		Expect(iptablesData.Data["filter"]["FORWARD"][1].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD FORWARD", "-o", "nic+", "-j", "ACCEPT"}))
 
 		// mangle chain check
 		Expect(iptablesData.Data["mangle"]).To(MatchAllKeys(
 			Keys{
-				"PREROUTING": HaveLen(2),
+				"PREROUTING":            HaveLen(1),
+				"QINGCLOUD-PREROUTING-CHAIN":   HaveLen(3),
 			},
 		))
-		Expect(iptablesData.Data["mangle"]["PREROUTING"][0].Rule).To(Equal([]string{
+		Expect(iptablesData.Data["mangle"]["PREROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD MANGLE CHAIN", "-j", "QINGCLOUD-PREROUTING-CHAIN"}))
+		Expect(iptablesData.Data["mangle"]["QINGCLOUD-PREROUTING-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD Pod to Pod",
+			"-i", "nic+",
+			"-m", "set", "--match-set", ipsetName, "dst",
+			"-j", "MARK", "--set-mark", "0x81/0x81",
+		}))
+		Expect(iptablesData.Data["mangle"]["QINGCLOUD-PREROUTING-CHAIN"][1].Rule).To(Equal([]string{
 			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
 			"-i", "eth0",
 			"-m", "addrtype", "--dst-type", "LOCAL", "--limit-iface-in",
-			"-j", "CONNMARK", "--set-mark", fmt.Sprintf("%#x/%#x", defaultConnmark, defaultConnmark),
+			"-j", "CONNMARK", "--set-mark", "0x80/0x80",
 		}))
-
-		Expect(iptablesData.Data["mangle"]["PREROUTING"][1].Rule).To(Equal([]string{
+		Expect(iptablesData.Data["mangle"]["QINGCLOUD-PREROUTING-CHAIN"][2].Rule).To(Equal([]string{
 			"-m", "comment", "--comment", "QINGCLOUD, primary NIC",
-			"-i", "nic+", "-j", "CONNMARK", "--restore-mark", "--mask", fmt.Sprintf("%#x", defaultConnmark),
+			"-i", "nic+",
+			"-m", "set", "!", "--match-set", ipsetName, "dst",
+			"-j", "CONNMARK", "--restore-mark", "--mask", "0x80",
 		}))
 	})
 
@@ -128,32 +129,25 @@ var _ = Describe("Networkutils", func() {
 		eth0.HardwareAddr, _ = net.ParseMAC(testMAC)
 		netlinkData.LinkAdd(eth0)
 		os.Setenv(envNodePortSupport, "false")
-		api := NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, setProcSys)
+		os.Setenv(envRandomizeSNAT, "hashrandom")
+		api := NewFakeNetworkAPI(netlinkData, iptablesData, setProcSys)
 		//prepare setup network parameter
-		testSubnet1 := "10.10.1.0/24"
-		testSubnet2 := "10.10.2.0/24"
-		err := api.SetupHostNetwork(testVPC, []*string{&testSubnet1, &testSubnet2}, testMAC, &testNICIP)
+		err := api.SetupHostNetwork(testMAC, &testNICIP)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		//nat chains check
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
 				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-0": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-1": HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN-2": HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN":   HaveLen(1),
 			},
 		))
-		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN-0"}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-0"][0].Rule).To(Equal([]string{
-			"!", "-d", "10.10.1.0/24", "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-1",
+		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
+		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD SNAT",
+			"-m", "set", "!", "--match-set", ipsetName, "dst",
+			"-j", "SNAT", "--to-source", testNICIP.String(), "--random",
 		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-1"][0].Rule).To(Equal([]string{
-			"!", "-d", "10.10.2.0/24", "-m", "comment", "--comment", "QINGCLOUD SNAT CHAN", "-j", "QINGCLOUD-SNAT-CHAIN-2",
-		}))
-		Expect(iptablesData.Data["nat"]["QINGCLOUD-SNAT-CHAIN-2"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD, SNAT",
-			"-m", "addrtype", "!", "--dst-type", "LOCAL",
-			"-j", "SNAT", "--to-source", testnicIP, "--random"}))
 
 		// filter chain check
 		Expect(iptablesData.Data["filter"]).To(MatchAllKeys(
@@ -161,11 +155,23 @@ var _ = Describe("Networkutils", func() {
 				"FORWARD": HaveLen(2),
 			},
 		))
-		Expect(iptablesData.Data["filter"]["FORWARD"][0].Rule).To(Equal([]string{"-i", "nic+", "-j", "ACCEPT"}))
-		Expect(iptablesData.Data["filter"]["FORWARD"][1].Rule).To(Equal([]string{"-o", "nic+", "-j", "ACCEPT"}))
+		Expect(iptablesData.Data["filter"]["FORWARD"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD FORWARD", "-i", "nic+", "-j", "ACCEPT"}))
+		Expect(iptablesData.Data["filter"]["FORWARD"][1].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD FORWARD", "-o", "nic+", "-j", "ACCEPT"}))
 
 		// mangle chain check
-		Expect(iptablesData.Data["mangle"]).To(HaveLen(0))
+		Expect(iptablesData.Data["mangle"]).To(MatchAllKeys(
+			Keys{
+				"PREROUTING":            HaveLen(1),
+				"QINGCLOUD-PREROUTING-CHAIN":   HaveLen(1),
+			},
+		))
+		Expect(iptablesData.Data["mangle"]["PREROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD MANGLE CHAIN", "-j", "QINGCLOUD-PREROUTING-CHAIN"}))
+		Expect(iptablesData.Data["mangle"]["QINGCLOUD-PREROUTING-CHAIN"][0].Rule).To(Equal([]string{
+			"-m", "comment", "--comment", "QINGCLOUD Pod to Pod",
+			"-i", "nic+",
+			"-m", "set", "--match-set", ipsetName, "dst",
+			"-j", "MARK", "--set-mark", "0x81/0x81",
+		}))
 	})
 
 	It("Should setup nic network properly", func() {
@@ -176,6 +182,7 @@ var _ = Describe("Networkutils", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth0.Name = "eth0"
+		eth0.Index = 1
 		eth0.HardwareAddr, _ = net.ParseMAC(testMAC)
 		netlinkData.LinkAdd(eth0)
 
@@ -183,49 +190,17 @@ var _ = Describe("Networkutils", func() {
 			LinkAttrs: netlink.NewLinkAttrs(),
 		}
 		eth1.Name = "eth1"
+		eth1.Index = 2
 		eth1.HardwareAddr, _ = net.ParseMAC(testMAC1)
 		netlinkData.LinkAdd(eth1)
-		api := NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, setProcSys)
+		api := NewFakeNetworkAPI(netlinkData, iptablesData, setProcSys)
 		Expect(api.SetupNICNetwork(testIP, testMAC1, 2, "10.0.10.0/24")).ShouldNot(HaveOccurred())
 		Expect(eth1.MTU).To(Equal(ethernetMTU))
 		Expect(eth1.Flags | net.FlagUp).To(Equal(eth1.Flags))
 
 		Expect(netlinkData.Routes).To(HaveLen(2))
-		Expect(netlinkData.Routes["<nil>+0.0.0.0/0"].String()).To(Equal("{Ifindex: 0 Dst: 0.0.0.0/0 Src: <nil> Gw: 10.0.10.1 Flags: [] Table: 2}"))
-		Expect(netlinkData.Routes["<nil>+10.0.10.1/32"].String()).To(Equal("{Ifindex: 0 Dst: 10.0.10.1/32 Src: <nil> Gw: <nil> Flags: [] Table: 2}"))
-	})
-
-	It("Can get rule list by source", func() {
-		iptablesData := iptables.NewFakeIPTables()
-		netlinkData := fakenetlink.NewFakeNetlink()
-
-		eth0 := &netlink.Device{
-			LinkAttrs: netlink.NewLinkAttrs(),
-		}
-		eth0.Name = "eth0"
-		eth0.HardwareAddr, _ = net.ParseMAC(testMAC)
-		netlinkData.LinkAdd(eth0)
-		api := NewFakeNetworkAPI(netlinkData, iptablesData, netlinkData.FindPrimaryInterfaceName, setProcSys)
-
-		_, sourceIP, _ := net.ParseCIDR("10.10.10.0/24")
-		for index := 1; index < 10; index++ {
-			rule := netlink.NewRule()
-			if index%2 == 0 {
-				_, rule.Src, _ = net.ParseCIDR(fmt.Sprintf("10.10.%d0.0/24", index))
-			} else {
-				rule.Src = sourceIP
-			}
-			_, rule.Dst, _ = net.ParseCIDR(fmt.Sprintf("10.11.10.%d/32", index))
-			netlinkData.RuleAdd(rule)
-		}
-
-		ruleList, _ := api.GetRuleList()
-		Expect(ruleList).To(HaveLen(9))
-		rules, err := api.GetRuleListBySrc(ruleList, *sourceIP)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(rules).To(HaveLen(5))
-		Expect(api.DeleteRuleListBySrc(*sourceIP)).ShouldNot(HaveOccurred())
-		Expect(netlinkData.Rules).To(HaveLen(4))
+		Expect(netlinkData.Routes["<nil>+0.0.0.0/0"].String()).To(Equal("{Ifindex: 2 Dst: 0.0.0.0/0 Src: <nil> Gw: 10.0.10.1 Flags: [] Table: 2}"))
+		Expect(netlinkData.Routes["<nil>+10.0.10.1/32"].String()).To(Equal("{Ifindex: 2 Dst: 10.0.10.1/32 Src: <nil> Gw: <nil> Flags: [] Table: 2}"))
 	})
 })
 
