@@ -82,8 +82,7 @@ type TaggedResource struct {
 	ResourceID string
 }
 
-
 type IpsetVxnet struct {
 	action string
-	VxNets  []*VxNet
+	VxNets []*VxNet
 }

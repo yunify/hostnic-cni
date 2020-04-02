@@ -1,11 +1,10 @@
 package types
 
-var StopCh chan struct {}
+var StopCh chan struct{}
 
 var IpsetCh chan IpsetVxnet
 
 var NodeNotify chan string
-
 
 func initChannel() {
 	StopCh = make(chan struct{})

@@ -67,7 +67,6 @@ func IsCommonServerError(e error) bool {
 	return false
 }
 
-
 // ContainsNoSuchRule report whether the rule is not exist
 func ContainsNoSuchRule(err error) bool {
 	if errno, ok := err.(syscall.Errno); ok {
@@ -87,4 +86,3 @@ func IsRuleExistsError(err error) bool {
 func ContainChainExistErr(err error) bool {
 	return strings.Contains(err.Error(), "Chain already exists")
 }
-

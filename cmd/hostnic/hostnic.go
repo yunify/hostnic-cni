@@ -183,7 +183,6 @@ func add(args *skel.CmdArgs, driverClient driver.NetworkAPIs, grpcW rpcwrapper.G
 	driverClient.Setup(hostVethName, args.IfName, addr)
 	err = driverClient.SetupNS(args.Netns, addr, int(r.DeviceNumber), r.UseExternalSNAT)
 
-
 	if err != nil {
 		klog.Errorf("Failed SetupPodNetwork for pod %s namespace %s container %s: %v",
 			string(k8sArgs.K8S_POD_NAME), string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID), err)

@@ -28,11 +28,11 @@ type LabelResourceConfig struct {
 }
 
 const (
-	nicPrefix            = "hostnic_"
-	instanceIDFile       = "/host/etc/qingcloud/instance-id"
-	defaultOpTimeout     = 180 * time.Second
-	defaultWaitInterval  = 10 * time.Second
-	nicNumLimit          = 64
+	nicPrefix           = "hostnic_"
+	instanceIDFile      = "/host/etc/qingcloud/instance-id"
+	defaultOpTimeout    = 180 * time.Second
+	defaultWaitInterval = 10 * time.Second
+	nicNumLimit         = 64
 
 	retryTimes    = 3
 	retryInterval = time.Second * 5
@@ -41,7 +41,7 @@ const (
 var _ QingCloudAPI = &qingcloudAPIWrapper{}
 
 type qingcloudAPIWrapper struct {
-	err 			error
+	err error
 
 	nicService      *service.NicService
 	jobService      *service.JobService
@@ -50,9 +50,9 @@ type qingcloudAPIWrapper struct {
 	vpcService      *service.RouterService
 	tagSerivce      *service.TagService
 
-	userID        string
-	instanceID    string
-	clusterName   string
+	userID      string
+	instanceID  string
+	clusterName string
 	//TODO： label
 	extraLabels   []string
 	vxnetLabelID  string
@@ -251,7 +251,7 @@ func (q *qingcloudAPIWrapper) GetAttachedNICs(vxnet string) ([]*types.HostNic, e
 				},
 				HardwareAddr: *nic.NICID,
 				Address:      *nic.PrivateIP,
-				DeviceNumber:  -1,
+				DeviceNumber: -1,
 				IsPrimary:    false,
 			}
 			result = append(result, h)
@@ -401,14 +401,14 @@ func (q *qingcloudAPIWrapper) GetNodeVxnet(vxnetName string) (string, error) {
 }
 
 //TODO: cache result and reduce api request
-func (q *qingcloudAPIWrapper) GetAttachedNicsAndVpc()(*[]types.HostNic,  *[]types.VPC, error){
+func (q *qingcloudAPIWrapper) GetAttachedNicsAndVpc() (*[]types.HostNic, *[]types.VPC, error) {
 	input := &service.DescribeInstancesInput{
 		Instances: []*string{&q.instanceID},
 		Verbose:   service.Int(1),
 	}
 	output, err := q.instanceService.DescribeInstances(input)
 	if err != nil {
-		return nil,nil, err
+		return nil, nil, err
 	}
 	if len(output.InstanceSet) <= 0 {
 		return nil, nil, fmt.Errorf("Cannot find the instance %s", q.instanceID)
@@ -417,9 +417,9 @@ func (q *qingcloudAPIWrapper) GetAttachedNicsAndVpc()(*[]types.HostNic,  *[]type
 	var nics []types.HostNic
 	for _, vxnetItem := range instanceItem.VxNets {
 		nic := types.HostNic{
-			ID:           *vxnetItem.NICID,
-			VxNet:        &types.VxNet{
-				ID:	*vxnetItem.VxNetID,
+			ID: *vxnetItem.NICID,
+			VxNet: &types.VxNet{
+				ID:   *vxnetItem.VxNetID,
 				Name: *vxnetItem.VxNetName,
 			},
 			HardwareAddr: *vxnetItem.NICID,
@@ -507,7 +507,7 @@ func (q *qingcloudAPIWrapper) GetVPCVxNets(vpcid string) ([]*types.VxNet, error)
 	klog.Infof("Get vxnet for vpc %s", vpcid)
 
 	input := &service.DescribeRouterVxNetsInput{
-		Router: &vpcid,
+		Router:  &vpcid,
 		Verbose: service.Int(1),
 	}
 	output, err := q.vpcService.DescribeRouterVxNets(input)

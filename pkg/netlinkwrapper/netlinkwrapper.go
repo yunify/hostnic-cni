@@ -65,7 +65,7 @@ type NetLink interface {
 
 type netLink struct {
 	//TODO: add ip version
-	err 	error
+	err error
 }
 
 // NewNetLink creates a new NetLink object
@@ -77,7 +77,7 @@ func (n *netLink) Init() {
 	n.err = nil
 }
 
-func (n *netLink) Error() error{
+func (n *netLink) Error() error {
 	return n.err
 }
 
@@ -154,7 +154,7 @@ func (n *netLink) LinkByName(name string) (netlink.Link, error) {
 	if n.err != nil {
 		return nil, nil
 	}
-	link, err  := netlink.LinkByName(name)
+	link, err := netlink.LinkByName(name)
 	if err != nil {
 		klog.Errorf("Cannot index link by name %s, err: %s", name, err)
 	}
@@ -166,7 +166,7 @@ func (n *netLink) LinkByIndex(index int) (netlink.Link, error) {
 	if n.err != nil {
 		return nil, nil
 	}
-	link, err  := netlink.LinkByIndex(index)
+	link, err := netlink.LinkByIndex(index)
 	n.err = err
 	return link, err
 }
@@ -216,7 +216,7 @@ func (n *netLink) LinkList() ([]netlink.Link, error) {
 	if n.err != nil {
 		return nil, nil
 	}
-	link, err  := netlink.LinkList()
+	link, err := netlink.LinkList()
 	n.err = err
 	return link, err
 }
@@ -233,7 +233,7 @@ func (n *netLink) RouteList(link netlink.Link, family int) ([]netlink.Route, err
 	if n.err != nil {
 		return nil, nil
 	}
-	route, err  := netlink.RouteList(link, family)
+	route, err := netlink.RouteList(link, family)
 	n.err = err
 	return route, err
 }
@@ -269,8 +269,8 @@ func (n *netLink) AddrList(link netlink.Link, family int) ([]netlink.Addr, error
 	if n.err != nil {
 		return nil, nil
 	}
-	addr, err  := netlink.AddrList(link, family)
-	n.err =err
+	addr, err := netlink.AddrList(link, family)
+	n.err = err
 	return addr, err
 }
 
@@ -321,7 +321,7 @@ func (n *netLink) RuleList(family int) ([]netlink.Rule, error) {
 	if n.err != nil {
 		return nil, nil
 	}
-	rules, err  := netlink.RuleList(family)
+	rules, err := netlink.RuleList(family)
 	n.err = err
 	return rules, err
 }

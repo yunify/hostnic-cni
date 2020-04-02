@@ -35,7 +35,7 @@ func (f *FakeNetlink) LinkByIndex(index int) (netlink.Link, error) {
 
 func (f *FakeNetlink) LinkByMac(mac string) (netlink.Link, error) {
 	for _, link := range f.Links {
-		if  strings.Compare(mac, link.Attrs().HardwareAddr.String()) == 0  {
+		if strings.Compare(mac, link.Attrs().HardwareAddr.String()) == 0 {
 			return link, nil
 		}
 	}

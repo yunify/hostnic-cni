@@ -77,7 +77,7 @@ func (os *linuxNetwork) run(hostNS ns.NetNS) error {
 	netLink.LinkAdd(veth)
 
 	hostVeth, err := netLink.LinkByName(os.hostVethName)
-	if err!= nil {
+	if err != nil {
 		return err
 	}
 

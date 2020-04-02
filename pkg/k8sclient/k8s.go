@@ -47,14 +47,14 @@ func (k *k8sHelper) GetCurrentNode() (*corev1.Node, error) {
 }
 
 func (k *k8sHelper) Start(stopCh <-chan struct{}) error {
-	nodeUpdate := func (old interface{}, new interface{}) {
+	nodeUpdate := func(old interface{}, new interface{}) {
 		oldNode := old.(*v1.Node)
 		newNode := new.(*v1.Node)
 
 		newAnnotation := newNode.Annotations[types.NodeAnnotationVxNet]
 		oldAnnotation := oldNode.Annotations[types.NodeAnnotationVxNet]
 		if newAnnotation != oldAnnotation {
-			klog.Infof("k8s node update: from  %s:%s to %s:%s", oldNode.Name, oldAnnotation, newNode, newAnnotation )
+			klog.Infof("k8s node update: from  %s:%s to %s:%s", oldNode.Name, oldAnnotation, newNode, newAnnotation)
 			types.NodeNotify <- newAnnotation
 		}
 	}

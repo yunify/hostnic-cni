@@ -1,7 +1,7 @@
 VERSION ?=v1.0.0-alpha3
 IMAGE_NAME ?=kubesphere/hostnic
 DEV_IMAGE_NAME ?=kubespheredev/hostnic
-REPO ?=hub.docker.com
+REPO ?=docker.io
 ARCH ?= $(shell uname -m)
 pgks ?= $(shell go list -mod=vendor ./pkg/... | grep -v rpc)
 
