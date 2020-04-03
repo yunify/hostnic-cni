@@ -44,7 +44,7 @@ var _ = Describe("Driver", func() {
 		Expect(expectVeth).To(Equal(fakeNetlink.Links[contVethName]))
 		Expect(fakeNetlink.Routes).To(MatchAllKeys(Keys{
 			"<nil>+" + dummyip:         Not(BeNil()),
-			"<nil>+" + "0.0.0.0/0":            Not(BeNil()),
+			"<nil>+" + "0.0.0.0/0":     Not(BeNil()),
 			"<nil>+" + testIP.String(): Not(BeNil()),
 		}))
 
@@ -57,8 +57,8 @@ var _ = Describe("Driver", func() {
 		Expect(api.TeardownNS(testIP, 2)).ShouldNot(HaveOccurred())
 		Expect(fakeNetlink.Rules).To(HaveLen(0))
 		Expect(fakeNetlink.Routes).To(MatchAllKeys(Keys{
-			"<nil>+" + dummyip: Not(BeNil()),
-			"<nil>+" + "0.0.0.0/0":    Not(BeNil()),
+			"<nil>+" + dummyip:     Not(BeNil()),
+			"<nil>+" + "0.0.0.0/0": Not(BeNil()),
 		})) //there is 2 remain routes in container which will not delete in test
 	})
 })

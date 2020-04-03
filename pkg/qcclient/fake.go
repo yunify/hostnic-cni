@@ -17,10 +17,10 @@ func init() {
 type FakeQingCloudAPI struct {
 	InstanceID string
 	Nics       map[string]*types.HostNic
-	seq			int
+	seq        int
 
-	VxNets     map[string]*types.VxNet
-	VPC        *types.VPC
+	VxNets map[string]*types.VxNet
+	VPC    *types.VPC
 
 	Tags             map[string]*types.Tag
 	AfterCreatingNIC func(*types.HostNic) error

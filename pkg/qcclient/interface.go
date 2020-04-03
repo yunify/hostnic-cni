@@ -11,8 +11,8 @@ type QingCloudAPI interface {
 // QingCloudNetAPI  do dirty works on  net interface on qingcloud
 type QingCloudNetAPI interface {
 	CreateNicsAndAttach(vxnet types.VxNet, count int) ([]*types.HostNic, error) //not attach
-	DeleteNic(nicID string) error  //not deattach
-	DeleteNics(nicIDs []string) error  //not deattach
+	DeleteNic(nicID string) error                                               //not deattach
+	DeleteNics(nicIDs []string) error                                           //not deattach
 	DeattachNic(nicIDs string) error
 	GetNics([]string) ([]*types.HostNic, error)
 	GetPrimaryNIC() (*types.HostNic, error)

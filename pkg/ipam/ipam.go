@@ -285,7 +285,6 @@ func (s *IpamD) StartGrpcServer() error {
 	return nil
 }
 
-
 func Start(clientset *kubernetes.Clientset, stopCh chan struct{}) error {
 	ipamd := NewIpamD(clientset)
 
@@ -304,7 +303,6 @@ func Start(clientset *kubernetes.Clientset, stopCh chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("Failed to start grpc server, err: %s", err.Error())
 	}
-
 
 	klog.Infoln("Writing hostnic configlist")
 	//waiting for nics, just wait 20s before starting to check

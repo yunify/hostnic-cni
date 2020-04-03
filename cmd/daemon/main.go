@@ -65,7 +65,7 @@ func main() {
 	}
 
 	select {
-	case <- stopCh:
+	case <-stopCh:
 		klog.Info("Daemon exit")
 		os.Exit(0)
 	}

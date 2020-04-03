@@ -11,16 +11,15 @@ const (
 	nodeIPPoolReconcileInterval = 60 * time.Second
 	decreaseIPPoolInterval      = 30 * time.Second
 	defaultSleepDuration        = 10 * time.Second
-	maxNic						= 60
+	maxNic                      = 60
 )
-
 
 // StartReconcileIPPool will start reconciling ip pool
 func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...time.Duration) {
 	klog.Infoln("Starting ip pool reconciling")
 	for {
 		select {
-		case  <- time.After(defaultSleepDuration):
+		case <-time.After(defaultSleepDuration):
 			for macKey, macValue := range s.deletingNic {
 				if macValue == "" {
 					klog.Infof("Period delete nic %s", macKey)
@@ -30,7 +29,7 @@ func (s *IpamD) StartReconcileIPPool(stopCh <-chan struct{}, sleepDuration ...ti
 				}
 			}
 			s.updateIPPoolIfRequired()
-		case nic:= <-s.trigCh:
+		case nic := <-s.trigCh:
 			if nic.action == "" {
 				klog.Infoln("Begin to update nic pool")
 				s.updateIPPoolIfRequired()
@@ -79,7 +78,7 @@ func (s *IpamD) nodeIPPoolReconcile() {
 func (s *IpamD) nodeIPPoolTooLow() bool {
 	total, used := s.dataStore.GetStats()
 	klog.V(4).Infof("IP pool stats: total = %d, used = %d", total, used)
-	if (total + len(s.pendingNic) - used) < s.poolSize && total < maxNic {
+	if (total+len(s.pendingNic)-used) < s.poolSize && total < maxNic {
 		return true
 	}
 	return false

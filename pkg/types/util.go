@@ -41,6 +41,5 @@ func LinkByMacAddr(macAddr string) (netlink.Link, error) {
 
 // Make sure macAddr is valid
 func FormatMacAddr(macAddr string) string {
-	return fmt.Sprintf("enx%s",strings.ReplaceAll(macAddr, ":",  ""))
+	return fmt.Sprintf("enx%s", strings.ReplaceAll(macAddr, ":", ""))
 }
-

@@ -58,7 +58,7 @@ const (
 	// defaultConnmark is the default value for the connmark described above.  Note: the mark space is a little crowded,
 	// - kube-proxy uses 0x0000c000
 	// - Calico uses 0xffff0000.
-	defaultConnmark = 0x80
+	defaultConnmark     = 0x80
 	defaultVnicConnmark = 0x81
 
 	// MTU of NIC - veth MTU defined in plugins/routed-nic/driver/driver.go
@@ -90,12 +90,12 @@ type linuxNetwork struct {
 	connmark               uint32
 	vpnSupportEnabled      bool
 
-	netLink                  netlinkwrapper.NetLink
-	ns                       nswrapper.NS
-	newIptables              func() (iptables.IptablesIface, error)
-	mainNICMark              uint32
-	vnicMark				 uint32
-	setProcSys               func(string, string) error
+	netLink     netlinkwrapper.NetLink
+	ns          nswrapper.NS
+	newIptables func() (iptables.IptablesIface, error)
+	mainNICMark uint32
+	vnicMark    uint32
+	setProcSys  func(string, string) error
 }
 
 // New creates a linuxNetwork object
@@ -107,7 +107,7 @@ func New() NetworkAPIs {
 		typeOfSNAT:             typeOfSNAT(),
 		nodePortSupportEnabled: nodePortSupportEnabled(),
 		mainNICMark:            getConnmark(),
-		vnicMark:	defaultVnicConnmark,
+		vnicMark:               defaultVnicConnmark,
 
 		netLink: netlinkwrapper.NewNetLink(),
 		ns:      nswrapper.NewNS(),
@@ -116,7 +116,7 @@ func New() NetworkAPIs {
 			ipt, err := coreosiptables.New()
 			return ipt, err
 		},
-		setProcSys:               setProcSysByWritingFile,
+		setProcSys: setProcSysByWritingFile,
 	}
 }
 
@@ -149,7 +149,7 @@ func (n *linuxNetwork) SetupHostNetwork(primaryMAC string, primaryAddr *net.IP) 
 		}
 
 		primaryIntf = link.Attrs().Name
-		primaryIntfRPFilter := "/proc/sys/net/ipv4/conf/"+primaryIntf+"/rp_filter"
+		primaryIntfRPFilter := "/proc/sys/net/ipv4/conf/" + primaryIntf + "/rp_filter"
 		err = n.setProcSys(primaryIntfRPFilter, "2")
 		if err != nil {
 			return errors.Wrapf(err, "failed to configure RPF check")
@@ -168,7 +168,6 @@ func (n *linuxNetwork) SetupHostNetwork(primaryMAC string, primaryAddr *net.IP) 
 	mainNICRule.Priority = hostRulePriority
 	// If this is a restart, cleanup previous rule first
 	n.netLink.RuleDel(mainNICRule)
-
 
 	if n.nodePortSupportEnabled {
 		n.netLink.RuleAdd(mainNICRule)
@@ -278,7 +277,7 @@ func (n *linuxNetwork) SetupHostNetwork(primaryMAC string, primaryAddr *net.IP) 
 			"-m", "comment", "--comment", "QINGCLOUD MANGLE CHAIN", "-j", mangleChain,
 		}})
 
-	iptableRules =  append(iptableRules, iptables.IptablesRule{
+	iptableRules = append(iptableRules, iptables.IptablesRule{
 		Name:        "connmark for pod to pod",
 		ShouldExist: true,
 		Table:       "mangle",
@@ -352,7 +351,6 @@ func (n *linuxNetwork) SetupNICNetwork(nicIP string, mac string, nicTable int, n
 	klog.Infof("Setting up network for an NIC with IP address %s, mac %s,  CIDR %s and route table %d",
 		nicIP, mac, nicSubnetCIDR, nicTable)
 
-
 	_, ipnet, err := net.ParseCIDR(nicSubnetCIDR)
 	if err != nil {
 		return errors.Wrapf(err, "setupNICNetwork: invalid IPv4 CIDR block %s", nicSubnetCIDR)
@@ -362,10 +360,9 @@ func (n *linuxNetwork) SetupNICNetwork(nicIP string, mac string, nicTable int, n
 		return errors.Wrapf(err, "setupNICNetwork: failed to define gateway address from %v", ipnet.IP)
 	}
 
-
 	link, _ := netLink.LinkByIndex(nicTable)
 
-	intfRPFilter := "/proc/sys/net/ipv4/conf/"+link.Attrs().Name+"/rp_filter"
+	intfRPFilter := "/proc/sys/net/ipv4/conf/" + link.Attrs().Name + "/rp_filter"
 
 	err = n.setProcSys(intfRPFilter, "0")
 	if err != nil {
@@ -410,20 +407,19 @@ func (n *linuxNetwork) SetupNICNetwork(nicIP string, mac string, nicTable int, n
 	return netLink.Error()
 }
 
-
 // NewFakeNetworkAPI is used by unit test
-func NewFakeNetworkAPI(netlink netlinkwrapper.NetLink, iptableIface iptables.IptablesIface,  setProcSys func(string, string) error) NetworkAPIs {
+func NewFakeNetworkAPI(netlink netlinkwrapper.NetLink, iptableIface iptables.IptablesIface, setProcSys func(string, string) error) NetworkAPIs {
 	return &linuxNetwork{
 		useExternalSNAT:        useExternalSNAT(),
 		typeOfSNAT:             typeOfSNAT(),
 		nodePortSupportEnabled: nodePortSupportEnabled(),
 		mainNICMark:            getConnmark(),
-		vnicMark:	defaultVnicConnmark,
+		vnicMark:               defaultVnicConnmark,
 		netLink:                netlink,
 		ns:                     &nswrapper.FakeNsWrapper{},
 		newIptables: func() (iptables.IptablesIface, error) {
 			return iptableIface, nil
 		},
-		setProcSys:               setProcSys,
+		setProcSys: setProcSys,
 	}
 }

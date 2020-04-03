@@ -8,7 +8,7 @@ import (
 
 type ipsetHandler struct {
 	Handler ipset.Interface
-	Ipset ipset.IPSet
+	Ipset   ipset.IPSet
 }
 
 const (
@@ -19,9 +19,9 @@ func InitIpset() {
 	klog.Infof("Init ipset %s", ipsetName)
 	IpsetHandler.Handler = ipset.New(exec.New())
 	IpsetHandler.Ipset = ipset.IPSet{
-		Name:       ipsetName,
-		SetType:    ipset.HashNet,
-		Comment:    ipsetName,
+		Name:    ipsetName,
+		SetType: ipset.HashNet,
+		Comment: ipsetName,
 	}
 	if err := IpsetHandler.Handler.CreateSet(&IpsetHandler.Ipset, true); err != nil {
 		klog.Infof("Failed to create ipset %s: %s", ipsetName, err)

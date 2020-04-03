@@ -70,8 +70,8 @@ var _ = Describe("Networkutils", func() {
 		//nat chains check
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
-				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN":   HaveLen(1),
+				"POSTROUTING":          HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN": HaveLen(1),
 			},
 		))
 		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
@@ -93,8 +93,8 @@ var _ = Describe("Networkutils", func() {
 		// mangle chain check
 		Expect(iptablesData.Data["mangle"]).To(MatchAllKeys(
 			Keys{
-				"PREROUTING":            HaveLen(1),
-				"QINGCLOUD-PREROUTING-CHAIN":   HaveLen(3),
+				"PREROUTING":                 HaveLen(1),
+				"QINGCLOUD-PREROUTING-CHAIN": HaveLen(3),
 			},
 		))
 		Expect(iptablesData.Data["mangle"]["PREROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD MANGLE CHAIN", "-j", "QINGCLOUD-PREROUTING-CHAIN"}))
@@ -138,8 +138,8 @@ var _ = Describe("Networkutils", func() {
 		//nat chains check
 		Expect(iptablesData.Data["nat"]).To(MatchAllKeys(
 			Keys{
-				"POSTROUTING":            HaveLen(1),
-				"QINGCLOUD-SNAT-CHAIN":   HaveLen(1),
+				"POSTROUTING":          HaveLen(1),
+				"QINGCLOUD-SNAT-CHAIN": HaveLen(1),
 			},
 		))
 		Expect(iptablesData.Data["nat"]["POSTROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD SNAT CHAIN", "-j", "QINGCLOUD-SNAT-CHAIN"}))
@@ -161,8 +161,8 @@ var _ = Describe("Networkutils", func() {
 		// mangle chain check
 		Expect(iptablesData.Data["mangle"]).To(MatchAllKeys(
 			Keys{
-				"PREROUTING":            HaveLen(1),
-				"QINGCLOUD-PREROUTING-CHAIN":   HaveLen(1),
+				"PREROUTING":                 HaveLen(1),
+				"QINGCLOUD-PREROUTING-CHAIN": HaveLen(1),
 			},
 		))
 		Expect(iptablesData.Data["mangle"]["PREROUTING"][0].Rule).To(Equal([]string{"-m", "comment", "--comment", "QINGCLOUD MANGLE CHAIN", "-j", "QINGCLOUD-PREROUTING-CHAIN"}))

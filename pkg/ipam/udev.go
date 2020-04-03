@@ -7,14 +7,14 @@ import (
 )
 
 type udevNotify struct {
-	action	string
-	index 	int
-	name  string
-	mac   string
+	action string
+	index  int
+	name   string
+	mac    string
 }
 
 // monitor run monitor mode
-func (s *IpamD)monitor() {
+func (s *IpamD) monitor() {
 	conn := new(go_udev.UEventConn)
 	if err := conn.Connect(go_udev.UdevEvent); err != nil {
 		klog.Error("Unable to connect to Netlink Kobject UEvent socket")
@@ -26,7 +26,7 @@ func (s *IpamD)monitor() {
 	actions_add := "add"
 	matcher := go_udev.RuleDefinition{
 		Action: &actions_add,
-		Env: make(map[string]string),
+		Env:    make(map[string]string),
 	}
 	matcher.Env["SUBSYSTEM"] = "net"
 	matchers.AddRule(matcher)
@@ -34,7 +34,7 @@ func (s *IpamD)monitor() {
 	actions_remove := "remove"
 	matcher = go_udev.RuleDefinition{
 		Action: &actions_remove,
-		Env: make(map[string]string),
+		Env:    make(map[string]string),
 	}
 	matchers.AddRule(matcher)
 
@@ -50,10 +50,10 @@ func (s *IpamD)monitor() {
 				if uevent.Env["INTERFACE"] != "" {
 					index, _ := strconv.Atoi(uevent.Env["IFINDEX"])
 					s.trigCh <- udevNotify{
-						name: uevent.Env["INTERFACE"],
-						mac: uevent.Env["ID_NET_NAME_MAC"],
+						name:   uevent.Env["INTERFACE"],
+						mac:    uevent.Env["ID_NET_NAME_MAC"],
 						action: string(uevent.Action),
-						index: index,
+						index:  index,
 					}
 				}
 			}
