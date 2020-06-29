@@ -1,9 +1,15 @@
-VERSION ?=v1.0.0-alpha3
-IMAGE_NAME ?=kubesphere/hostnic
-DEV_IMAGE_NAME ?=kubespheredev/hostnic
-REPO ?=docker.io
 ARCH ?= $(shell uname -m)
-pgks ?= $(shell go list -mod=vendor ./pkg/... | grep -v rpc)
+pgks ?= $(shell go list  ./pkg/... | grep -v rpc)
+IMG ?= kubespheredev/hostnic:v1.0.0-beta
+#Debug level: 0, 1, 2 (1 true, 2 use bash)
+DEBUG?= 0
+TARGET?= default
+DEPLOY?= deploy/hostnic.yaml
+
+
+ifneq ($(DEBUG), 0)
+	TARGET = dev
+endif
 
 ifeq ($(ARCH),aarch64)
   ARCH = arm64
@@ -19,7 +25,7 @@ docker-unit-test: fmt vet
 	docker run --rm -e GO111MODULE=on  -v "${PWD}":/root/myapp -w /root/myapp golang:1.12 make unit-test 
 
 unit-test:
-	$(BUILD_ENV) go test -mod=vendor -v -coverprofile=coverage.txt -covermode=atomic  $(pgks)
+	$(BUILD_ENV) go test -v -coverprofile=coverage.txt -covermode=atomic  $(pgks)
 
 fmt:
 	go fmt ./pkg/... ./cmd/...
@@ -27,37 +33,19 @@ fmt:
 vet:
 	$(BUILD_ENV) go vet ./pkg/... ./cmd/...
 
-build-binary: vet fmt
+build: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic cmd/hostnic/hostnic.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/daemon/main.go
 
-build-binary-debug: vet fmt
-	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic cmd/hostnic/hostnic.go
-	$(BUILD_ENV) go build -gcflags "all=-N -l" -o bin/hostnic-agent cmd/daemon/main.go
+deploy:
+	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml
+	kustomize build config/${TARGET} > ${DEPLOY}
 
-build-docker-debug: build-binary-debug
-	docker build -f ./Dockerfile.debug -t $(REPO)/$(IMAGE_NAME):$(VERSION) .
-	docker push $(REPO)/$(IMAGE_NAME):$(VERSION)
-
-build-docker: build-binary
-	docker build -t $(REPO)/$(IMAGE_NAME):$(VERSION) .
-	docker push $(REPO)/$(IMAGE_NAME):$(VERSION)
-
-debug: vet fmt
-	./hack/debug.sh
-
-release-staging: docker-unit-test
-	docker build -t $(DEV_IMAGE_NAME):$(VERSION) .
-	docker push $(DEV_IMAGE_NAME):$(VERSION)
-
-# Download portmap plugin
-download-portmap:
-	mkdir -p tmp/downloads
-	mkdir -p tmp/plugins
-	curl -L -o tmp/downloads/cni-plugins-$(ARCH).tgz https://github.com/containernetworking/plugins/releases/download/v0.7.5/cni-plugins-$(ARCH)-v0.7.5.tgz
-	tar -vxf tmp/downloads/cni-plugins-$(ARCH).tgz -C tmp/plugins
-	cp tmp/plugins/portmap bin/portmap
-	rm -rf tmp
+publish: build deploy
+	docker build -t ${IMG} .
+	docker push ${IMG}
 
 generate-prototype: 
 	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto
+
+.PHONY: deploy

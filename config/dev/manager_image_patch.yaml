@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hostnic-node
+spec:
+  template:
+    spec:
+      initContainers:
+        - image: alpine:latest
+          name: hostnic-init
+          imagePullPolicy: Always
+          args:
+            - /mnt/GolandProjects/hostnic-cni/test/install.sh
+      containers:
+        # Change the value of image field below to your controller image URL
+        - image: alpine:latest
+          name: hostnic-node
+          imagePullPolicy: Always
+          command:
+            - /mnt/GolandProjects/hostnic-cni/bin/hostnic-agent
+          tty: true

@@ -1,23 +1,8 @@
 #!/bin/sh
- 
-function CleanUp() {
-    echo "===== Deleting HOSTNIC-AGENT ==========="
-    rm -f  /host/opt/cni/bin/hostnic
-    rm -f  /host/opt/cni/bin/portmap
-    rm -f  /host/etc/cni/net.d/10-ahostnic.conflist
-    rm -f /host/etc/cni/net.d/99-loopback.conf
-}
 
-trap CleanUp EXIT SIGINT SIGQUIT
+sysctl -w net.ipv4.conf.eth0.rp_filter=0
+sysctl -w net.ipv4.conf.default.rp_filter=0
+sysctl -w net.ipv4.conf.all.rp_filter=0
 
-echo "===== Starting installing HOSTNIC-CNI ========="
-CleanUp
-
-cp /app/hostnic /host/opt/cni/bin/
-#cp /app/portmap /host/opt/cni/bin/
-
-
-echo "===== Starting HOSTNIC-AGENT ==========="
-/app/hostnic-agent -v=2
-
-
+cp /app/hostnic /opt/cni/bin/
+cp /etc/hostnic/10-hostnic.conf /etc/cni/net.d/

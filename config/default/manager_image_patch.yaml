@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hostnic-node
+spec:
+  template:
+    spec:
+      initContainers:
+        - image: kubespheredev/hostnic:v1.0.0-beta
+          name: hostnic-init
+          imagePullPolicy: IfNotPresent
+      containers:
+        # Change the value of image field below to your controller image URL
+        - image: kubespheredev/hostnic:v1.0.0-beta
+          name: hostnic-node
+          imagePullPolicy: IfNotPresent
