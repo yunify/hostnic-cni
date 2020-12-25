@@ -6,6 +6,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/db"
+	"github.com/yunify/hostnic-cni/pkg/k8s"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
@@ -57,14 +58,23 @@ func (a *Allocator) SetCachedVxnet(vxnet string) error {
 		return nil
 	}
 
-	if a.cachedNet != nil {
-		for _, nic := range a.nics {
-			if nic.isFree() && nic.nic.VxNet.ID == a.cachedNet.ID {
-				err := nic.setStatus(rpc.Status_DELETING)
-				if err != nil {
-					return err
-				}
+	var toFree []string
+	for _, nic := range a.nics {
+		if nic.isFree() && nic.nic.VxNet.ID != vxnet {
+			err := nic.setStatus(rpc.Status_DELETING)
+			if err != nil {
+				return err
 			}
+			toFree = append(toFree, nic.nic.ID)
+		}
+	}
+	if len(toFree) > 0 {
+		jobID, err := qcclient.QClient.DeattachNics(toFree, false)
+		if err == nil {
+			a.jobs = append(a.jobs, jobID)
+			log.Infof("deattach nics %v", toFree)
+		} else {
+			log.WithError(err).Errorf("failed to deattach nics %v", toFree)
 		}
 	}
 
@@ -72,14 +82,8 @@ func (a *Allocator) SetCachedVxnet(vxnet string) error {
 	if err != nil {
 		return err
 	}
-	if len(vxnets) == 0 {
-		log.Errorf("cannot get vxnet %s info", vxnet)
-		return nil
-	}
-
 	a.cachedNet = vxnets[vxnet]
 	log.Infof("set cache vxnet to %s", vxnet)
-
 	a.cacheHostNic()
 
 	return nil
@@ -221,7 +225,7 @@ func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 }
 
 func getKey(info *rpc.PodInfo) string {
-	return fmt.Sprintf("%s/%s", info.Namespace, info.Name)
+	return info.Containter
 }
 
 func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
@@ -434,6 +438,12 @@ func (a *Allocator) SyncHostNic(node bool) {
 }
 
 func (a *Allocator) Start(stopCh <-chan struct{}) error {
+	// choose vxnet for node
+	err := k8s.K8sHelper.ChooseVxnetForNode(a.conf.VxNets, a.conf.MaxNic)
+	if err != nil {
+		log.WithError(err).Fatalf("failed to choose vxnet for node")
+	}
+
 	go a.run(stopCh)
 	return nil
 }

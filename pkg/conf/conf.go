@@ -17,11 +17,12 @@ type PoolConf struct {
 	PoolLow  int `json:"poolLow,omitempty" yaml:"poolLow,omitempty"`
 
 	//global
-	MaxNic         int    `json:"maxNic,omitempty" yaml:"maxNic,omitempty"`
-	Sync           int    `json:"sync,omitempty" yaml:"sync,omitempty"`
-	NodeSync       int    `json:"nodeSync,omitempty" yaml:"nodeSync,omitempty"`
-	RouteTableBase int    `json:"routeTableBase,omitempty" yaml:"routeTableBase,omitempty"`
-	Tag            string `json:"tag,omitempty" yaml:"tag,omitempty"`
+	MaxNic         int      `json:"maxNic,omitempty" yaml:"maxNic,omitempty"`
+	Sync           int      `json:"sync,omitempty" yaml:"sync,omitempty"`
+	NodeSync       int      `json:"nodeSync,omitempty" yaml:"nodeSync,omitempty"`
+	RouteTableBase int      `json:"routeTableBase,omitempty" yaml:"routeTableBase,omitempty"`
+	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`
+	VxNets         []string `json:"vxNets,omitempty" yaml:"vxNets,omitempty"`
 }
 
 type ServerConf struct {

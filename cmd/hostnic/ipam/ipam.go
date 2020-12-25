@@ -169,14 +169,14 @@ func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.PodInfo, error) {
 		MinConnectTimeout: 30 * time.Second,
 	}))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect server, err=%v", err)
+		return nil, fmt.Errorf("failed to connect server")
 	}
 	defer conn.Close()
 
 	c := rpc.NewCNIBackendClient(conn)
 	reply, err := c.DelNetwork(context.Background(), info)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to call DelNetwork")
 	}
 	if reply.Nic == nil || reply.Args.Containter != args.ContainerID {
 		return nil, ErrNicNotFound

@@ -2,11 +2,13 @@ package k8s
 
 import (
 	"context"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 // GetCurrentNodePods return the list of pods running on the local nodes
@@ -14,15 +16,15 @@ func (k *Helper) GetCurrentNodePods() ([]*rpc.PodInfo, error) {
 	var localPods []*rpc.PodInfo
 
 	pods := &corev1.PodList{}
-	err := k.client.List(context.Background(), pods, &client.ListOptions{
-		//FieldSelector: fields.OneTermEqualSelector("spec.nodeName", k.nodeName),
+	err := k.Client.List(context.Background(), pods, &client.ListOptions{
+		//FieldSelector: fields.OneTermEqualSelector("spec.NodeName", k.NodeName),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	for _, pod := range pods.Items {
-		if pod.Spec.NodeName != k.nodeName {
+		if pod.Spec.NodeName != k.NodeName {
 			continue
 		}
 
@@ -63,7 +65,7 @@ func getPodInfo(pod *corev1.Pod) *rpc.PodInfo {
 func (k *Helper) UpdatePodInfo(info *rpc.PodInfo) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		pod := &corev1.Pod{}
-		err := k.client.Get(context.Background(), client.ObjectKey{
+		err := k.Client.Get(context.Background(), client.ObjectKey{
 			Namespace: info.Namespace,
 			Name:      info.Name,
 		}, pod)
@@ -83,14 +85,109 @@ func (k *Helper) UpdatePodInfo(info *rpc.PodInfo) error {
 			return nil
 		}
 
-		return k.client.Update(context.Background(), clone)
+		return k.Client.Update(context.Background(), clone)
 	})
+}
+
+func (k *Helper) needSetVxnetForNode() (error, bool) {
+	node := &corev1.Node{}
+	err := k.Client.Get(context.Background(), client.ObjectKey{
+		Name: k.NodeName,
+	}, node)
+	if err != nil {
+		return err, false
+	}
+
+	if node.Annotations == nil || node.Annotations[AnnoHostNicVxnet] == "" {
+		return nil, true
+	}
+	return nil, false
+}
+
+func (k *Helper) getNodeVxnetUsage() (error, map[string]int, bool) {
+	result := make(map[string]int)
+	var latest *corev1.Node
+
+	nodes := &corev1.NodeList{}
+	err := k.Client.List(context.Background(), nodes)
+	if err != nil {
+		return err, nil, false
+	}
+	for _, node := range nodes.Items {
+		if node.Annotations == nil || node.Annotations[AnnoHostNicVxnet] == "" {
+			if latest == nil {
+				latest = &node
+			} else {
+				if node.CreationTimestamp.Before(&latest.CreationTimestamp) {
+					latest = &node
+				}
+			}
+			continue
+		}
+		result[node.Annotations[AnnoHostNicVxnet]]++
+	}
+
+	if latest.Name == k.NodeName {
+		return nil, result, false
+	} else {
+		return nil, result, true
+	}
+}
+
+func (k *Helper) updateNodeVxnet(vxnet string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		node := &corev1.Node{}
+		err := k.Client.Get(context.Background(), client.ObjectKey{Name: k.NodeName}, node)
+		if err != nil {
+			return err
+		}
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+		node.Annotations[AnnoHostNicVxnet] = vxnet
+		return k.Client.Update(context.Background(), node)
+	})
+}
+
+func (k *Helper) ChooseVxnetForNode(vxnets []string, num int) error {
+	for {
+		err, need := k.needSetVxnetForNode()
+		if err != nil {
+			return err
+		}
+		if !need {
+			return nil
+		}
+
+		maxNode := constants.VxnetNicNumLimit / num
+		choose := ""
+		err, usage, wait := k.getNodeVxnetUsage()
+		if err != nil {
+			return err
+		}
+		if wait {
+			time.Sleep(100 * time.Microsecond)
+			continue
+		} else {
+			for _, vxnet := range vxnets {
+				if usage[vxnet] < maxNode {
+					choose = vxnet
+					break
+				}
+			}
+			if choose == "" {
+				return nil
+			} else {
+				return k.updateNodeVxnet(choose)
+			}
+		}
+	}
 }
 
 func (k *Helper) GetPodInfo(namespace, name string) (*rpc.PodInfo, error) {
 	pod := &corev1.Pod{}
 
-	err := k.client.Get(context.Background(), client.ObjectKey{
+	err := k.Client.Get(context.Background(), client.ObjectKey{
 		Namespace: namespace,
 		Name:      name,
 	}, pod)

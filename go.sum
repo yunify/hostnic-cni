@@ -550,8 +550,8 @@ github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df/go.mod h1:JP3t17
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 h1:eY9dn8+vbi4tKz5Qo6v2eYzo7kUS51QINcR5jNpbZS8=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
-github.com/yunify/qingcloud-sdk-go v0.0.0-20200924071837-353983ff01e7 h1:dgcYLovpXL8qNHXsBS/q+dAqbj5ZW+Ju/Cmr+BBrk8c=
-github.com/yunify/qingcloud-sdk-go v0.0.0-20200924071837-353983ff01e7/go.mod h1:TbzAaevnXxyhlR5fC40yJ2d6omRmLNoQmLrWcpNUmZM=
+github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d h1:C5ZDuGDmKHgZK1dXQt93y2eLPzo7JlKm8Vxbc/M9Vqk=
+github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d/go.mod h1:mjVW51Vjtfkf6MSPd4iE0+0FhCH0Lb+pm0l9q6IElCg=
 go.etcd.io/bbolt v1.3.2 h1:Z/90sZLPOeCy2PwprqkFa25PdkusRzaj9P8zm/KNyvk=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.3 h1:MUGmc65QhB3pIlaQ5bB4LwqSj6GIonVJXpZiaKNyaKk=

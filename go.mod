@@ -1,6 +1,6 @@
 module github.com/yunify/hostnic-cni
 
-go 1.12
+go 1.13
 
 require (
 	github.com/containernetworking/cni v0.8.0
@@ -21,7 +21,7 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/vishvananda/netlink v1.1.0
-	github.com/yunify/qingcloud-sdk-go v0.0.0-20200924071837-353983ff01e7
+	github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d
 	golang.org/x/sys v0.0.0-20201214210602-f9fddec55a1e
 	golang.org/x/text v0.3.4 // indirect
 	google.golang.org/grpc v1.27.0

@@ -43,6 +43,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 )
 
@@ -410,6 +411,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	makeDefault(&conf)
+	logrus.Infof("delete args %v", args)
 
 	podInfo, err := ipam2.AddrUnalloc(args, true)
 	if err != nil {
@@ -418,20 +420,20 @@ func cmdDel(args *skel.CmdArgs) error {
 		}
 		return err
 	}
-	conf.HostNicType = podInfo.NicType
 
-	if args.Netns == "" {
-		return nil
-	}
+	conf.HostNicType = podInfo.NicType
+	contIfName := args.IfName
+	svcIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)
+
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {
-		logrus.WithError(err).Errorf("fail to open netns %s", args.Netns)
-		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
+		if strings.Contains(err.Error(), "no such file or directory") {
+			goto end
+		}
+		return err
 	}
 	defer netns.Close()
 
-	contIfName := args.IfName
-	svcIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)
 	switch conf.HostNicType {
 	case constants.HostNicPassThrough:
 		err = cmdDelPassThrough(svcIfName, contIfName, netns)
@@ -440,18 +442,17 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to cleanup pod network: %v", err)
-	}
-
-	_, err = ipam2.AddrUnalloc(args, false)
-	if err != nil {
-		if err == constants.ErrNicNotFound {
-			return nil
+		if strings.Contains(err.Error(), "no such file or directory") {
+			goto end
 		}
 		return err
 	}
-
-	return nil
+end:
+	_, err = ipam2.AddrUnalloc(args, false)
+	if err == constants.ErrNicNotFound {
+		return nil
+	}
+	return err
 }
 
 // generateHostVethName returns a name to be used on the host-side veth device.

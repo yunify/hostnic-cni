@@ -40,6 +40,7 @@ const (
 	DefaultHighPoolSize = 5
 
 	NicNumLimit           = 63
+	VxnetNicNumLimit      = 252
 	DefaultRouteTableBase = 260
 
 	NicPrefix = "hostnic_"

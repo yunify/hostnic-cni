@@ -22,6 +22,7 @@ import (
 	"flag"
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/db"
+	"github.com/yunify/hostnic-cni/pkg/k8s/controllers"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/server"
@@ -69,6 +70,13 @@ func main() {
 	// add daemon
 	k8s.K8sHelper.Mgr.Add(allocator.Alloc)
 	k8s.K8sHelper.Mgr.Add(server.NewIPAMServer(conf.Server))
+
+	//add controllers
+	nodeReconciler := &controllers.NodeReconciler{}
+	err = nodeReconciler.SetupWithManager(k8s.K8sHelper.Mgr)
+	if err != nil {
+		logrus.Fatalf("failed to setup node reconciler")
+	}
 
 	logrus.Info("all setup done, startup daemon")
 	if err := k8s.K8sHelper.Mgr.Start(stopCh); err != nil {

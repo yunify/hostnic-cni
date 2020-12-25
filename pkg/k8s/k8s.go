@@ -22,8 +22,8 @@ const (
 )
 
 type Helper struct {
-	nodeName string
-	client   client.Client
+	NodeName string
+	Client   client.Client
 
 	PodEvent record.EventRecorder
 	Mgr      manager.Manager
@@ -54,15 +54,9 @@ func SetupK8sHelper() {
 		log.Fatalf("node name should not be empty")
 	}
 
-	nodeReconciler := &NodeReconciler{}
-	err = nodeReconciler.SetupWithManager(mgr)
-	if err != nil {
-		log.Fatalf("failed to setup node reconciler")
-	}
-
 	K8sHelper = &Helper{
-		nodeName: nodeName,
-		client:   mgr.GetClient(),
+		NodeName: nodeName,
+		Client:   mgr.GetClient(),
 		PodEvent: mgr.GetEventRecorderFor("hostnic"),
 		Mgr:      mgr,
 	}

@@ -1,8 +1,9 @@
-package k8s
+package controllers
 
 import (
 	"context"
 	"github.com/yunify/hostnic-cni/pkg/allocator"
+	"github.com/yunify/hostnic-cni/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,7 +20,7 @@ type NodeReconciler struct {
 func (r *NodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	node := &corev1.Node{}
 
-	err := K8sHelper.client.Get(context.Background(), client.ObjectKey{Name: K8sHelper.nodeName}, node)
+	err := k8s.K8sHelper.Client.Get(context.Background(), client.ObjectKey{Name: k8s.K8sHelper.NodeName}, node)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -27,7 +28,7 @@ func (r *NodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	vxnet := ""
 	annotations := node.GetAnnotations()
 	if annotations != nil {
-		vxnet = annotations[AnnoHostNicVxnet]
+		vxnet = annotations[k8s.AnnoHostNicVxnet]
 	}
 	return ctrl.Result{}, allocator.Alloc.SetCachedVxnet(vxnet)
 }
@@ -39,7 +40,7 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			CreateFunc: func(e event.CreateEvent) bool {
 				old := e.Object.(*corev1.Node)
 
-				if old.Name == K8sHelper.nodeName {
+				if old.Name == k8s.K8sHelper.NodeName {
 					return true
 				}
 
@@ -49,7 +50,7 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				old := e.ObjectOld.(*corev1.Node)
 				new := e.ObjectNew.(*corev1.Node)
 
-				if new.Name != K8sHelper.nodeName {
+				if new.Name != k8s.K8sHelper.NodeName {
 					return false
 				}
 
@@ -57,11 +58,11 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				newVxnet := ""
 
 				if old.Annotations != nil {
-					oldVxnet = old.Annotations[AnnoHostNicVxnet]
+					oldVxnet = old.Annotations[k8s.AnnoHostNicVxnet]
 				}
 
 				if new.Annotations != nil {
-					newVxnet = new.Annotations[AnnoHostNicVxnet]
+					newVxnet = new.Annotations[k8s.AnnoHostNicVxnet]
 				}
 
 				if oldVxnet != newVxnet {
