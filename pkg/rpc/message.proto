@@ -4,39 +4,54 @@ package rpc;
 
 // The service definition.
 service CNIBackend {
-  rpc AddNetwork (AddNetworkRequest) returns (AddNetworkReply) {}
-  rpc DelNetwork (DelNetworkRequest) returns (DelNetworkReply) {}
+  rpc AddNetwork (IPAMMessage) returns (IPAMMessage) {
+  }
+  rpc DelNetwork (IPAMMessage) returns (IPAMMessage) {
+  }
 }
 
-message AddNetworkRequest {
-  string K8S_POD_NAME = 1;
-  string K8S_POD_NAMESPACE = 2;
-  string K8S_POD_INFRA_CONTAINER_ID = 3;
+message VxNet {
+  string ID = 1;
+  string Gateway = 2;
+  string Network = 3;
+  string RouterID = 4;
+}
+
+enum Status {
+  FREE = 0;
+  USING = 1;
+  DELETING = 2;
+  ERROR = 3;
+  DELETED = 4;
+}
+
+message HostNic {
+  VxNet VxNet = 1;
+  string ID = 2;
+  string HardwareAddr = 3;
+  string PrimaryAddress = 4;
+  bool IsPrimary = 5;
+  bool Using = 6;
+  bool Reserved = 7;
+  int32 RouteTableNum = 8;
+  Status Status = 9;
+}
+
+message PodInfo {
+  string Name = 1;
+  string Namespace = 2;
+  string Containter = 3;
   string Netns = 4;
   string IfName = 5;
+  string NicType = 6;
+  string PodIP = 7;
+  string HostNic = 8;
+  string VxNet = 9;
 }
 
-message  AddNetworkReply{
-  bool Success = 1;
-  string IPv4Addr = 2;
-  string IPv4Subnet = 3;
-  int32 DeviceNumber = 4;
-  bool UseExternalSNAT = 5;
-  string Message = 6;
-  repeated string VPCcidrs = 7;
-}
-
-message DelNetworkRequest {
-  string K8S_POD_NAME = 1;
-  string K8S_POD_NAMESPACE = 2;
-  string K8S_POD_INFRA_CONTAINER_ID = 3;
-  string IPv4Addr = 4;
-  string Reason = 5;
-}
-
-message DelNetworkReply {
-  bool Success = 1;
-  string IPv4Addr = 2;
-  int32 DeviceNumber = 3;
-  string Message = 4;
+message IPAMMessage {
+  PodInfo Args = 1;
+  HostNic Nic = 2;
+  bool Peek = 3;
+  bool Delete = 4;
 }

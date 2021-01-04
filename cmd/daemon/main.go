@@ -20,53 +20,68 @@ package main
 
 import (
 	"flag"
-	"github.com/yunify/hostnic-cni/pkg/types"
+	"github.com/yunify/hostnic-cni/pkg/allocator"
+	"github.com/yunify/hostnic-cni/pkg/db"
+	"github.com/yunify/hostnic-cni/pkg/k8s/controllers"
+	"github.com/yunify/hostnic-cni/pkg/networkutils"
+	"github.com/yunify/hostnic-cni/pkg/qcclient"
+	"github.com/yunify/hostnic-cni/pkg/server"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/coreos/go-systemd/daemon"
-	"github.com/yunify/hostnic-cni/pkg/ipam"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog"
+	"github.com/sirupsen/logrus"
+	"github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/constants"
+	"github.com/yunify/hostnic-cni/pkg/k8s"
+	"github.com/yunify/hostnic-cni/pkg/log"
+	"github.com/yunify/hostnic-cni/pkg/signals"
 )
 
-func init() {
-	klog.InitFlags(nil)
-	flag.Parse()
-}
-
 func main() {
-	stopCh := make(chan struct{})
-	stopSignal := make(chan os.Signal)
-	signal.Notify(stopSignal, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	daemon.SdNotify(false, "READY=1")
-	go func() {
-		defer close(stopSignal)
-		for range stopSignal {
-			stopCh <- struct{}{}
-		}
+	//parse flag and setup logrus
+	logOpts := log.NewLogOptions()
+	logOpts.AddFlags()
+	dbOpts := db.NewLevelDBOptions()
+	dbOpts.AddFlags()
+	flag.Parse()
+	db.SetupLevelDB(dbOpts)
+	defer func() {
+		db.CloseDB()
 	}()
+	log.Setup(logOpts)
 
-	var err error
-	config, err := rest.InClusterConfig()
+	// set up signals so we handle the first shutdown signals gracefully
+	stopCh := signals.SetupSignalHandler()
+
+	// load ipam server config
+	conf, err := conf.TryLoadFromDisk(constants.DefaultConfigName, constants.DefaultConfigPath)
 	if err != nil {
-		klog.Fatalf("Failed to get k8s config, err:%v", err)
+		logrus.WithError(err).Fatalf("failed to load config")
+	}
+	logrus.Infof("hostnic config is %v", conf)
+
+	// setup qcclient, k8s
+	qcclient.SetupQingCloudClient(qcclient.Options{
+		Tag: conf.Pool.Tag,
+	})
+	k8s.SetupK8sHelper()
+	networkutils.SetupNetworkHelper()
+	allocator.SetupAllocator(conf.Pool)
+
+	// add daemon
+	k8s.K8sHelper.Mgr.Add(allocator.Alloc)
+	k8s.K8sHelper.Mgr.Add(server.NewIPAMServer(conf.Server))
+
+	//add controllers
+	nodeReconciler := &controllers.NodeReconciler{}
+	err = nodeReconciler.SetupWithManager(k8s.K8sHelper.Mgr)
+	if err != nil {
+		logrus.Fatalf("failed to setup node reconciler")
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Fatalf("Failed to get k8s clientset, err:%v", err)
+	logrus.Info("all setup done, startup daemon")
+	if err := k8s.K8sHelper.Mgr.Start(stopCh); err != nil {
+		logrus.WithError(err).Errorf("failed to start daemon")
+		os.Exit(1)
 	}
-	err = ipam.Start(clientset, types.StopCh)
-	if err != nil {
-		klog.Fatalf("Failed to start ipamd, err:%v", err)
-	}
-
-	select {
-	case <-stopCh:
-		klog.Info("Daemon exit")
-		os.Exit(0)
-	}
+	logrus.Info("daemon exited")
 }

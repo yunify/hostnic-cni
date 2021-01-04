@@ -1,42 +1,30 @@
 package qcclient
 
-import "github.com/yunify/hostnic-cni/pkg/types"
+import "github.com/yunify/hostnic-cni/pkg/rpc"
 
 // QingCloudAPI is a wrapper interface of qingcloud api
 type QingCloudAPI interface {
-	QingCloudNetAPI
-	QingCloudTagAPI
-}
-
-// QingCloudNetAPI  do dirty works on  net interface on qingcloud
-type QingCloudNetAPI interface {
-	CreateNicsAndAttach(vxnet types.VxNet, count int) ([]*types.HostNic, error) //not attach
-	DeleteNic(nicID string) error                                               //not deattach
-	DeleteNics(nicIDs []string) error                                           //not deattach
-	DeattachNic(nicIDs string) error
-	GetNics([]string) ([]*types.HostNic, error)
-	GetPrimaryNIC() (*types.HostNic, error)
-	GetAttachedNICs(string) ([]*types.HostNic, error)
-
-	GetVxNet(vxNet string) (*types.VxNet, error)
-	GetVxNets([]string) ([]*types.VxNet, error)
-	DeleteVxNet(string) error
-	CreateVxNet(name string) (*types.VxNet, error)
-
-	GetVPC(string) (*types.VPC, error)
-	GetVPCVxNets(string) ([]*types.VxNet, error)
-	GetNodeVPC() (*types.VPC, error)
-	GetNodeVxnet(vxnetName string) (string, error)
-	JoinVPC(network, vxnetID, vpcID string) error
-	LeaveVPCAndDelete(vxnetID, vpcID string) error
-
+	//node info
 	GetInstanceID() string
+
+	//bootstrap
+	GetCreatedNics(num, offsite int) ([]*rpc.HostNic, error)
+
+	//vxnet info
+	GetVxNets([]string) (map[string]*rpc.VxNet, error)
+
+	//job info
+	DescribeNicJobs(ids []string) ([]string, map[string]bool, error)
+
+	//nic operations
+	CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips []string) ([]*rpc.HostNic, string, error)
+	GetNics(nics []string) (map[string]*rpc.HostNic, error)
+	DeleteNics(nicIDs []string) error
+	DeattachNics(nicIDs []string, sync bool) (string, error)
+	AttachNics(nicIDs []string) (string, error)
+	GetAttachedNics() ([]*rpc.HostNic, error)
 }
 
-// QingCloudTagAPI do dirty works of tags on qingcloud
-type QingCloudTagAPI interface {
-	TagResources(tagid string, resourceType types.ResourceType, ids ...string) error
-	CreateTag(label, color string) (string, error)
-	GetTagByLabel(label string) (*types.Tag, error)
-	GetTagByID(id string) (*types.Tag, error)
-}
+var (
+	QClient QingCloudAPI
+)

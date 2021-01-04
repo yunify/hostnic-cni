@@ -33,7 +33,7 @@
     ## 创建Secret
     kubectl create secret generic qcsecret --from-file=./config.yaml -n kube-system
     ```
-    access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  请参考https://docs.qingcloud.com/product/api/common/overview.html。默认是配置文件指向青云公网api server，如果是私有云，请按照下方示例配置更多的参数：
+   access_key 以及 secret_access_key 可以登录青云控制台，在 **API 秘钥**菜单下申请。  请参考https://docs.qingcloud.com/product/api/common/overview.html。默认是配置文件指向青云公网api server，如果是私有云，请按照下方示例配置更多的参数：
     ```
     qy_access_key_id: 'ACCESS_KEY_ID'
     qy_secret_access_key: 'SECRET_ACCESS_KEY'
@@ -49,15 +49,22 @@
     kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/hostnic.yaml
     ```
 
-3. (**可选**)启用Network Policy，建议安装
-hostnic支持network policy，如果需要，执行下面的命令即可
+> 注意:
+> 1. 以上yaml中有一个configmap  `hostnic-cfg-cm`用于配置hostnic管理IAAS网卡，其中`poolHigh`定义当空闲的网卡多于这个数时候hostnic就会回收多余的网卡， `poolLow`定义当空闲网卡少于这个数时hostnic会分配网卡达到poolLow， `maxnic`用于定义hostnic在一台主机中最多创建多少个网卡， 默认值为60， IAAS能支持的最大值是63。
+> 2. 由于hostnic使用leveldb保存ip地址信息， 如果集群重装那么你需要执行`rm -fr /var/lib/hostnic/*`删除数据库用于清除信息
+> 3. 要让hostnic缓存生效，需要给每台主机加上vxnet注解`kubectl  annotate nodes i-xrwbww35  "hostnic.network.kubesphere.io/vxnet"="vxnet-cfn58ev"`, 这表示调度到该节点的pod默认使用`vxnet-cfn58ev`创建网卡， 如果没指定以上annotation 那么pod将会创建失败。
+
+3. 节点绑定vxnet之后， 默认创建的pod都在绑定的vxnet中创建网卡。 如果需要使用其他vxnet， 那么可以在工作负载的podtemp中加上annotation hostnic.network.kubesphere.io/vxnet"="vxnet-cfn58ev"指定vxnet， 另外如果想使用固定ip，那么需要在工作负载的podtemp中加上anntation hostnic.network.kubesphere.io/ip"="192.168.0.1"指定ip， 指定ip的时候需要同时指定vxnet。
+
+4. (**可选**)启用Network Policy，建议安装
+   hostnic支持network policy，如果需要，执行下面的命令即可
     ```bash
-    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/policy.yaml
+    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/policy/calico.yaml
     ```
+
 ## 已知的问题
-1. 由于目前iaas不支持多IP网卡，所以每个Node上只能挂载62个Pod(除去主网卡)，对于一般规模的集群已经足够了。
+1. 由于目前iaas不支持多IP网卡，所以每个Node上只能挂载63个Pod(除去主网卡)，对于一般规模的集群已经足够了。
 2. 由于一个已知的BUG，在青云上多网卡主机重启会修改默认路由。所以需要在/etc/rc.local中添加一个指向主网卡`eth0`默认路由，比如`ip route replace default via 192.168.1.1 dev eth0`
-3. 由于Linux的内核的问题，偶尔会出现一个网卡在重启之后消失的情况，这个时候需要去控制台手动重新挂载这个网卡
-4. 由于很多系统中默认开启NetworkManager服务， 当vnic中ip被删除掉之后， 该服务仍然会通过dhcp定期获取ip, 这样也会导致pod不可访问。
-所以需要停止NetworkManager服务。 
+3. 由于很多系统中默认开启NetworkManager服务， 当vnic中ip被删除掉之后， 该服务仍然会通过dhcp定期获取ip, 这样也会导致pod不可访问。
+   所以需要停止NetworkManager服务。 
 

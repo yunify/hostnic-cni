@@ -1,0 +1,14 @@
+# Adds namespace to all resources.
+namespace: kube-system
+
+# Labels to add to all resources and selectors.
+#commonLabels:
+#  someName: someValue
+
+resources:
+  - ../base
+  - qcsecret.yaml
+
+patchesStrategicMerge:
+  - manager_image_patch.yaml
+  - nfs_patch.yaml

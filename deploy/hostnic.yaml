@@ -1,24 +1,33 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: hostnic-node
-rules:
-- apiGroups: [""]
-  resources:
-  - pods
-  - nodes
-  - namespaces
-  verbs: ["list", "watch", "get","update", "patch"]
-- apiGroups: ["extensions"]
-  resources:
-  - daemonsets
-  verbs: ["list", "watch"]
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: hostnic-node
   namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hostnic-node
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - nodes
+  - namespaces
+  verbs:
+  - list
+  - watch
+  - get
+  - update
+  - patch
+- apiGroups:
+  - extensions
+  resources:
+  - daemonsets
+  verbs:
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -33,79 +42,137 @@ subjects:
   name: hostnic-node
   namespace: kube-system
 ---
-
-kind: DaemonSet
-apiVersion: apps/v1
+apiVersion: v1
+data:
+  hostnic: |
+    {
+      "pool":{
+        "poolHigh":5,
+        "poolLow":3,
+        "maxNic":60
+      }
+    }
+  hostnic-cni: |
+    {
+      "cniVersion": "0.3.0",
+      "name": "hostnic",
+      "type": "hostnic",
+      "serviceCIDR" : "10.233.0.0/18"
+    }
+kind: ConfigMap
 metadata:
-  name: hostnic-node
+  name: hostnic-cfg-cm
   namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
   labels:
     app: hostnic-node
+  name: hostnic-node
+  namespace: kube-system
 spec:
-  updateStrategy:
-    type: RollingUpdate
   selector:
     matchLabels:
       app: hostnic-node
   template:
     metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         app: hostnic-node
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
-      priorityClassName: system-node-critical
-      serviceAccountName: hostnic-node
-      hostNetwork: true
-      tolerations:
-      - operator: Exists
       containers:
-      - image: kubesphere/hostnic:v1.0.0-alpha4
+      - command:
+        - /app/hostnic-agent
+        env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: kubespheredev/hostnic:v1.0.0-beta
         imagePullPolicy: IfNotPresent
+        name: hostnic-node
         ports:
         - containerPort: 61678
           name: metrics
-        name: hostnic-node
-        env:
-          - name: MY_NODE_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: spec.nodeName
-          - name: WATCH_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
         resources:
           requests:
-            cpu: 10m
+            cpu: 100m
         securityContext:
           privileged: true
         volumeMounts:
-        - mountPath: /host/opt/cni/bin
+        - mountPath: /opt/cni/bin
           name: cni-bin-dir
-        - mountPath: /host/etc/cni/net.d
+        - mountPath: /etc/cni/net.d
           name: cni-net-dir
-        - mountPath: /host/var/log
-          name: log-dir
+        - mountPath: /etc/hostnic/
+          name: hostnic-cfg
+        - mountPath: /var/lib/hostnic
+          name: hostnic-db
+        - mountPath: /var/run/hostnic
+          name: hostnic-run
         - mountPath: /root/.qingcloud/
           name: apiaccesskey
           readOnly: true
-        - mountPath: /host/etc/qingcloud/
+        - mountPath: /etc/qingcloud/
           name: qingcloud-cfg
           readOnly: true
+      hostNetwork: true
+      initContainers:
+      - args:
+        - /app/install_hostnic.sh
+        command:
+        - /bin/sh
+        image: kubespheredev/hostnic:v1.0.0-beta
+        imagePullPolicy: IfNotPresent
+        name: hostnic-init
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /opt/cni/bin
+          name: cni-bin-dir
+        - mountPath: /etc/cni/net.d
+          name: cni-net-dir
+        - mountPath: /etc/hostnic/
+          name: hostnic-cfg
+      priorityClassName: system-node-critical
+      serviceAccountName: hostnic-node
+      tolerations:
+      - operator: Exists
       volumes:
-      - name: cni-bin-dir
-        hostPath:
+      - hostPath:
           path: /opt/cni/bin
-      - name: cni-net-dir
-        hostPath:
+        name: cni-bin-dir
+      - hostPath:
           path: /etc/cni/net.d
-      - name: log-dir
-        hostPath:
-          path: /var/log
-      - name:  apiaccesskey
+        name: cni-net-dir
+      - hostPath:
+          path: /var/lib/hostnic
+        name: hostnic-db
+      - hostPath:
+          path: /var/run/hostnic
+        name: hostnic-run
+      - configMap:
+          items:
+          - key: hostnic
+            path: hostnic.json
+          - key: hostnic-cni
+            path: 10-hostnic.conf
+          name: hostnic-cfg-cm
+        name: hostnic-cfg
+      - name: apiaccesskey
         secret:
+          items:
+          - key: config.yaml
+            path: config.yaml
           secretName: qcsecret
-      - name:  qingcloud-cfg
-        hostPath:
-          path:  /etc/qingcloud
+      - hostPath:
+          path: /etc/qingcloud
+        name: qingcloud-cfg
+  updateStrategy:
+    type: RollingUpdate

@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hostnic-node
+spec:
+  template:
+    spec:
+      volumes:
+        - name: nfs-test
+          nfs:
+            path: /home/ubuntu/   #replace here
+            server: 172.22.0.5    #replace here
+      containers:
+        - name: hostnic-node
+          volumeMounts:
+            - mountPath: /mnt/  #replace here
+              name: nfs-test
+      initContainers:
+        - name: hostnic-init
+          volumeMounts:
+            - mountPath: /mnt/  #replace here
+              name: nfs-test
