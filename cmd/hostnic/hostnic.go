@@ -33,6 +33,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	bv "github.com/containernetworking/plugins/pkg/utils/buildversion"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -40,9 +41,12 @@ import (
 	constants "github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/log"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
+	"github.com/yunify/hostnic-cni/pkg/rpc"
+	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -145,7 +149,7 @@ func setupContainerVeth(netns ns.NetNS, hostIfName, contIfName string, conf cons
 	return hostInterface, containerInterface, err
 }
 
-func setupHostVeth(vethName string, result *current.Result) error {
+func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage, result *current.Result) error {
 	// hostVeth moved namespaces and may have a new ifindex
 	hostVeth, err := netlink.LinkByName(vethName)
 	if err != nil {
@@ -154,23 +158,78 @@ func setupHostVeth(vethName string, result *current.Result) error {
 
 	_, _ = sysctl.Sysctl(fmt.Sprintf("net/ipv4/conf/%s/rp_filter", vethName), "0")
 
+	podIP := &net.IPNet{
+		IP:   result.IPs[0].Address.IP,
+		Mask: net.CIDRMask(32, 32),
+	}
 	route := &netlink.Route{
 		LinkIndex: hostVeth.Attrs().Index,
 		Scope:     netlink.SCOPE_LINK,
-		Dst: &net.IPNet{
-			IP:   result.IPs[0].Address.IP,
-			Mask: net.CIDRMask(32, 32),
-		},
+		Dst:       podIP,
+		Table:     conf.RT2Pod,
 	}
 	err = netlink.RouteAdd(route)
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to add route %s to pod, err=%+v", spew.Sdump(route), err)
 	}
 
+	mark, _ := strconv.ParseInt(strings.Replace(conf.NatMark, "0x", "", -1), 16, 0)
+
+	var rules []*netlink.Rule
+	if conf.Type != constants.HostNicPassThrough {
+		priority := constants.FromContainerRulePriority
+
+		fromPodRule := netlink.NewRule()
+		fromPodRule.Priority = priority
+		fromPodRule.Table = int(msg.Nic.RouteTableNum)
+		fromPodRule.Src = podIP
+		if conf.Hairpin {
+			fromPodRule.IifName = vethName
+			natRule := netlink.NewRule()
+			natRule.Priority = priority
+			natRule.Table = constants.MainTable
+			natRule.Src = podIP
+			natRule.Mark = int(mark)
+			natRule.Mask = int(mark)
+			rules = append(rules, natRule)
+		}
+		rules = append(rules, fromPodRule)
+	}
+
+	toPodRule := netlink.NewRule()
+	toPodRule.Priority = constants.ToContainerRulePriority
+	toPodRule.Table = conf.RT2Pod
+	toPodRule.Dst = podIP
+	if conf.Hairpin {
+		toPodRule.IifName = constants.GetHostNicName(int(msg.Nic.RouteTableNum))
+		nodeToPodRule := netlink.NewRule()
+		nodeToPodRule.Priority = constants.ToContainerRulePriority
+		nodeToPodRule.Table = conf.RT2Pod
+		nodeToPodRule.Dst = podIP
+		nodeToPodRule.Mark = int(mark)
+		nodeToPodRule.Mask = int(mark)
+		rules = append(rules, nodeToPodRule)
+
+		loopToPodRule := netlink.NewRule()
+		loopToPodRule.Priority = constants.ToContainerRulePriority
+		loopToPodRule.Table = conf.RT2Pod
+		loopToPodRule.Dst = podIP
+		loopToPodRule.Src = podIP
+		rules = append(rules, loopToPodRule)
+	}
+	rules = append(rules, toPodRule)
+
+	for _, rule := range rules {
+		err = netlink.RuleAdd(rule)
+		if err != nil && !os.IsExist(err) {
+			return fmt.Errorf("failed to add rule %v : %v", rule, err)
+		}
+	}
+
 	return nil
 }
 
-func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, result *current.Result, netns ns.NetNS) error {
+func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	link, err := netlink.LinkByName(hostIfName)
 	if link != nil {
 		return nil
@@ -181,7 +240,7 @@ func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, result *c
 		return err
 	}
 
-	if err = setupHostVeth(hostInterface.Name, result); err != nil {
+	if err = setupHostVeth(conf, hostInterface.Name, msg, result); err != nil {
 		return err
 	}
 
@@ -238,7 +297,7 @@ func moveLinkIn(hostDev netlink.Link, containerNs ns.NetNS, ifName string, pr *c
 	return contDev, nil
 }
 
-func cmdAddPassThrough(conf constants.NetConf, hostIfName, contIfName string, result *current.Result, netns ns.NetNS) error {
+func cmdAddPassThrough(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	if len(result.Interfaces) == 0 {
 		return errors.New("IPAM plugin returned missing Interface config")
 	}
@@ -261,20 +320,24 @@ func cmdAddPassThrough(conf constants.NetConf, hostIfName, contIfName string, re
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, hostIfName, defaultIfName, conf, result)
-	if err = setupHostVeth(hostInterface.Name, result); err != nil {
+	if err = setupHostVeth(conf, hostInterface.Name, msg, result); err != nil {
 		return err
 	}
 
 	return err
 }
 
-func makeDefault(conf *constants.NetConf) {
-	if conf.HostVethPrefix == "" {
-		conf.HostVethPrefix = constants.HostNicPrefix
-	}
-
+func checkConf(conf *constants.NetConf) error {
 	if conf.LogLevel == 0 {
 		conf.LogLevel = int(logrus.InfoLevel)
+	}
+	log.Setup(&log.LogOptions{
+		Level: conf.LogLevel,
+		File:  conf.LogFile,
+	})
+
+	if conf.HostVethPrefix == "" {
+		conf.HostVethPrefix = constants.HostNicPrefix
 	}
 
 	if conf.MTU == 0 {
@@ -285,10 +348,101 @@ func makeDefault(conf *constants.NetConf) {
 		conf.HostNicType = constants.HostNicVeth
 	}
 
-	log.Setup(&log.LogOptions{
-		Level: conf.LogLevel,
-		File:  conf.LogFile,
-	})
+	if conf.RT2Pod == 0 {
+		conf.RT2Pod = constants.MainTable
+	}
+
+	if conf.Interface == "" {
+		conf.Interface = constants.DefaultPrimaryNic
+	}
+
+	if conf.NatMark == "" {
+		conf.NatMark = constants.DefaultNatMark
+	}
+
+	if conf.Hairpin && conf.Service == "" {
+		return fmt.Errorf("service cidr should be configed")
+	}
+
+	err := checkIptables(conf)
+	if err != nil {
+		return fmt.Errorf("failed to checkIptables, err=%v", err)
+	}
+
+	return nil
+}
+
+func checkIptables(conf *constants.NetConf) error {
+	link, err := netlink.LinkByName(conf.Interface)
+	if err != nil {
+		return err
+	}
+	addrs, err := netlink.AddrList(link, unix.AF_INET)
+	if err != nil {
+		return err
+	}
+	if len(addrs) <= 0 {
+		return fmt.Errorf("primary nic should have ip address")
+	}
+	nodeIP := addrs[0].IP.String()
+
+	ipt, err := iptables.New()
+	if err != nil {
+		return err
+	}
+
+	//For iptables mode nodeport
+	ipt.NewChain("mangle", constants.ManglePreroutingChain)
+	rule := []string{"-j", constants.ManglePreroutingChain}
+	exist, err := ipt.Exists("mangle", "PREROUTING", rule...)
+	if err != nil {
+		return fmt.Errorf("failed to check rule %v, err=%v", rule, err)
+	}
+	if !exist {
+		err = ipt.Append("mangle", "PREROUTING", rule...)
+		if err != nil {
+			return fmt.Errorf("failed to add rule %v, err=%v", rule, err)
+		}
+	}
+	//iptables -t mangle -A PREROUTING -j MARK --set-xmark 0x100000/0x100000 -m conntrack --ctorigdst 172.22.0.21
+	rule = []string{"-j", "MARK", "--set-xmark", conf.NatMark + "/" + conf.NatMark, "-m", "conntrack", "--ctorigdst", nodeIP}
+	exist, err = ipt.Exists("mangle", constants.ManglePreroutingChain, rule...)
+	if err != nil {
+		return fmt.Errorf("failed to check rule %v, err=%v", rule, err)
+	}
+	if !exist {
+		err = ipt.Append("mangle", constants.ManglePreroutingChain, rule...)
+		if err != nil {
+			return fmt.Errorf("failed to add rule %v, err=%v", rule, err)
+		}
+	}
+
+	ipt.NewChain("mangle", constants.MangleOutputChain)
+	rule = []string{"-j", constants.MangleOutputChain}
+	exist, err = ipt.Exists("mangle", "OUTPUT", rule...)
+	if err != nil {
+		return fmt.Errorf("failed to check rule %v, err=%v", rule, err)
+	}
+	if !exist {
+		err = ipt.Append("mangle", "OUTPUT", rule...)
+		if err != nil {
+			return fmt.Errorf("failed to add rule %v, err=%v", rule, err)
+		}
+	}
+	//iptables -t mangle -A OUTPUT -j MARK --set-xmark 0x100000/0x100000 -m conntrack --ctorigdst 10.233.0.0/16 --ctreplsrc 172.22.0.21
+	rule = []string{"-j", "MARK", "--set-xmark", conf.NatMark + "/" + conf.NatMark, "-m", "conntrack", "--ctorigdst", conf.Service}
+	exist, err = ipt.Exists("mangle", constants.MangleOutputChain, rule...)
+	if err != nil {
+		return fmt.Errorf("failed to check rule %v, err=%v", rule, err)
+	}
+	if !exist {
+		err = ipt.Append("mangle", constants.MangleOutputChain, rule...)
+		if err != nil {
+			return fmt.Errorf("failed to add rule %v, err=%v", rule, err)
+		}
+	}
+
+	return nil
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -297,13 +451,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf %s: %v", spew.Sdump(args), err)
 	}
 
-	makeDefault(&conf)
+	err := checkConf(&conf)
+	if err != nil {
+		return err
+	}
 
 	// run the IPAM plugin and get back the config to apply
-	podInfo, result, err := ipam2.AddrAlloc(args)
+	ipamMsg, result, err := ipam2.AddrAlloc(args)
 	if err != nil {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
+	podInfo := ipamMsg.Args
 	conf.HostNicType = podInfo.NicType
 
 	if err := ip.EnableForward(result.IPs); err != nil {
@@ -321,9 +479,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	switch conf.HostNicType {
 	case constants.HostNicPassThrough:
-		err = cmdAddPassThrough(conf, hostIfName, contIfName, result, netns)
+		err = cmdAddPassThrough(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	default:
-		err = cmdAddVeth(conf, hostIfName, contIfName, result, netns)
+		err = cmdAddVeth(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	}
 
 	if err != nil {
@@ -410,10 +568,14 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %v", err)
 	}
 
-	makeDefault(&conf)
+	err = checkConf(&conf)
+	if err != nil {
+		return err
+	}
+
 	logrus.Infof("delete args %v", args)
 
-	podInfo, err := ipam2.AddrUnalloc(args, true)
+	ipamMsg, err := ipam2.AddrUnalloc(args, true)
 	if err != nil {
 		if err == constants.ErrNicNotFound {
 			return nil
@@ -421,6 +583,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 
+	podInfo := ipamMsg.Args
 	conf.HostNicType = podInfo.NicType
 	contIfName := args.IfName
 	svcIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)

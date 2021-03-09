@@ -1,6 +1,7 @@
 package networkutils
 
 import (
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"net"
 
 	"github.com/vishvananda/netlink"
@@ -78,7 +79,7 @@ func (n NetworkUtilsFake) SetupNicNetwork(nic *rpc.HostNic) error {
 		IP:   net.ParseIP(nic.PrimaryAddress),
 		Mask: net.CIDRMask(32, 32),
 	}
-	rule.Priority = fromContainerRulePriority
+	rule.Priority = constants.FromContainerRulePriority
 
 	n.Rules[nic.PrimaryAddress] = *rule
 

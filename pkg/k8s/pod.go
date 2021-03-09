@@ -89,7 +89,7 @@ func (k *Helper) UpdatePodInfo(info *rpc.PodInfo) error {
 	})
 }
 
-func (k *Helper) needSetVxnetForNode() (error, bool) {
+func (k *Helper) needSetVxnetForNode(vxnets []string) (error, bool) {
 	node := &corev1.Node{}
 	err := k.Client.Get(context.Background(), client.ObjectKey{
 		Name: k.NodeName,
@@ -98,13 +98,27 @@ func (k *Helper) needSetVxnetForNode() (error, bool) {
 		return err, false
 	}
 
-	if node.Annotations == nil || node.Annotations[AnnoHostNicVxnet] == "" {
-		return nil, true
-	}
-	return nil, false
+	return nil, needSetAnnotation(node.Annotations, vxnets)
 }
 
-func (k *Helper) getNodeVxnetUsage() (error, map[string]int, bool) {
+func needSetAnnotation(annos map[string]string, vxnets []string) bool {
+	if annos == nil || annos[AnnoHostNicVxnet] == "" {
+		return true
+	}
+
+	vxnet := annos[AnnoHostNicVxnet]
+	need := true
+	for _, tmp := range vxnets {
+		if tmp == vxnet {
+			need = false
+			break
+		}
+	}
+
+	return need
+}
+
+func (k *Helper) getNodeVxnetUsage(vxnets []string) (error, map[string]int, bool) {
 	result := make(map[string]int)
 	var latest *corev1.Node
 
@@ -114,7 +128,7 @@ func (k *Helper) getNodeVxnetUsage() (error, map[string]int, bool) {
 		return err, nil, false
 	}
 	for _, node := range nodes.Items {
-		if node.Annotations == nil || node.Annotations[AnnoHostNicVxnet] == "" {
+		if needSetAnnotation(node.Annotations, vxnets) {
 			if latest == nil {
 				latest = &node
 			} else {
@@ -151,7 +165,7 @@ func (k *Helper) updateNodeVxnet(vxnet string) error {
 
 func (k *Helper) ChooseVxnetForNode(vxnets []string, num int) error {
 	for {
-		err, need := k.needSetVxnetForNode()
+		err, need := k.needSetVxnetForNode(vxnets)
 		if err != nil {
 			return err
 		}
@@ -161,12 +175,12 @@ func (k *Helper) ChooseVxnetForNode(vxnets []string, num int) error {
 
 		maxNode := constants.VxnetNicNumLimit / num
 		choose := ""
-		err, usage, wait := k.getNodeVxnetUsage()
+		err, usage, wait := k.getNodeVxnetUsage(vxnets)
 		if err != nil {
 			return err
 		}
 		if wait {
-			time.Sleep(100 * time.Microsecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		} else {
 			for _, vxnet := range vxnets {

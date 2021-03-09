@@ -22,7 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"google.golang.org/grpc/backoff"
 	"net"
 	"time"
 
@@ -34,9 +33,10 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 )
 
-func AddrAlloc(args *skel.CmdArgs) (*rpc.PodInfo, *current.Result, error) {
+func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
 	conf := NetConf{}
 	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
 		return nil, nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
@@ -81,6 +81,11 @@ func AddrAlloc(args *skel.CmdArgs) (*rpc.PodInfo, *current.Result, error) {
 			break
 		}
 		time.Sleep(1 * time.Second)
+	}
+
+	err = networkutils.NetworkHelper.SetupNicNetwork(nic)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	var result *current.Result
@@ -132,15 +137,10 @@ func AddrAlloc(args *skel.CmdArgs) (*rpc.PodInfo, *current.Result, error) {
 		}
 	}
 
-	err = networkutils.NetworkHelper.SetupNicNetwork(nic)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return r.Args, result, nil
+	return r, result, nil
 }
 
-func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.PodInfo, error) {
+func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.IPAMMessage, error) {
 	conf := NetConf{}
 	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
@@ -189,5 +189,5 @@ func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.PodInfo, error) {
 		}
 	}
 
-	return reply.Args, nil
+	return reply, nil
 }
