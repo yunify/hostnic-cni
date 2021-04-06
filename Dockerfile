@@ -4,7 +4,7 @@ RUN apk --no-cache add ca-certificates \
 WORKDIR /app
 ADD bin .
 ADD scripts .
-ENTRYPOINT [ "sh /app/install_hostnic.sh" ]
+ENTRYPOINT [ "sh /app/scripts/install_hostnic.sh" ]
 
 
 

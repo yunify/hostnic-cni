@@ -1,6 +1,6 @@
 ARCH ?= $(shell uname -m)
 pgks ?= $(shell go list  ./pkg/... | grep -v rpc)
-IMG ?= kubespheredev/hostnic:v1.0.0-beta
+IMG ?= kubespheredev/hostnic:v1.0.0-beta3
 #Debug level: 0, 1, 2 (1 true, 2 use bash)
 DEBUG?= 0
 TARGET?= default

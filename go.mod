@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/containernetworking/cni v0.8.0
 	github.com/containernetworking/plugins v0.8.6
+	github.com/coreos/go-iptables v0.4.5
 	github.com/davecgh/go-spew v1.1.1
 	github.com/golang/protobuf v1.4.3
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect

@@ -57,7 +57,9 @@ data:
       "cniVersion": "0.3.0",
       "name": "hostnic",
       "type": "hostnic",
-      "serviceCIDR" : "10.233.0.0/18"
+      "serviceCIDR" : "10.233.0.0/18",
+      "hairpin": false,
+      "natMark": "0x10000"
     }
 kind: ConfigMap
 metadata:
@@ -94,7 +96,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: kubespheredev/hostnic:v1.0.0-beta
+        image: kubespheredev/hostnic:v1.0.0-beta3
         imagePullPolicy: IfNotPresent
         name: hostnic-node
         ports:
@@ -128,7 +130,7 @@ spec:
         - /app/install_hostnic.sh
         command:
         - /bin/sh
-        image: kubespheredev/hostnic:v1.0.0-beta
+        image: kubespheredev/hostnic:v1.0.0-beta3
         imagePullPolicy: IfNotPresent
         name: hostnic-init
         securityContext:

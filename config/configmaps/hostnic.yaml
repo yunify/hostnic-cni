@@ -16,5 +16,7 @@ data:
       "cniVersion": "0.3.0",
       "name": "hostnic",
       "type": "hostnic",
-      "serviceCIDR" : "10.233.0.0/18"
+      "serviceCIDR" : "10.233.0.0/18",
+      "hairpin": false,
+      "natMark": "0x10000"
     }

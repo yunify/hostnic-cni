@@ -6,11 +6,11 @@ spec:
   template:
     spec:
       initContainers:
-        - image: kubespheredev/hostnic:v1.0.0-beta
+        - image: kubespheredev/hostnic:v1.0.0-beta3
           name: hostnic-init
           imagePullPolicy: IfNotPresent
       containers:
         # Change the value of image field below to your controller image URL
-        - image: kubespheredev/hostnic:v1.0.0-beta
+        - image: kubespheredev/hostnic:v1.0.0-beta3
           name: hostnic-node
           imagePullPolicy: IfNotPresent

@@ -31,8 +31,6 @@ const (
 	DefaultConfigPath     = "/etc/hostnic"
 	DefaultConfigName     = "hostnic"
 
-	DefaultDeletingContainersDir = "/var/run/hostnic/containers/"
-
 	DefaultJobSyn   = 3
 	DefaultNodeSync = 1 * 60
 
@@ -49,6 +47,16 @@ const (
 	HostNicVeth        = "veth"
 
 	HostNicPrefix = "vnic"
+
+	DefaultNatMark        = "0x10000"
+	DefaultPrimaryNic     = "eth0"
+	MainTable             = 254
+	ManglePreroutingChain = "HOSTNIC-PREROUTING"
+	MangleOutputChain     = "HOSTNIC-OUTPUT"
+	MangleForward         = "HOSTNIC-FORWARD"
+
+	ToContainerRulePriority   = 1535
+	FromContainerRulePriority = 1536
 )
 
 func GetHostNicName(routeTableNum int) string {
@@ -80,8 +88,16 @@ type NetConf struct {
 	HostNicType    string `json:"hostNicType,omitempty"`
 	MTU            int    `json:"mtu,omitempty"`
 	Service        string `json:"serviceCIDR,omitempty"`
-	LogLevel       int    `json:"logLevel,omitempty"`
-	LogFile        string `json:"logFile,omitempty"`
+	// Route table to pod
+	RT2Pod    int    `json:"rt2Pod,omitempty"`
+	Interface string `json:"interface,omitempty"`
+	Hairpin   bool   `json:"hairpin,omitempty"`
+	// 0x8000 for kube-proxy filter
+	// 0x4000 for kube-proxy nat
+	// 0xff000000 for calico
+	NatMark  string `json:"natMark,omitempty"`
+	LogLevel int    `json:"logLevel,omitempty"`
+	LogFile  string `json:"logFile,omitempty"`
 }
 
 // K8sArgs is the valid CNI_ARGS used for Kubernetes

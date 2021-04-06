@@ -2,46 +2,18 @@ package networkutils
 
 import (
 	"fmt"
+	"net"
+	"os"
+
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/constants"
-	rpc "github.com/yunify/hostnic-cni/pkg/rpc"
+	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"golang.org/x/sys/unix"
-	"net"
-	"os"
-)
-
-const (
-	fromContainerRulePriority = 1536
-	mainTable                 = 254
-	toContainerRulePriority   = 1535
 )
 
 type NetworkUtils struct {
-}
-
-func makeHostnicRule(nic *rpc.HostNic) []netlink.Rule {
-	var rules []netlink.Rule
-	fromRule := netlink.NewRule()
-	fromRule.Priority = fromContainerRulePriority
-	fromRule.Table = int(nic.RouteTableNum)
-	fromRule.Src = &net.IPNet{
-		IP:   net.ParseIP(nic.PrimaryAddress),
-		Mask: net.CIDRMask(32, 32),
-	}
-	rules = append(rules, *fromRule)
-
-	toRule := netlink.NewRule()
-	toRule.Priority = toContainerRulePriority
-	toRule.Table = mainTable
-	toRule.Dst = &net.IPNet{
-		IP:   net.ParseIP(nic.PrimaryAddress),
-		Mask: net.CIDRMask(32, 32),
-	}
-	rules = append(rules, *toRule)
-
-	return rules
 }
 
 func (n NetworkUtils) IsNSorErr(nspath string) error {
@@ -113,9 +85,15 @@ func (n NetworkUtils) SetupNicNetwork(nic *rpc.HostNic) error {
 		}
 	}
 
+	_, _ = sysctl.Sysctl(fmt.Sprintf("net/ipv4/conf/%s/arp_ignore", name), "1")
+
 	_, _ = sysctl.Sysctl("net/ipv4/conf/all/rp_filter", "0")
 	_, _ = sysctl.Sysctl("net/ipv4/conf/default/rp_filter", "0")
 	_, _ = sysctl.Sysctl(fmt.Sprintf("net/ipv4/conf/%s/rp_filter", name), "0")
+
+	_, _ = sysctl.Sysctl("net/ipv4/conf/all/accept_local", "1")
+	_, _ = sysctl.Sysctl("net/ipv4/conf/default/accept_local", "1")
+	_, _ = sysctl.Sysctl(fmt.Sprintf("net/ipv4/conf/%s/accept_local", name), "1")
 
 	err = netlink.LinkSetUp(link)
 	if err != nil {
@@ -158,13 +136,6 @@ func (n NetworkUtils) SetupNicNetwork(nic *rpc.HostNic) error {
 		err = netlink.RouteAdd(&r)
 		if err != nil && !os.IsExist(err) {
 			return fmt.Errorf("failed to add route %v : %v", r, err)
-		}
-	}
-
-	for _, rule := range makeHostnicRule(nic) {
-		err = netlink.RuleAdd(&rule)
-		if err != nil && !os.IsExist(err) {
-			return fmt.Errorf("failed to add rule %v : %v", rule, err)
 		}
 	}
 
