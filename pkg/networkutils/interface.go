@@ -1,16 +1,23 @@
 package networkutils
 
 import (
-	"github.com/yunify/hostnic-cni/pkg/constants"
 	"net"
+
+	"github.com/yunify/hostnic-cni/pkg/constants"
 
 	"github.com/vishvananda/netlink"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
 
 type NetworkUtilsWrap interface {
-	CleanupNicNetwork(nic *rpc.HostNic) error
-	SetupNicNetwork(nic *rpc.HostNic) error
+	// for hostnic-node
+	SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error)
+	CleanupNetwork(nic *rpc.HostNic) error
+
+	// for hostnic-cni
+	SetupPodNetwork(nic *rpc.HostNic, ip string) error
+	CleanupPodNetwork(nic *rpc.HostNic, ip string) error
+
 	LinkByMacAddr(macAddr string) (netlink.Link, error)
 	IsNSorErr(nspath string) error
 }
@@ -43,13 +50,20 @@ func (n NetworkUtilsFake) LinkByMacAddr(macAddr string) (netlink.Link, error) {
 	return n.Links[macAddr], nil
 }
 
-func (n NetworkUtilsFake) CleanupNicNetwork(nic *rpc.HostNic) error {
+func (n NetworkUtilsFake) SetupPodNetwork(nic *rpc.HostNic, ip string) error {
+	return nil
+}
+func (n NetworkUtilsFake) CleanupPodNetwork(nic *rpc.HostNic, ip string) error {
+	return nil
+}
+
+func (n NetworkUtilsFake) CleanupNetwork(nic *rpc.HostNic) error {
 	delete(n.Rules, nic.PrimaryAddress)
 	delete(n.Routes, int(nic.RouteTableNum))
 	return nil
 }
 
-func (n NetworkUtilsFake) SetupNicNetwork(nic *rpc.HostNic) error {
+func (n NetworkUtilsFake) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 	link := n.Links[nic.ID]
 
 	_, dst, _ := net.ParseCIDR(nic.VxNet.Network)
@@ -83,7 +97,7 @@ func (n NetworkUtilsFake) SetupNicNetwork(nic *rpc.HostNic) error {
 
 	n.Rules[nic.PrimaryAddress] = *rule
 
-	return nil
+	return rpc.Phase_Succeeded, nil
 }
 
 func SetupNetworkFakeHelper() {

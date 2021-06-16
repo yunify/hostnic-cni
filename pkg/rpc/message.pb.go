@@ -60,11 +60,47 @@ func (Status) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_d1cd29baafbbc565, []int{0}
 }
 
+type Phase int32
+
+const (
+	Phase_Init            Phase = 0
+	Phase_CreateAndAttach Phase = 1
+	Phase_JoinBridge      Phase = 2
+	Phase_SetRouteTable   Phase = 3
+	Phase_Succeeded       Phase = 4
+)
+
+var Phase_name = map[int32]string{
+	0: "Init",
+	1: "CreateAndAttach",
+	2: "JoinBridge",
+	3: "SetRouteTable",
+	4: "Succeeded",
+}
+
+var Phase_value = map[string]int32{
+	"Init":            0,
+	"CreateAndAttach": 1,
+	"JoinBridge":      2,
+	"SetRouteTable":   3,
+	"Succeeded":       4,
+}
+
+func (x Phase) String() string {
+	return proto.EnumName(Phase_name, int32(x))
+}
+
+func (Phase) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_d1cd29baafbbc565, []int{1}
+}
+
 type VxNet struct {
-	ID                   string   `protobuf:"bytes,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
-	Gateway              string   `protobuf:"bytes,2,opt,name=Gateway,json=gateway,proto3" json:"Gateway,omitempty"`
-	Network              string   `protobuf:"bytes,3,opt,name=Network,json=network,proto3" json:"Network,omitempty"`
-	RouterID             string   `protobuf:"bytes,4,opt,name=RouterID,json=routerID,proto3" json:"RouterID,omitempty"`
+	ID                   string   `protobuf:"bytes,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	Gateway              string   `protobuf:"bytes,2,opt,name=Gateway,proto3" json:"Gateway,omitempty"`
+	Network              string   `protobuf:"bytes,3,opt,name=Network,proto3" json:"Network,omitempty"`
+	RouterID             string   `protobuf:"bytes,4,opt,name=RouterID,proto3" json:"RouterID,omitempty"`
+	IPStart              string   `protobuf:"bytes,5,opt,name=IPStart,proto3" json:"IPStart,omitempty"`
+	IPEnd                string   `protobuf:"bytes,6,opt,name=IPEnd,proto3" json:"IPEnd,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -131,16 +167,31 @@ func (m *VxNet) GetRouterID() string {
 	return ""
 }
 
+func (m *VxNet) GetIPStart() string {
+	if m != nil {
+		return m.IPStart
+	}
+	return ""
+}
+
+func (m *VxNet) GetIPEnd() string {
+	if m != nil {
+		return m.IPEnd
+	}
+	return ""
+}
+
 type HostNic struct {
-	VxNet                *VxNet   `protobuf:"bytes,1,opt,name=VxNet,json=vxNet,proto3" json:"VxNet,omitempty"`
-	ID                   string   `protobuf:"bytes,2,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
-	HardwareAddr         string   `protobuf:"bytes,3,opt,name=HardwareAddr,json=hardwareAddr,proto3" json:"HardwareAddr,omitempty"`
-	PrimaryAddress       string   `protobuf:"bytes,4,opt,name=PrimaryAddress,json=primaryAddress,proto3" json:"PrimaryAddress,omitempty"`
-	IsPrimary            bool     `protobuf:"varint,5,opt,name=IsPrimary,json=isPrimary,proto3" json:"IsPrimary,omitempty"`
-	Using                bool     `protobuf:"varint,6,opt,name=Using,json=using,proto3" json:"Using,omitempty"`
-	Reserved             bool     `protobuf:"varint,7,opt,name=Reserved,json=reserved,proto3" json:"Reserved,omitempty"`
-	RouteTableNum        int32    `protobuf:"varint,8,opt,name=RouteTableNum,json=routeTableNum,proto3" json:"RouteTableNum,omitempty"`
-	Status               Status   `protobuf:"varint,9,opt,name=Status,json=status,proto3,enum=rpc.Status" json:"Status,omitempty"`
+	VxNet                *VxNet   `protobuf:"bytes,1,opt,name=VxNet,proto3" json:"VxNet,omitempty"`
+	ID                   string   `protobuf:"bytes,2,opt,name=ID,proto3" json:"ID,omitempty"`
+	HardwareAddr         string   `protobuf:"bytes,3,opt,name=HardwareAddr,proto3" json:"HardwareAddr,omitempty"`
+	PrimaryAddress       string   `protobuf:"bytes,4,opt,name=PrimaryAddress,proto3" json:"PrimaryAddress,omitempty"`
+	IsPrimary            bool     `protobuf:"varint,5,opt,name=IsPrimary,proto3" json:"IsPrimary,omitempty"`
+	Using                bool     `protobuf:"varint,6,opt,name=Using,proto3" json:"Using,omitempty"`
+	Reserved             bool     `protobuf:"varint,7,opt,name=Reserved,proto3" json:"Reserved,omitempty"`
+	RouteTableNum        int32    `protobuf:"varint,8,opt,name=RouteTableNum,proto3" json:"RouteTableNum,omitempty"`
+	Status               Status   `protobuf:"varint,9,opt,name=Status,proto3,enum=rpc.Status" json:"Status,omitempty"`
+	Phase                Phase    `protobuf:"varint,10,opt,name=Phase,proto3,enum=rpc.Phase" json:"Phase,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -242,16 +293,23 @@ func (m *HostNic) GetStatus() Status {
 	return Status_FREE
 }
 
+func (m *HostNic) GetPhase() Phase {
+	if m != nil {
+		return m.Phase
+	}
+	return Phase_Init
+}
+
 type PodInfo struct {
-	Name                 string   `protobuf:"bytes,1,opt,name=Name,json=name,proto3" json:"Name,omitempty"`
-	Namespace            string   `protobuf:"bytes,2,opt,name=Namespace,json=namespace,proto3" json:"Namespace,omitempty"`
-	Containter           string   `protobuf:"bytes,3,opt,name=Containter,json=containter,proto3" json:"Containter,omitempty"`
-	Netns                string   `protobuf:"bytes,4,opt,name=Netns,json=netns,proto3" json:"Netns,omitempty"`
-	IfName               string   `protobuf:"bytes,5,opt,name=IfName,json=ifName,proto3" json:"IfName,omitempty"`
-	NicType              string   `protobuf:"bytes,6,opt,name=NicType,json=nicType,proto3" json:"NicType,omitempty"`
-	PodIP                string   `protobuf:"bytes,7,opt,name=PodIP,json=podIP,proto3" json:"PodIP,omitempty"`
-	HostNic              string   `protobuf:"bytes,8,opt,name=HostNic,json=hostNic,proto3" json:"HostNic,omitempty"`
-	VxNet                string   `protobuf:"bytes,9,opt,name=VxNet,json=vxNet,proto3" json:"VxNet,omitempty"`
+	Name                 string   `protobuf:"bytes,1,opt,name=Name,proto3" json:"Name,omitempty"`
+	Namespace            string   `protobuf:"bytes,2,opt,name=Namespace,proto3" json:"Namespace,omitempty"`
+	Containter           string   `protobuf:"bytes,3,opt,name=Containter,proto3" json:"Containter,omitempty"`
+	Netns                string   `protobuf:"bytes,4,opt,name=Netns,proto3" json:"Netns,omitempty"`
+	IfName               string   `protobuf:"bytes,5,opt,name=IfName,proto3" json:"IfName,omitempty"`
+	NicType              string   `protobuf:"bytes,6,opt,name=NicType,proto3" json:"NicType,omitempty"`
+	PodIP                string   `protobuf:"bytes,7,opt,name=PodIP,proto3" json:"PodIP,omitempty"`
+	HostNic              string   `protobuf:"bytes,8,opt,name=HostNic,proto3" json:"HostNic,omitempty"`
+	VxNet                string   `protobuf:"bytes,9,opt,name=VxNet,proto3" json:"VxNet,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -354,10 +412,11 @@ func (m *PodInfo) GetVxNet() string {
 }
 
 type IPAMMessage struct {
-	Args                 *PodInfo `protobuf:"bytes,1,opt,name=Args,json=args,proto3" json:"Args,omitempty"`
-	Nic                  *HostNic `protobuf:"bytes,2,opt,name=Nic,json=nic,proto3" json:"Nic,omitempty"`
-	Peek                 bool     `protobuf:"varint,3,opt,name=Peek,json=peek,proto3" json:"Peek,omitempty"`
-	Delete               bool     `protobuf:"varint,4,opt,name=Delete,json=delete,proto3" json:"Delete,omitempty"`
+	Args                 *PodInfo `protobuf:"bytes,1,opt,name=Args,proto3" json:"Args,omitempty"`
+	Nic                  *HostNic `protobuf:"bytes,2,opt,name=Nic,proto3" json:"Nic,omitempty"`
+	Peek                 bool     `protobuf:"varint,3,opt,name=Peek,proto3" json:"Peek,omitempty"`
+	Delete               bool     `protobuf:"varint,4,opt,name=Delete,proto3" json:"Delete,omitempty"`
+	IP                   string   `protobuf:"bytes,5,opt,name=IP,proto3" json:"IP,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -424,55 +483,141 @@ func (m *IPAMMessage) GetDelete() bool {
 	return false
 }
 
+func (m *IPAMMessage) GetIP() string {
+	if m != nil {
+		return m.IP
+	}
+	return ""
+}
+
+type VIP struct {
+	ID                   string   `protobuf:"bytes,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	Name                 string   `protobuf:"bytes,2,opt,name=Name,proto3" json:"Name,omitempty"`
+	Addr                 string   `protobuf:"bytes,3,opt,name=Addr,proto3" json:"Addr,omitempty"`
+	VxNetID              string   `protobuf:"bytes,4,opt,name=VxNetID,proto3" json:"VxNetID,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *VIP) Reset()         { *m = VIP{} }
+func (m *VIP) String() string { return proto.CompactTextString(m) }
+func (*VIP) ProtoMessage()    {}
+func (*VIP) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d1cd29baafbbc565, []int{4}
+}
+func (m *VIP) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *VIP) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_VIP.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *VIP) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_VIP.Merge(m, src)
+}
+func (m *VIP) XXX_Size() int {
+	return m.Size()
+}
+func (m *VIP) XXX_DiscardUnknown() {
+	xxx_messageInfo_VIP.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_VIP proto.InternalMessageInfo
+
+func (m *VIP) GetID() string {
+	if m != nil {
+		return m.ID
+	}
+	return ""
+}
+
+func (m *VIP) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *VIP) GetAddr() string {
+	if m != nil {
+		return m.Addr
+	}
+	return ""
+}
+
+func (m *VIP) GetVxNetID() string {
+	if m != nil {
+		return m.VxNetID
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterEnum("rpc.Status", Status_name, Status_value)
+	proto.RegisterEnum("rpc.Phase", Phase_name, Phase_value)
 	proto.RegisterType((*VxNet)(nil), "rpc.VxNet")
 	proto.RegisterType((*HostNic)(nil), "rpc.HostNic")
 	proto.RegisterType((*PodInfo)(nil), "rpc.PodInfo")
 	proto.RegisterType((*IPAMMessage)(nil), "rpc.IPAMMessage")
+	proto.RegisterType((*VIP)(nil), "rpc.VIP")
 }
 
 func init() { proto.RegisterFile("pkg/rpc/message.proto", fileDescriptor_d1cd29baafbbc565) }
 
 var fileDescriptor_d1cd29baafbbc565 = []byte{
-	// 590 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x53, 0xcd, 0x6a, 0xdb, 0x4c,
-	0x14, 0x8d, 0x64, 0xfd, 0x5e, 0x3b, 0xc6, 0x0c, 0xf9, 0x3e, 0x44, 0x28, 0xc6, 0xb8, 0xa5, 0x98,
-	0x2e, 0x12, 0x70, 0x9f, 0xc0, 0x89, 0xdc, 0x44, 0xd0, 0xa8, 0x66, 0x92, 0x74, 0x3f, 0x91, 0x6e,
-	0x14, 0xe1, 0x58, 0x12, 0x33, 0xe3, 0xa4, 0xa1, 0x2f, 0xd2, 0x75, 0x9f, 0xa6, 0xcb, 0x3e, 0x42,
-	0x71, 0x57, 0x7d, 0x8b, 0x32, 0xa3, 0x71, 0x70, 0xe9, 0xaa, 0x2b, 0x71, 0xce, 0xbd, 0x9a, 0x7b,
-	0xcf, 0x39, 0x33, 0xf0, 0x5f, 0xb3, 0x2c, 0x8e, 0x79, 0x93, 0x1d, 0xaf, 0x50, 0x08, 0x56, 0xe0,
-	0x51, 0xc3, 0x6b, 0x59, 0x93, 0x0e, 0x6f, 0xb2, 0x71, 0x01, 0xee, 0xc7, 0x4f, 0x29, 0x4a, 0xd2,
-	0x07, 0x3b, 0x89, 0x23, 0x6b, 0x64, 0x4d, 0x42, 0x6a, 0x97, 0x31, 0x89, 0xc0, 0x3f, 0x63, 0x12,
-	0x1f, 0xd9, 0x53, 0x64, 0x6b, 0xd2, 0x2f, 0x5a, 0xa8, 0x2a, 0x29, 0xca, 0xc7, 0x9a, 0x2f, 0xa3,
-	0x4e, 0x5b, 0xa9, 0x5a, 0x48, 0x0e, 0x21, 0xa0, 0xf5, 0x5a, 0x22, 0x4f, 0xe2, 0xc8, 0xd1, 0xa5,
-	0x80, 0x1b, 0x3c, 0xfe, 0x6a, 0x83, 0x7f, 0x5e, 0x0b, 0x99, 0x96, 0x19, 0x19, 0x99, 0xa1, 0x7a,
-	0x5c, 0x77, 0x0a, 0x47, 0xbc, 0xc9, 0x8e, 0x34, 0x43, 0xdd, 0x87, 0x9d, 0x6d, 0xec, 0xe7, 0x6d,
-	0xc6, 0xd0, 0x3b, 0x67, 0x3c, 0x7f, 0x64, 0x1c, 0x67, 0x79, 0xce, 0xcd, 0xe0, 0xde, 0xdd, 0x0e,
-	0x47, 0x5e, 0x43, 0x7f, 0xc1, 0xcb, 0x15, 0xe3, 0x4f, 0x0a, 0xa2, 0x10, 0x66, 0x87, 0x7e, 0xf3,
-	0x07, 0x4b, 0x5e, 0x40, 0x98, 0x08, 0xd3, 0x19, 0xb9, 0x23, 0x6b, 0x12, 0xd0, 0xb0, 0xdc, 0x12,
-	0xe4, 0x00, 0xdc, 0x6b, 0x51, 0x56, 0x45, 0xe4, 0xe9, 0x8a, 0xbb, 0x56, 0x40, 0x2b, 0x43, 0x81,
-	0xfc, 0x01, 0xf3, 0xc8, 0xd7, 0x85, 0x80, 0x1b, 0x4c, 0x5e, 0xc1, 0xbe, 0x56, 0x7d, 0xc5, 0x6e,
-	0xee, 0x31, 0x5d, 0xaf, 0xa2, 0x60, 0x64, 0x4d, 0x5c, 0xba, 0xcf, 0x77, 0x49, 0xf2, 0x12, 0xbc,
-	0x4b, 0xc9, 0xe4, 0x5a, 0x44, 0xe1, 0xc8, 0x9a, 0xf4, 0xa7, 0x5d, 0x2d, 0xba, 0xa5, 0xa8, 0x27,
-	0xf4, 0x77, 0xfc, 0xcb, 0x02, 0x7f, 0x51, 0xe7, 0x49, 0x75, 0x5b, 0x13, 0x02, 0x4e, 0xca, 0x56,
-	0x68, 0x22, 0x71, 0x2a, 0xb6, 0x42, 0xb5, 0xba, 0xe2, 0x44, 0xc3, 0x32, 0x34, 0xee, 0x84, 0xd5,
-	0x96, 0x20, 0x43, 0x80, 0xd3, 0xba, 0x92, 0xac, 0xac, 0x24, 0x6e, 0x2d, 0x82, 0xec, 0x99, 0x51,
-	0xd2, 0x52, 0x94, 0xd5, 0xd6, 0x17, 0xb7, 0x52, 0x80, 0xfc, 0x0f, 0x5e, 0x72, 0xab, 0x27, 0xb9,
-	0x9a, 0xf6, 0x4a, 0x8d, 0x74, 0xcc, 0x65, 0x76, 0xf5, 0xd4, 0xa0, 0xb6, 0x42, 0xc5, 0xdc, 0x42,
-	0x75, 0x8e, 0x5a, 0x72, 0xa1, 0x9d, 0x08, 0xa9, 0xdb, 0x28, 0xa0, 0xfa, 0x4d, 0xbe, 0xda, 0x80,
-	0x90, 0xfa, 0x77, 0x26, 0xee, 0x83, 0x6d, 0xdc, 0x61, 0xdb, 0xaf, 0x23, 0x1e, 0x7f, 0x86, 0x6e,
-	0xb2, 0x98, 0x5d, 0x5c, 0xb4, 0x77, 0x92, 0x8c, 0xc0, 0x99, 0xf1, 0x42, 0x98, 0x2b, 0xd1, 0xd3,
-	0xee, 0x18, 0x2b, 0xa8, 0xc3, 0x78, 0x21, 0xc8, 0x10, 0x3a, 0xea, 0x70, 0x7b, 0xa7, 0xc1, 0x0c,
-	0xa4, 0x9d, 0xaa, 0xcc, 0x94, 0x61, 0x0b, 0xc4, 0xf6, 0x52, 0x06, 0xd4, 0x69, 0x10, 0x97, 0x4a,
-	0x5c, 0x8c, 0xf7, 0x28, 0x51, 0x6b, 0x0e, 0xa8, 0x97, 0x6b, 0xf4, 0xe6, 0x74, 0x9b, 0x06, 0x09,
-	0xc0, 0x79, 0x47, 0xe7, 0xf3, 0xc1, 0x1e, 0x09, 0xc1, 0xbd, 0xbe, 0x4c, 0xd2, 0xb3, 0x81, 0x45,
-	0x7a, 0x10, 0xc4, 0xf3, 0xf7, 0xf3, 0x2b, 0x85, 0x6c, 0x55, 0x98, 0x53, 0xfa, 0x81, 0x0e, 0x3a,
-	0xa4, 0x0b, 0xbe, 0x2e, 0xcc, 0xe3, 0x81, 0x33, 0x95, 0x00, 0xa7, 0x69, 0x72, 0xc2, 0xb2, 0x25,
-	0x56, 0x39, 0x99, 0x02, 0xcc, 0xf2, 0xdc, 0xbc, 0x0c, 0x32, 0xd0, 0xfb, 0xed, 0x08, 0x3c, 0xfc,
-	0x8b, 0x19, 0xef, 0xa9, 0x7f, 0x62, 0xbc, 0xff, 0xa7, 0x7f, 0x4e, 0x06, 0xdf, 0x36, 0x43, 0xeb,
-	0xfb, 0x66, 0x68, 0xfd, 0xd8, 0x0c, 0xad, 0x2f, 0x3f, 0x87, 0x7b, 0x37, 0x9e, 0x7e, 0xcf, 0x6f,
-	0x7f, 0x07, 0x00, 0x00, 0xff, 0xff, 0xce, 0x13, 0x81, 0x31, 0xe8, 0x03, 0x00, 0x00,
+	// 688 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0xcd, 0x6e, 0xd3, 0x4c,
+	0x14, 0x8d, 0x9d, 0x3f, 0xfb, 0xa6, 0xcd, 0xe7, 0x6f, 0xbe, 0x7e, 0xc8, 0xaa, 0x50, 0x14, 0x05,
+	0x84, 0xaa, 0x2e, 0x5a, 0x29, 0x3c, 0x41, 0x9a, 0x84, 0xd6, 0x88, 0x1a, 0x6b, 0xd2, 0x16, 0xb6,
+	0x53, 0xfb, 0x36, 0xb5, 0xda, 0xd8, 0xd6, 0x78, 0x42, 0xe9, 0x33, 0xf0, 0x00, 0xf0, 0x40, 0x2c,
+	0x58, 0xf2, 0x08, 0xa8, 0xac, 0x78, 0x0b, 0x34, 0x3f, 0x4e, 0x53, 0xba, 0x62, 0xe5, 0x39, 0xe7,
+	0xce, 0x8c, 0xcf, 0x3d, 0xf7, 0xd8, 0xf0, 0x7f, 0x71, 0x35, 0xdf, 0xe7, 0x45, 0xbc, 0xbf, 0xc0,
+	0xb2, 0x64, 0x73, 0xdc, 0x2b, 0x78, 0x2e, 0x72, 0x52, 0xe7, 0x45, 0x3c, 0xf8, 0x6c, 0x41, 0xf3,
+	0xec, 0x63, 0x88, 0x82, 0x74, 0xc1, 0x0e, 0x26, 0xbe, 0xd5, 0xb7, 0x76, 0x5c, 0x6a, 0x07, 0x13,
+	0xe2, 0x43, 0xfb, 0x90, 0x09, 0xbc, 0x61, 0xb7, 0xbe, 0xad, 0xc8, 0x0a, 0xca, 0x4a, 0x88, 0xe2,
+	0x26, 0xe7, 0x57, 0x7e, 0x5d, 0x57, 0x0c, 0x24, 0xdb, 0xe0, 0xd0, 0x7c, 0x29, 0x90, 0x07, 0x13,
+	0xbf, 0xa1, 0x4a, 0x2b, 0x2c, 0x4f, 0x05, 0xd1, 0x4c, 0x30, 0x2e, 0xfc, 0xa6, 0x3e, 0x65, 0x20,
+	0xd9, 0x82, 0x66, 0x10, 0x4d, 0xb3, 0xc4, 0x6f, 0x29, 0x5e, 0x83, 0xc1, 0x57, 0x1b, 0xda, 0x47,
+	0x79, 0x29, 0xc2, 0x34, 0x26, 0x7d, 0x23, 0x52, 0xc9, 0xeb, 0x0c, 0x61, 0x8f, 0x17, 0xf1, 0x9e,
+	0x62, 0xe8, 0x03, 0xf5, 0xf6, 0x4a, 0xfd, 0x00, 0x36, 0x8e, 0x18, 0x4f, 0x6e, 0x18, 0xc7, 0x51,
+	0x92, 0x70, 0x23, 0xf4, 0x01, 0x47, 0x5e, 0x40, 0x37, 0xe2, 0xe9, 0x82, 0xf1, 0x5b, 0x09, 0xb1,
+	0x2c, 0x8d, 0xe6, 0x3f, 0x58, 0xf2, 0x14, 0xdc, 0xa0, 0x34, 0x9c, 0xd2, 0xee, 0xd0, 0x7b, 0x42,
+	0xaa, 0x3f, 0x2d, 0xd3, 0x6c, 0xae, 0xd4, 0x3b, 0x54, 0x03, 0xe5, 0x04, 0x96, 0xc8, 0x3f, 0x60,
+	0xe2, 0xb7, 0x55, 0x61, 0x85, 0xc9, 0x73, 0xd8, 0x54, 0xae, 0x9c, 0xb0, 0xf3, 0x6b, 0x0c, 0x97,
+	0x0b, 0xdf, 0xe9, 0x5b, 0x3b, 0x4d, 0xfa, 0x90, 0x24, 0xcf, 0xa0, 0x35, 0x13, 0x4c, 0x2c, 0x4b,
+	0xdf, 0xed, 0x5b, 0x3b, 0xdd, 0x61, 0x47, 0x35, 0xad, 0x29, 0x6a, 0x4a, 0xd2, 0x98, 0xe8, 0x92,
+	0x95, 0xe8, 0x83, 0xda, 0xa3, 0x8d, 0x51, 0x0c, 0xd5, 0x85, 0xc1, 0x2f, 0x0b, 0xda, 0x51, 0x9e,
+	0x04, 0xd9, 0x45, 0x4e, 0x08, 0x34, 0x42, 0xb6, 0x40, 0x33, 0x64, 0xb5, 0x96, 0xcd, 0xc9, 0x67,
+	0x59, 0xb0, 0x18, 0x8d, 0x7f, 0xf7, 0x04, 0xe9, 0x01, 0x8c, 0xf3, 0x4c, 0xb0, 0x34, 0x13, 0x58,
+	0x99, 0xb8, 0xc6, 0xc8, 0xe6, 0x43, 0x14, 0x59, 0xe5, 0x9c, 0x06, 0xe4, 0x09, 0xb4, 0x82, 0x0b,
+	0xf5, 0x26, 0x3d, 0x69, 0x83, 0x54, 0x70, 0xd2, 0xf8, 0xe4, 0xb6, 0x40, 0x33, 0xea, 0x0a, 0xca,
+	0x7b, 0xa4, 0xc8, 0x48, 0x79, 0xe5, 0x52, 0x0d, 0xe4, 0x7e, 0x93, 0x00, 0x65, 0x91, 0x4b, 0x57,
+	0x81, 0xd8, 0xaa, 0x02, 0xe1, 0xea, 0xfd, 0x0a, 0x0c, 0x3e, 0x59, 0xd0, 0x09, 0xa2, 0xd1, 0xf1,
+	0xb1, 0xce, 0x39, 0xe9, 0x43, 0x63, 0xc4, 0xe7, 0xa5, 0x49, 0xcd, 0x86, 0x36, 0x47, 0x7b, 0x41,
+	0x55, 0x85, 0xf4, 0xa0, 0x2e, 0x6f, 0xb7, 0xd7, 0x36, 0x98, 0x57, 0x50, 0x59, 0x90, 0x8e, 0x45,
+	0x88, 0x3a, 0xe7, 0x0e, 0x55, 0x6b, 0xd9, 0xdd, 0x04, 0xaf, 0x51, 0xa0, 0x6a, 0xda, 0xa1, 0x06,
+	0xa9, 0x08, 0x46, 0xa6, 0x63, 0x3b, 0x88, 0x06, 0xef, 0xa0, 0x7e, 0x16, 0x44, 0x8f, 0xbe, 0xab,
+	0x6a, 0x08, 0xf6, 0xda, 0x10, 0x08, 0x34, 0xd6, 0x52, 0xaa, 0xd6, 0xb2, 0x79, 0xd5, 0xd5, 0xea,
+	0x53, 0xaa, 0xe0, 0xee, 0xb8, 0x4a, 0x06, 0x71, 0xa0, 0xf1, 0x8a, 0x4e, 0xa7, 0x5e, 0x8d, 0xb8,
+	0xd0, 0x3c, 0x9d, 0x05, 0xe1, 0xa1, 0x67, 0x91, 0x0d, 0x70, 0x26, 0xd3, 0x37, 0xd3, 0x13, 0x89,
+	0x6c, 0x59, 0x98, 0x52, 0xfa, 0x96, 0x7a, 0x75, 0xd2, 0x81, 0xb6, 0x2a, 0x4c, 0x27, 0x5e, 0x63,
+	0xf7, 0xbd, 0x49, 0x8e, 0xbc, 0x23, 0xc8, 0x52, 0xe1, 0xd5, 0xc8, 0x7f, 0xf0, 0xcf, 0x98, 0x23,
+	0x13, 0x38, 0xca, 0x92, 0x91, 0x10, 0x2c, 0xbe, 0xf4, 0x2c, 0xd2, 0x05, 0x78, 0x9d, 0xa7, 0xd9,
+	0x01, 0x4f, 0x93, 0x39, 0x7a, 0x36, 0xf9, 0x17, 0x36, 0x67, 0x28, 0xee, 0xa3, 0xea, 0xd5, 0xc9,
+	0x26, 0xb8, 0xb3, 0x65, 0x1c, 0x23, 0x26, 0x98, 0x78, 0x8d, 0xa1, 0x00, 0x18, 0x87, 0xc1, 0x01,
+	0x8b, 0xaf, 0x30, 0x4b, 0xc8, 0x10, 0x60, 0x94, 0x24, 0xd5, 0x0f, 0xc2, 0x53, 0x16, 0xaf, 0xcd,
+	0x68, 0xfb, 0x11, 0x33, 0xa8, 0xc9, 0x33, 0x13, 0xbc, 0xfe, 0xab, 0x33, 0x07, 0xde, 0xb7, 0xbb,
+	0x9e, 0xf5, 0xfd, 0xae, 0x67, 0xfd, 0xb8, 0xeb, 0x59, 0x5f, 0x7e, 0xf6, 0x6a, 0xe7, 0x2d, 0xf5,
+	0x9b, 0x7b, 0xf9, 0x3b, 0x00, 0x00, 0xff, 0xff, 0xe4, 0x37, 0x0a, 0x11, 0xff, 0x04, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -615,6 +760,20 @@ func (m *VxNet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	if len(m.IPEnd) > 0 {
+		i -= len(m.IPEnd)
+		copy(dAtA[i:], m.IPEnd)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.IPEnd)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.IPStart) > 0 {
+		i -= len(m.IPStart)
+		copy(dAtA[i:], m.IPStart)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.IPStart)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.RouterID) > 0 {
 		i -= len(m.RouterID)
 		copy(dAtA[i:], m.RouterID)
@@ -669,6 +828,11 @@ func (m *HostNic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.XXX_unrecognized != nil {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.Phase != 0 {
+		i = encodeVarintMessage(dAtA, i, uint64(m.Phase))
+		i--
+		dAtA[i] = 0x50
 	}
 	if m.Status != 0 {
 		i = encodeVarintMessage(dAtA, i, uint64(m.Status))
@@ -860,6 +1024,13 @@ func (m *IPAMMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	if len(m.IP) > 0 {
+		i -= len(m.IP)
+		copy(dAtA[i:], m.IP)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.IP)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if m.Delete {
 		i--
 		if m.Delete {
@@ -907,6 +1078,61 @@ func (m *IPAMMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *VIP) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *VIP) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *VIP) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if len(m.VxNetID) > 0 {
+		i -= len(m.VxNetID)
+		copy(dAtA[i:], m.VxNetID)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.VxNetID)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Addr) > 0 {
+		i -= len(m.Addr)
+		copy(dAtA[i:], m.Addr)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.Addr)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ID) > 0 {
+		i -= len(m.ID)
+		copy(dAtA[i:], m.ID)
+		i = encodeVarintMessage(dAtA, i, uint64(len(m.ID)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintMessage(dAtA []byte, offset int, v uint64) int {
 	offset -= sovMessage(v)
 	base := offset
@@ -937,6 +1163,14 @@ func (m *VxNet) Size() (n int) {
 		n += 1 + l + sovMessage(uint64(l))
 	}
 	l = len(m.RouterID)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	l = len(m.IPStart)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	l = len(m.IPEnd)
 	if l > 0 {
 		n += 1 + l + sovMessage(uint64(l))
 	}
@@ -982,6 +1216,9 @@ func (m *HostNic) Size() (n int) {
 	}
 	if m.Status != 0 {
 		n += 1 + sovMessage(uint64(m.Status))
+	}
+	if m.Phase != 0 {
+		n += 1 + sovMessage(uint64(m.Phase))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1056,6 +1293,38 @@ func (m *IPAMMessage) Size() (n int) {
 	}
 	if m.Delete {
 		n += 2
+	}
+	l = len(m.IP)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *VIP) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ID)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	l = len(m.Addr)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
+	}
+	l = len(m.VxNetID)
+	if l > 0 {
+		n += 1 + l + sovMessage(uint64(l))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1226,16 +1495,77 @@ func (m *VxNet) Unmarshal(dAtA []byte) error {
 			}
 			m.RouterID = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IPStart", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IPStart = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IPEnd", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IPEnd = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMessage(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthMessage
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMessage
 			}
 			if (iNdEx + skippy) > l {
@@ -1510,16 +1840,32 @@ func (m *HostNic) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Phase", wireType)
+			}
+			m.Phase = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Phase |= Phase(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMessage(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthMessage
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMessage
 			}
 			if (iNdEx + skippy) > l {
@@ -1858,10 +2204,7 @@ func (m *PodInfo) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthMessage
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMessage
 			}
 			if (iNdEx + skippy) > l {
@@ -2018,16 +2361,224 @@ func (m *IPAMMessage) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Delete = bool(v != 0)
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IP", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IP = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMessage(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMessage
 			}
-			if (iNdEx + skippy) < 0 {
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *VIP) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMessage
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: VIP: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: VIP: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Addr", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Addr = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VxNetID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessage
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMessage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.VxNetID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMessage(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthMessage
 			}
 			if (iNdEx + skippy) > l {

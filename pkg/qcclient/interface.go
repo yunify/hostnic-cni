@@ -17,12 +17,16 @@ type QingCloudAPI interface {
 	DescribeNicJobs(ids []string) ([]string, map[string]bool, error)
 
 	//nic operations
-	CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips []string) ([]*rpc.HostNic, string, error)
+	CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips []string, disableIP int) ([]*rpc.HostNic, string, error)
 	GetNics(nics []string) (map[string]*rpc.HostNic, error)
 	DeleteNics(nicIDs []string) error
 	DeattachNics(nicIDs []string, sync bool) (string, error)
 	AttachNics(nicIDs []string) (string, error)
 	GetAttachedNics() ([]*rpc.HostNic, error)
+
+	CreateVIPs(vxnet *rpc.VxNet) (string, error)
+	DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
+	DeleteVIPs(vips []string) (string, error)
 }
 
 var (

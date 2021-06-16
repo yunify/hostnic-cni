@@ -21,6 +21,8 @@ package constants
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
@@ -29,9 +31,9 @@ const (
 	DefaultSocketPath     = "/var/run/hostnic/hostnic.socket"
 	DefaultUnixSocketPath = "unix://" + DefaultSocketPath
 	DefaultConfigPath     = "/etc/hostnic"
-	DefaultConfigName     = "hostnic"
+	DefaultConfigName     = "hostnic.json"
 
-	DefaultJobSyn   = 3
+	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
 
 	DefaultLowPoolSize  = 3
@@ -41,7 +43,9 @@ const (
 	VxnetNicNumLimit      = 252
 	DefaultRouteTableBase = 260
 
-	NicPrefix = "hostnic_"
+	NicPrefix    = "hostnic_"
+	VxNetPrefix  = "vxnet-"
+	BridgePrefix = "br_"
 
 	HostNicPassThrough = "passthrough"
 	HostNicVeth        = "veth"
@@ -59,8 +63,12 @@ const (
 	FromContainerRulePriority = 1536
 )
 
-func GetHostNicName(routeTableNum int) string {
-	return fmt.Sprintf("%s%d", NicPrefix, routeTableNum)
+func GetHostNicBridgeName(routeTableNum int) string {
+	return fmt.Sprintf("%s%d", BridgePrefix, routeTableNum)
+}
+
+func GetHostNicName(id string) string {
+	return fmt.Sprintf("%s%s", NicPrefix, strings.TrimPrefix(id, VxNetPrefix))
 }
 
 func PodInfoKey(info *rpc.PodInfo) string {

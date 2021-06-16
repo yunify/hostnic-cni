@@ -2,9 +2,9 @@ package log
 
 import (
 	"flag"
-	"github.com/projectcalico/libcalico-go/lib/logutils"
 	"os"
 
+	"github.com/projectcalico/libcalico-go/lib/logutils"
 	"github.com/sirupsen/logrus"
 )
 

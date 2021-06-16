@@ -1,16 +1,20 @@
 package networkutils
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
+
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"golang.org/x/sys/unix"
 )
 
 type NetworkUtils struct {
@@ -20,56 +24,82 @@ func (n NetworkUtils) IsNSorErr(nspath string) error {
 	return ns.IsNSorErr(nspath)
 }
 
+func (n NetworkUtils) SetupPodNetwork(nic *rpc.HostNic, ip string) error {
+	toPodRule := netlink.NewRule()
+	toPodRule.Priority = constants.ToContainerRulePriority
+	toPodRule.Table = constants.MainTable
+	toPodRule.Dst = &net.IPNet{
+		IP:   net.ParseIP(ip),
+		Mask: net.CIDRMask(32, 32),
+	}
+	if err := netlink.RuleAdd(toPodRule); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("failed to add rule %s : %v", toPodRule, err)
+	}
+
+	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), ip, nic.HardwareAddr, "-A")
+}
+
 //After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
-func (n NetworkUtils) CleanupNicNetwork(nic *rpc.HostNic) error {
-	link, err := n.LinkByMacAddr(nic.HardwareAddr)
-	if err != nil && err != constants.ErrNicNotFound {
-		return err
-	}
-	if link != nil {
-		err = netlink.LinkSetDown(link)
-		if err != nil {
-			return fmt.Errorf("failed to set link %s down", nic.ID)
-		}
-	}
-
-	var rules []netlink.Rule
-
-	ip := net.ParseIP(nic.PrimaryAddress)
+func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
+	ip := net.ParseIP(podIP)
 	dstRules, err := getRuleListByDst(ip)
 	if err != nil {
 		return err
 	}
-	rules = append(rules, dstRules...)
-	srcRules, err := getRuleListBySrc(ip)
-	if err != nil {
-		return err
-	}
-	rules = append(rules, srcRules...)
 
-	for _, rule := range rules {
+	for _, rule := range dstRules {
 		err := netlink.RuleDel(&rule)
 		if err != nil && !os.IsExist(err) {
 			return fmt.Errorf("failed to del rule %v : %v", rule, err)
 		}
 	}
 
+	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), podIP, nic.HardwareAddr, "-D")
+}
+
+//Note: setup NetworkManager to disable dhcp on nic
+// SetupNicNetwork adds default route to route table (nic-<nic_table>)
+func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
+	// Get links by addrs
+	// case 1: only vxnet-hostnic
+	// case 2: bridge and bridge_slave
+	name := constants.GetHostNicName(nic.VxNet.ID)
+	links, err := n.linksByMacAddr(nic.HardwareAddr)
+	log.Infof("links: %v", links)
+	if len(links) == 0 {
+		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v", name, err)
+	}
+	if len(links) > 2 {
+		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %d unexpected", nic.HardwareAddr, len(links))
+	}
+
+	if len(links) == 1 {
+		if err := n.setupNicNetwork(nic); err != nil {
+			return rpc.Phase_CreateAndAttach, err
+		}
+		if err := n.setupBridgeNetwork(links[0], constants.GetHostNicBridgeName(int(nic.RouteTableNum))); err != nil {
+			return rpc.Phase_JoinBridge, err
+		}
+		if err := n.setupRouteTable(nic); err != nil {
+			return rpc.Phase_SetRouteTable, err
+		}
+	}
+
+	return rpc.Phase_Succeeded, nil
+}
+
+//After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
+func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
 	return nil
 }
 
 //Note: setup NetworkManager to disable dhcp on nic
 // SetupNicNetwork adds default route to route table (nic-<nic_table>)
-func (n NetworkUtils) SetupNicNetwork(nic *rpc.HostNic) error {
-	name := constants.GetHostNicName(int(nic.RouteTableNum))
-
+func (n NetworkUtils) setupNicNetwork(nic *rpc.HostNic) error {
+	name := constants.GetHostNicName(nic.VxNet.ID)
 	link, err := n.LinkByMacAddr(nic.HardwareAddr)
 	if err != nil {
 		return fmt.Errorf("failed to get link %s: %v", name, err)
-	}
-
-	err = n.CleanupNicNetwork(nic)
-	if err != nil {
-		return err
 	}
 
 	if link.Attrs().Name != name {
@@ -99,16 +129,45 @@ func (n NetworkUtils) SetupNicNetwork(nic *rpc.HostNic) error {
 	if err != nil {
 		return fmt.Errorf("failed to set link %s up: %v", link.Attrs().Name, err)
 	}
+	return nil
+}
 
-	addrs, err := netlink.AddrList(link, unix.AF_INET)
+func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error {
+	//create br, then add hostnic to br, and set route to br
+	la := netlink.NewLinkAttrs()
+	la.Name = brName
+	br := &netlink.Bridge{LinkAttrs: la}
+	err := netlink.LinkAdd(br)
 	if err != nil {
-		return fmt.Errorf("failed to list addr on link %s : %v", link.Attrs().Name, err)
+		return fmt.Errorf("failed to add %s to %s: %v\n", link.Attrs().Name, la.Name, err)
 	}
-	for _, addr := range addrs {
-		err = netlink.AddrDel(link, &addr)
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete add %s on %s : %v ", addr.IP, link.Attrs().Name, err)
+	err = netlink.LinkSetMaster(link, br)
+	if err != nil {
+		return fmt.Errorf("faild to set link %s: %v\n", la.Name, err)
+	}
+	err = netlink.LinkSetUp(br)
+	if err != nil {
+		return fmt.Errorf("failed to set link %s up: %v", la.Name, err)
+	}
+
+	return nil
+}
+
+func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
+	ls, err := n.linksByMacAddr(nic.HardwareAddr)
+	if len(ls) != 2 || err != nil {
+		return fmt.Errorf("failed to get link %s: %v", nic.HardwareAddr, ls)
+	}
+
+	var link netlink.Link
+	log.Infof("setupRouteTable: %d", len(ls))
+	for _, l := range ls {
+		if l.Type() == "bridge" {
+			link = l
 		}
+	}
+	if link == nil {
+		return fmt.Errorf("failed to found link %s for bridge", nic.HardwareAddr)
 	}
 
 	_, dst, _ := net.ParseCIDR(nic.VxNet.Network)
@@ -133,10 +192,19 @@ func (n NetworkUtils) SetupNicNetwork(nic *rpc.HostNic) error {
 	}
 
 	for _, r := range routes {
-		err = netlink.RouteAdd(&r)
-		if err != nil && !os.IsExist(err) {
+		if err := netlink.RouteAdd(&r); err != nil && !os.IsExist(err) {
 			return fmt.Errorf("failed to add route %v : %v", r, err)
 		}
+	}
+
+	fromPodRule := netlink.NewRule()
+	fromPodRule.Priority = constants.FromContainerRulePriority
+	fromPodRule.Table = int(nic.RouteTableNum)
+	fromPodRule.Src = dst
+	err = netlink.RuleAdd(fromPodRule)
+	log.Infof("add from pod rule for vxnet %s: %s", nic.VxNet.ID, fromPodRule)
+	if err != nil && !os.IsExist(err) {
+		return fmt.Errorf("failed to add rule %s : %v", fromPodRule, err)
 	}
 
 	return nil
@@ -158,6 +226,32 @@ func (n NetworkUtils) LinkByMacAddr(macAddr string) (netlink.Link, error) {
 	return nil, constants.ErrNicNotFound
 }
 
+func (n NetworkUtils) linksByMacAddr(macAddr string) ([]netlink.Link, error) {
+	var ls []netlink.Link
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, link := range links {
+		attr := link.Attrs()
+		if attr.HardwareAddr.String() == macAddr {
+			ls = append(ls, link)
+		}
+	}
+	return ls, nil
+}
+
+func setArpReply(br string, ip string, macAddress string, action string) error {
+	rule := fmt.Sprintf("ebtables -t nat %s PREROUTING -p ARP --logical-in %s --arp-op Request --arp-ip-dst %s -j arpreply --arpreply-mac %s",
+		action, br, ip, macAddress)
+
+	// TODO: delete later
+	log.Infof("ebtables rule: %s", rule)
+	_, err := ExecuteCommand(rule)
+	return err
+}
+
 func getRuleListByDst(dst net.IP) ([]netlink.Rule, error) {
 	var dstRuleList []netlink.Rule
 	ruleList, err := netlink.RuleList(unix.AF_INET)
@@ -165,6 +259,8 @@ func getRuleListByDst(dst net.IP) ([]netlink.Rule, error) {
 		return nil, err
 	}
 	for _, rule := range ruleList {
+		// TODO: delete later
+		log.Infof("dst rule %s", rule)
 		if rule.Dst != nil && rule.Dst.IP.Equal(dst) {
 			dstRuleList = append(dstRuleList, rule)
 		}
@@ -188,4 +284,19 @@ func getRuleListBySrc(src net.IP) ([]netlink.Rule, error) {
 
 func SetupNetworkHelper() {
 	NetworkHelper = NetworkUtils{}
+}
+
+func ExecuteCommand(command string) (string, error) {
+	var stderr bytes.Buffer
+	var out bytes.Buffer
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stderr = &stderr
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("%s:%s", err.Error(), stderr.String())
+	}
+
+	return out.String(), nil
 }

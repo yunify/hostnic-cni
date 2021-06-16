@@ -1,0 +1,95 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: (devel)
+  creationTimestamp: null
+  name: vxnetpools.vxnetpool.kubesphere.io
+spec:
+  group: vxnetpool.kubesphere.io
+  names:
+    kind: VxNetPool
+    listKind: VxNetPoolList
+    plural: vxnetpools
+    singular: vxnetpool
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: VxNetPool is a specification for a VxNetPool resource
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VxNetPoolSpec is the spec for a VxNetPool resource
+            properties:
+              blockSize:
+                description: The block size to use for IP address assignments from
+                  this pool. Defaults to 26 for IPv4 and 112 for IPv6.
+                type: integer
+              vxnets:
+                description: vxnets in VxNetPool
+                items:
+                  properties:
+                    name:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+            required:
+            - blockSize
+            - vxnets
+            type: object
+          status:
+            description: VxNetPoolStatus is the status for a VxNetPool resource
+            properties:
+              message:
+                type: string
+              pools:
+                items:
+                  properties:
+                    ippool:
+                      type: string
+                    name:
+                      type: string
+                    subnets:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - ippool
+                  - name
+                  type: object
+                type: array
+              process:
+                type: string
+              ready:
+                type: boolean
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -3,23 +3,31 @@ package server
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/yunify/hostnic-cni/pkg/allocator"
-	conf2 "github.com/yunify/hostnic-cni/pkg/conf"
-	"github.com/yunify/hostnic-cni/pkg/k8s"
-	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"google.golang.org/grpc"
 	"net"
 	"os"
+
+	"github.com/containernetworking/cni/pkg/types/current"
+	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+
+	"github.com/yunify/hostnic-cni/pkg/allocator"
+	conf2 "github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/config"
+	"github.com/yunify/hostnic-cni/pkg/rpc"
+	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
 
 type IPAMServer struct {
-	conf conf2.ServerConf
+	conf          conf2.ServerConf
+	ipamclient    ipam.IPAMClient
+	clusterConfig *config.ClusterConfig
 }
 
-func NewIPAMServer(conf conf2.ServerConf) *IPAMServer {
+func NewIPAMServer(conf conf2.ServerConf, clusterConfig *config.ClusterConfig, ipamclient ipam.IPAMClient) *IPAMServer {
 	return &IPAMServer{
-		conf: conf,
+		conf:          conf,
+		ipamclient:    ipamclient,
+		clusterConfig: clusterConfig,
 	}
 }
 
@@ -59,40 +67,68 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
 	var (
 		err  error
-		info *rpc.PodInfo
+		info ipam.PoolInfo
+		rst  *current.Result
 	)
 
-	info, err = k8s.K8sHelper.GetPodInfo(in.Args.Namespace, in.Args.Name)
-	if err != nil {
-		err = fmt.Errorf("cannot get podinfo %s/%s: %v", in.Args.Namespace, in.Args.Name, err)
-		return nil, err
+	log.Infoln(s.clusterConfig.GetConfig())
+
+	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
+		rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
+			HandleID: podKey(in.Args),
+			Blocks:   blocks,
+			Info:     &info,
+		})
+		log.Infof("handle server add request (%v) from ipam %v: %v, %v", in.Args, info, rst, err)
+	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
+		rst, err = s.ipamclient.AutoAssignFromPools(ipam.AutoAssignArgs{
+			HandleID: podKey(in.Args),
+			Pools:    pools,
+			Info:     &info,
+		})
+		log.Infof("handle server add request (%v) from ipam %v: %v, %v", in.Args, info, rst, err)
+	} else {
+		log.Infof("handle server add request (%v): pool or block not found", in.Args)
+		return nil, fmt.Errorf("pool or block not found")
 	}
-	in.Args.NicType = info.NicType
-	in.Args.VxNet = info.VxNet
-	in.Args.PodIP = info.PodIP
 
 	log.Infof("handle server add request (%v)", in.Args)
 	defer func() {
-		log.WithError(err).Infof("handle server add reply (%v)", in.Nic)
+		log.WithError(err).Infof("handle server add reply (%v %s)", in.Nic, rst.IPs[0].Address.IP.String())
 	}()
 
+	in.Args.VxNet = info.IPPool
+	in.Args.PodIP = rst.IPs[0].Address.IP.String()
+	in.IP = rst.IPs[0].Address.IP.String()
 	in.Nic, err = allocator.Alloc.AllocHostNic(in.Args)
-
 	return in, err
 }
 
 // DelNetwork handle del pod request
 func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
-	var (
-		err error
-	)
+	var err error
+
+	log.Infoln(s.clusterConfig.GetConfig())
+
+	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
+		err = s.ipamclient.ReleaseByHandle(podKey(in.Args))
+		log.Infof("handle server delete request (%v) from blocks %v: %v", in.Args, blocks, err)
+	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
+		err = s.ipamclient.ReleaseByHandle(podKey(in.Args))
+		log.Infof("handle server delete request (%v) from pool %v: %v", in.Args, pools, err)
+	} else {
+		log.Infof("handle server delete request (%v): pool or block not found", in.Args)
+	}
 
 	log.Infof("handle server delete request (%v)", in.Args)
 	defer func() {
 		log.WithError(err).Infof("handle server delete reply (%v)", in.Nic)
 	}()
 
-	in.Nic, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
-
+	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
 	return in, nil
+}
+
+func podKey(pod *rpc.PodInfo) string {
+	return pod.Namespace + "-" + pod.Name + "-" + pod.Containter
 }

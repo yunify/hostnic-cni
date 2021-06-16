@@ -15,6 +15,8 @@ message VxNet {
   string Gateway = 2;
   string Network = 3;
   string RouterID = 4;
+  string IPStart = 5;
+  string IPEnd = 6;
 }
 
 enum Status {
@@ -23,6 +25,14 @@ enum Status {
   DELETING = 2;
   ERROR = 3;
   DELETED = 4;
+}
+
+enum Phase {
+  Init = 0;
+  CreateAndAttach = 1;
+  JoinBridge = 2;
+  SetRouteTable = 3;
+  Succeeded = 4;
 }
 
 message HostNic {
@@ -35,6 +45,7 @@ message HostNic {
   bool Reserved = 7;
   int32 RouteTableNum = 8;
   Status Status = 9;
+  Phase Phase = 10;
 }
 
 message PodInfo {
@@ -54,4 +65,12 @@ message IPAMMessage {
   HostNic Nic = 2;
   bool Peek = 3;
   bool Delete = 4;
+  string IP = 5;
+}
+
+message VIP {
+  string ID = 1;
+  string Name = 2;
+  string Addr = 3;
+  string VxNetID = 4;
 }

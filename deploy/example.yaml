@@ -1,0 +1,29 @@
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hostnic-ipam-config
+  namespace: kube-system
+data:
+  ipam: |
+    {
+      "Default": ["vxnet-cwjk6xr"]
+    }
+
+---
+
+apiVersion: vxnetpool.kubesphere.io/v1alpha1
+kind: VxNetPool
+metadata:
+  name: v-pool
+spec:
+  vxnets:
+    - name: vxnet-nj02rbu
+    - name: vxnet-vfpl1e1
+    - name: vxnet-kuusp12
+    - name: vxnet-cwjk6xr
+  blockSize: 26
+
+---

@@ -22,7 +22,7 @@ k8s对于CNI插件有以下要求：
 hostnic插件是基于上述原则进行设计的，网络的架构如下：
 ![网络架构](pod.png)
 如图中所示，首先会将IAAS的网卡挂载到主机上，然后在主机端将其IP移除（这是Pod 所用，主机端有这个IP会导致回路不正确）。每当有一个Pod 需要IP时，hostnic插件会做如下操作：
-1. 想Daemon获取一个IP信息（包括ip，mac，以及对应的namespace等）
+1. 向Daemon获取一个IP信息（包括ip，mac，以及对应的namespace等）
 2. 启动对应的网卡（同样要再删除一遍IP）
 3. 创建一对veth，一端在root namespace，一端在Pod namespace里
 4. 在Pod namespace中，创建默认路由，并且指定静态arp，最终网络如下：

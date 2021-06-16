@@ -108,7 +108,7 @@ hostnic-cfg-cm中包含两个配置大项
 * 给节点加上vxnet注解
 
 ```bash
-  kubectl  annotate nodes i-xrwbww35  "hostnic.network.kubesphere.io/vxnet"="vxnet-cfn58ev"`
+  kubectl annotate nodes i-xrwbww35  "hostnic.network.kubesphere.io/vxnet"="vxnet-cfn58ev"
 ```
 
 * 给工作负载指定vxnet
