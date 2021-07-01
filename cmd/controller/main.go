@@ -75,7 +75,7 @@ func main() {
 
 	c1 := controller.NewVxNetPoolController(kubeClient, client, vxnetPool,
 		informerFactory.Network().V1alpha1().IPPools(),
-		informerFactory.Vxnetpool().V1alpha1().VxNetPools())
+		informerFactory.Network().V1alpha1().VxNetPools())
 
 	c2 := controller.NewIPPoolController(kubeClient, client, informerFactory, kubeInformerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal))
 

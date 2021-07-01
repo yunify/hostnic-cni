@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
-	vxnetpoolv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnetpool/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -60,10 +59,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().IPAMHandles().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("ippools"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().IPPools().Informer()}, nil
-
-		// Group=vxnetpool.kubesphere.io, Version=v1alpha1
-	case vxnetpoolv1alpha1.SchemeGroupVersion.WithResource("vxnetpools"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Vxnetpool().V1alpha1().VxNetPools().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("vxnetpools"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().VxNetPools().Informer()}, nil
 
 	}
 

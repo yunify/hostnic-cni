@@ -40,6 +40,10 @@ func (c *FakeNetworkV1alpha1) IPPools() v1alpha1.IPPoolInterface {
 	return &FakeIPPools{c}
 }
 
+func (c *FakeNetworkV1alpha1) VxNetPools() v1alpha1.VxNetPoolInterface {
+	return &FakeVxNetPools{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeNetworkV1alpha1) RESTClient() rest.Interface {

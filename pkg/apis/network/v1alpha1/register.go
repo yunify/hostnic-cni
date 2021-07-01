@@ -44,6 +44,7 @@ func init() {
 	SchemeBuilder.Register(&IPAMHandle{}, &IPAMHandleList{})
 	SchemeBuilder.Register(&IPAMBlock{}, &IPAMBlockList{})
 	SchemeBuilder.Register(&IPPool{}, &IPPoolList{})
+	SchemeBuilder.Register(&VxNetPool{}, &VxNetPoolList{})
 }
 
 // Resource is required by pkg/client/listers/...

@@ -38,12 +38,6 @@ rules:
     verbs:
       - '*'
   - apiGroups:
-      - vxnetpool.kubesphere.io
-    resources:
-      - '*'
-    verbs:
-      - '*'
-  - apiGroups:
       - ""
     resources:
       - events

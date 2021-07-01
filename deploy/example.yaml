@@ -14,7 +14,7 @@ data:
 
 ---
 
-apiVersion: vxnetpool.kubesphere.io/v1alpha1
+apiVersion: network.kubesphere.io/v1alpha1
 kind: VxNetPool
 metadata:
   name: v-pool

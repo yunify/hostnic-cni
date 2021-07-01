@@ -38,6 +38,7 @@ spec:
               allocations:
                 description: 'TODO: https://github.com/kubernetes-sigs/controller-tools/issues/461'
                 items:
+                  nullable: true
                   type: integer
                 type: array
               attributes:

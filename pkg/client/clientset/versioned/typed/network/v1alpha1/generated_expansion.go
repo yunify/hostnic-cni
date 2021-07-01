@@ -23,3 +23,5 @@ type IPAMBlockExpansion interface{}
 type IPAMHandleExpansion interface{}
 
 type IPPoolExpansion interface{}
+
+type VxNetPoolExpansion interface{}

@@ -38,13 +38,10 @@ import (
 	"k8s.io/klog/v2"
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
-	poolv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnetpool/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
-	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/vxnetpool/v1alpha1"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
-	listers "github.com/yunify/hostnic-cni/pkg/client/listers/vxnetpool/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
@@ -72,7 +69,7 @@ type VxNetPoolController struct {
 	ippoolsLister networklisters.IPPoolLister
 	ippoolsSynced cache.InformerSynced
 
-	poolsLister listers.VxNetPoolLister
+	poolsLister networklisters.VxNetPoolLister
 	poolsSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -104,7 +101,7 @@ func NewVxNetPoolController(
 	clientset clientset.Interface,
 	vxnetPool string,
 	ippoolInformer networkinformers.IPPoolInformer,
-	poolInformer informers.VxNetPoolInformer) *VxNetPoolController {
+	poolInformer networkinformers.VxNetPoolInformer) *VxNetPoolController {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -301,8 +298,8 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 	return nil
 }
 
-func (c *VxNetPoolController) getPools(pool *poolv1alpha1.VxNetPool) ([]poolv1alpha1.PoolInfo, error) {
-	var pools []poolv1alpha1.PoolInfo
+func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]networkv1alpha1.PoolInfo, error) {
+	var pools []networkv1alpha1.PoolInfo
 	for _, vxnet := range pool.Spec.Vxnets {
 		if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
@@ -314,7 +311,7 @@ func (c *VxNetPoolController) getPools(pool *poolv1alpha1.VxNetPool) ([]poolv1al
 			for _, item := range blocks.Items {
 				subnets = append(subnets, item.Name)
 			}
-			pools = append(pools, poolv1alpha1.PoolInfo{
+			pools = append(pools, networkv1alpha1.PoolInfo{
 				Name:    vxnet.Name,
 				IPPool:  vxnet.Name,
 				Subnets: subnets,
@@ -325,7 +322,7 @@ func (c *VxNetPoolController) getPools(pool *poolv1alpha1.VxNetPool) ([]poolv1al
 	return pools, nil
 }
 
-func (c *VxNetPoolController) updatePoolStatus(pool *poolv1alpha1.VxNetPool, ready bool) error {
+func (c *VxNetPoolController) updatePoolStatus(pool *networkv1alpha1.VxNetPool, ready bool) error {
 	pools, err := c.getPools(pool)
 	if err != nil {
 		return err
@@ -338,7 +335,7 @@ func (c *VxNetPoolController) updatePoolStatus(pool *poolv1alpha1.VxNetPool, rea
 	poolCopy.Status.Ready = ready
 	poolCopy.Status.Pools = pools
 
-	_, err = c.clientset.VxnetpoolV1alpha1().VxNetPools().UpdateStatus(context.TODO(), poolCopy, metav1.UpdateOptions{})
+	_, err = c.clientset.NetworkV1alpha1().VxNetPools().UpdateStatus(context.TODO(), poolCopy, metav1.UpdateOptions{})
 	return err
 }
 
@@ -423,7 +420,7 @@ func (c *VxNetPoolController) createBlocksFromIPPool(ippool *networkv1alpha1.IPP
 	return c.ipamClient.AutoGenerateBlocksFromPool(ippool.Name)
 }
 
-func (c *VxNetPoolController) prepareQcloudResource(pool *poolv1alpha1.VxNetPool) (bool, error) {
+func (c *VxNetPoolController) prepareQcloudResource(pool *networkv1alpha1.VxNetPool) (bool, error) {
 	// 1. check vxnet
 	for _, vxnet := range pool.Spec.Vxnets {
 		if _, ok := c.getVxNetInfo(vxnet.Name); !ok {
@@ -454,7 +451,7 @@ func (c *VxNetPoolController) prepareQcloudResource(pool *poolv1alpha1.VxNetPool
 }
 
 // create ippool and ipamblock
-func (c *VxNetPoolController) prepareK8SResource(pool *poolv1alpha1.VxNetPool) (bool, error) {
+func (c *VxNetPoolController) prepareK8SResource(pool *networkv1alpha1.VxNetPool) (bool, error) {
 	for _, vxnet := range pool.Spec.Vxnets {
 		ippool, err := c.ippoolsLister.Get(vxnet.Name)
 		if err != nil {

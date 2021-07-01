@@ -26,7 +26,6 @@ import (
 	versioned "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/internalinterfaces"
 	network "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network"
-	vxnetpool "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/vxnetpool"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -174,13 +173,8 @@ type SharedInformerFactory interface {
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
 	Network() network.Interface
-	Vxnetpool() vxnetpool.Interface
 }
 
 func (f *sharedInformerFactory) Network() network.Interface {
 	return network.New(f, f.namespace, f.tweakListOptions)
-}
-
-func (f *sharedInformerFactory) Vxnetpool() vxnetpool.Interface {
-	return vxnetpool.New(f, f.namespace, f.tweakListOptions)
 }
