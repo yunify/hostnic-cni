@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/sirupsen/logrus"
 	"github.com/syndtr/goleveldb/leveldb"
+	"k8s.io/klog/v2"
+
 	"github.com/yunify/hostnic-cni/pkg/constants"
-	"github.com/yunify/hostnic-cni/pkg/log/logfields"
 )
 
 const (
@@ -16,7 +16,6 @@ const (
 )
 
 var (
-	log     = logrus.WithField(logfields.LogSubsys, "leveldb")
 	LevelDB *leveldb.DB
 )
 
@@ -48,9 +47,9 @@ func SetupLevelDB(opt *LevelDBOptions) error {
 func CloseDB() {
 	err := LevelDB.Close()
 	if err != nil {
-		log.WithError(err).Error("failed to close leveldb")
+		klog.Error("failed to close leveldb: %v", err)
 	} else {
-		log.Info("leveldb closed")
+		klog.Info("leveldb closed")
 	}
 }
 

@@ -60,7 +60,7 @@ deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml
 	kustomize build config/${TARGET} > ${DEPLOY}
 
-publish: build deploy
+publish: build
 	docker build -t ${IMG} .
 	docker push ${IMG}
 

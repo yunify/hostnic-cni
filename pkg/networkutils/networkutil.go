@@ -9,7 +9,6 @@ import (
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
-	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -65,7 +64,6 @@ func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 	// case 2: bridge and bridge_slave
 	name := constants.GetHostNicName(nic.VxNet.ID)
 	links, err := n.linksByMacAddr(nic.HardwareAddr)
-	log.Infof("links: %v", links)
 	if len(links) == 0 {
 		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v", name, err)
 	}
@@ -160,7 +158,6 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 	}
 
 	var link netlink.Link
-	log.Infof("setupRouteTable: %d", len(ls))
 	for _, l := range ls {
 		if l.Type() == "bridge" {
 			link = l
@@ -202,7 +199,6 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 	fromPodRule.Table = int(nic.RouteTableNum)
 	fromPodRule.Src = dst
 	err = netlink.RuleAdd(fromPodRule)
-	log.Infof("add from pod rule for vxnet %s: %s", nic.VxNet.ID, fromPodRule)
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to add rule %s : %v", fromPodRule, err)
 	}
@@ -246,8 +242,6 @@ func setArpReply(br string, ip string, macAddress string, action string) error {
 	rule := fmt.Sprintf("ebtables -t nat %s PREROUTING -p ARP --logical-in %s --arp-op Request --arp-ip-dst %s -j arpreply --arpreply-mac %s",
 		action, br, ip, macAddress)
 
-	// TODO: delete later
-	log.Infof("ebtables rule: %s", rule)
 	_, err := ExecuteCommand(rule)
 	return err
 }
@@ -259,8 +253,6 @@ func getRuleListByDst(dst net.IP) ([]netlink.Rule, error) {
 		return nil, err
 	}
 	for _, rule := range ruleList {
-		// TODO: delete later
-		log.Infof("dst rule %s", rule)
 		if rule.Dst != nil && rule.Dst.IP.Equal(dst) {
 			dstRuleList = append(dstRuleList, rule)
 		}

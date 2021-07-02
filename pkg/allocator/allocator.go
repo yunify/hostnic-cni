@@ -2,10 +2,11 @@ package allocator
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/constants"
@@ -13,15 +14,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
-)
-
-const (
-	NicPhaseInit            string = "Init"
-	NicPhaseCreateAndAttach string = "CreateAndAttach"
-	NicPhaseJoinBridge      string = "JoinBridge"
-	NicPhaseSetRouteTable   string = "SetRouteTable"
-	NicPhaseSucceeded       string = "Succeeded"
-	NicPhaseUnknown         string = "Unknown"
 )
 
 type nicStatus struct {
@@ -41,16 +33,16 @@ func (n *nicStatus) setNicPhase(pahse rpc.Phase) error {
 
 // always set status to Phase_Succeeded when add NicPod
 func (n *nicStatus) addNicPod(pod *rpc.PodInfo) error {
-	savePod := n.Pods[getKey(pod)]
+	savePod := n.Pods[getContainterKey(pod)]
 	saveStatus := n.Nic.Phase
-	n.Pods[getKey(pod)] = pod
+	n.Pods[getContainterKey(pod)] = pod
 	n.Nic.Phase = rpc.Phase_Succeeded
 	if err := db.SetNetworkInfo(n.Nic.VxNet.ID, n); err != nil {
 		if savePod == nil {
-			delete(n.Pods, getKey(pod))
+			delete(n.Pods, getContainterKey(pod))
 			n.Nic.Phase = saveStatus
 		} else {
-			n.Pods[getKey(pod)] = savePod
+			n.Pods[getContainterKey(pod)] = savePod
 			n.Nic.Phase = saveStatus
 		}
 		return err
@@ -58,11 +50,11 @@ func (n *nicStatus) addNicPod(pod *rpc.PodInfo) error {
 	return nil
 }
 
-func (n *nicStatus) removeNicPod(pod *rpc.PodInfo) error {
-	save := n.Pods[getKey(pod)]
-	delete(n.Pods, getKey(pod))
+func (n *nicStatus) delNicPod(pod *rpc.PodInfo) error {
+	save := n.Pods[getContainterKey(pod)]
+	delete(n.Pods, getContainterKey(pod))
 	if err := db.SetNetworkInfo(n.Nic.VxNet.ID, n); err != nil {
-		n.Pods[getKey(pod)] = save
+		n.Pods[getContainterKey(pod)] = save
 		return err
 	}
 	return nil
@@ -73,19 +65,7 @@ func (n *nicStatus) isOK() bool {
 }
 
 func (n *nicStatus) getPhase() string {
-	switch n.Nic.Phase {
-	case rpc.Phase_Init:
-		return NicPhaseInit
-	case rpc.Phase_CreateAndAttach:
-		return NicPhaseCreateAndAttach
-	case rpc.Phase_JoinBridge:
-		return NicPhaseJoinBridge
-	case rpc.Phase_SetRouteTable:
-		return NicPhaseSetRouteTable
-	case rpc.Phase_Succeeded:
-		return NicPhaseSucceeded
-	}
-	return NicPhaseUnknown
+	return n.Nic.Phase.String()
 }
 
 type Allocator struct {
@@ -95,6 +75,7 @@ type Allocator struct {
 }
 
 func (a *Allocator) setNicStatus(nic *rpc.HostNic, pahse rpc.Phase) error {
+	log.Infof("setNicStatus: %s %s", getNicKey(nic), pahse.String())
 	if status, ok := a.nics[nic.VxNet.ID]; ok {
 		if err := status.setNicPhase(pahse); err != nil {
 			return err
@@ -114,25 +95,8 @@ func (a *Allocator) setNicStatus(nic *rpc.HostNic, pahse rpc.Phase) error {
 	return nil
 }
 
-func (a *Allocator) getNicRouteTableNum(nic *rpc.HostNic) int32 {
-	if nic.RouteTableNum <= 0 {
-		exists := make(map[int]bool)
-		for _, nic := range a.nics {
-			exists[int(nic.Nic.RouteTableNum)] = true
-		}
-		for start := a.conf.RouteTableBase; ; start++ {
-			if !exists[start] {
-				log.Infof("assign nic %s routetable num %d", nic.ID, start)
-				return int32(start)
-			}
-		}
-	} else {
-		return nic.RouteTableNum
-	}
-}
-
 func (a *Allocator) addNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
-	log.Println("nic add pod:", nic, info)
+	log.Infof("addNicPod: %s %s", getNicKey(nic), getPodKey(info))
 	if status, ok := a.nics[nic.VxNet.ID]; ok {
 		if err := status.addNicPod(info); err != nil {
 			return err
@@ -152,14 +116,32 @@ func (a *Allocator) addNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
 	return nil
 }
 
-func (a *Allocator) removeNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
+func (a *Allocator) delNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
+	log.Infof("delNicPod: %s %s", getNicKey(nic), getPodKey(info))
 	if status, ok := a.nics[nic.VxNet.ID]; ok {
-		if err := status.removeNicPod(info); err != nil {
+		if err := status.delNicPod(info); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (a *Allocator) getNicRouteTableNum(nic *rpc.HostNic) int32 {
+	if nic.RouteTableNum <= 0 {
+		exists := make(map[int]bool)
+		for _, nic := range a.nics {
+			exists[int(nic.Nic.RouteTableNum)] = true
+		}
+		for start := a.conf.RouteTableBase; ; start++ {
+			if !exists[start] {
+				log.Infof("Assign nic %s routetable num %d", getNicKey(nic), start)
+				return int32(start)
+			}
+		}
+	} else {
+		return nic.RouteTableNum
+	}
 }
 
 func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
@@ -173,8 +155,12 @@ func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("get vxnet %s", vxnet)
-	return result[vxnet], nil
+
+	if v, ok := result[vxnet]; !ok {
+		return nil, fmt.Errorf("Get vxnet %s from qingcloud: not found", vxnet)
+	} else {
+		return v, nil
+	}
 }
 
 func (a *Allocator) canAlloc() int {
@@ -187,11 +173,11 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 
 	vxnetName := args.VxNet
 	if nic, ok := a.nics[vxnetName]; ok {
-		log.Printf("find hostNic for vxnet %s: %v %s", vxnetName, nic.Nic, nic.getPhase())
+		log.Infof("Find hostNic for vxnet %s: %v %s", vxnetName, nic.Nic.ID, nic.getPhase())
 		if nic.isOK() {
 			// just update Nic's pods
 			if err := a.addNicPod(nic.Nic, args); err != nil {
-				log.Errorf("addNicPod %v pod %v failed: %v", nic, args, err)
+				log.Errorf("addNicPod failed: %s %s %v", getNicKey(nic.Nic), getPodKey(args), err)
 			}
 			return nic.Nic, nil
 		} else {
@@ -199,12 +185,12 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 			phase, err := networkutils.NetworkHelper.SetupNetwork(nic.Nic)
 			if err != nil {
 				if err := a.setNicStatus(nic.Nic, phase); err != nil {
-					log.Errorf("setNicStatus %v phase %v failed: %v", nic, phase, err)
+					log.Errorf("setNicStatus failed: %s %s %v", nic, phase.String(), err)
 				}
 				return nil, err
 			}
 			if err := a.addNicPod(nic.Nic, args); err != nil {
-				log.Errorf("addNicPod %v pod %v failed: %v", nic, args, err)
+				log.Errorf("addNicPod failed: %s %s %v", getNicKey(nic.Nic), getPodKey(args), err)
 			}
 			return nic.Nic, nil
 		}
@@ -222,7 +208,7 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("create and attach nic %v", nics)
+	log.Infof("create and attach nic %s", getNicKey(nics[0]))
 
 	//wait for nic attach
 	for {
@@ -236,7 +222,7 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	log.Infof("nic %v attach success", nics)
+	log.Infof("attach nic %s success", getNicKey(nics[0]))
 
 	nics[0].Reserved = true
 	nics[0].RouteTableNum = a.getNicRouteTableNum(nics[0])
@@ -244,14 +230,14 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	// create bridge and rule here
 	phase, err := networkutils.NetworkHelper.SetupNetwork(nics[0])
 	if err != nil {
-		if e := a.setNicStatus(nics[0], phase); e != nil {
-			log.Errorf("setNicStatus %v phase %v failed: %v", nics[0], phase, e)
+		if err := a.setNicStatus(nics[0], phase); err != nil {
+			log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nics[0]), phase.String(), err)
 		}
 		return nil, err
 	}
 
-	if e := a.addNicPod(nics[0], args); e != nil {
-		log.Errorf("addNicPod %v pod %v failed: %v", nics[0], args, e)
+	if err := a.addNicPod(nics[0], args); err != nil {
+		log.Errorf("addNicPod failed: %s %s %v", getNicKey(nics[0]), getPodKey(args), err)
 	}
 
 	return nics[0], nil
@@ -262,9 +248,10 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 	defer a.lock.Unlock()
 
 	for _, status := range a.nics {
-		if pod, ok := status.Pods[getKey(args)]; ok {
-			log.Println("get pod from status:", pod)
-			a.removeNicPod(status.Nic, pod)
+		if pod, ok := status.Pods[getContainterKey(args)]; ok {
+			if err := a.delNicPod(status.Nic, pod); err != nil {
+				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err)
+			}
 			args.Containter = pod.Containter
 			return status.Nic, pod.PodIP, nil
 		}
@@ -322,7 +309,7 @@ func SetupAllocator(conf conf.PoolConf) {
 		return nil
 	})
 	if err != nil {
-		log.WithError(err).Fatalf("failed restore allocator from leveldb")
+		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
 	}
 
 	//
@@ -330,7 +317,7 @@ func SetupAllocator(conf conf.PoolConf) {
 	//
 	nics, err := qcclient.QClient.GetCreatedNics(constants.NicNumLimit, 0)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to get created nics")
+		log.Fatalf("Failed to get created nics from qingcloud: %v", err)
 	}
 
 	for _, nic := range nics {
@@ -339,11 +326,19 @@ func SetupAllocator(conf conf.PoolConf) {
 		} else {
 			// TODO: maybe we need rebuild bridge and rules
 			Alloc.setNicStatus(status.Nic, rpc.Phase_Init)
-			log.Infof("restore create nic %s %s routetable num %d", nic.ID, status.Nic.ID, status.Nic.RouteTableNum)
+			log.Infof("Restore create nic %s %s routetable num %d", nic.ID, getNicKey(status.Nic), status.Nic.RouteTableNum)
 		}
 	}
 }
 
-func getKey(info *rpc.PodInfo) string {
+func getContainterKey(info *rpc.PodInfo) string {
 	return info.Containter
+}
+
+func getPodKey(info *rpc.PodInfo) string {
+	return info.Namespace + "/" + info.Name + "/" + info.Containter
+}
+
+func getNicKey(nic *rpc.HostNic) string {
+	return nic.VxNet.ID + "/" + nic.ID
 }

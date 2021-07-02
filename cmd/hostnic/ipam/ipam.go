@@ -25,17 +25,17 @@ import (
 	"net"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
+
 	. "github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
 )
 
 func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {

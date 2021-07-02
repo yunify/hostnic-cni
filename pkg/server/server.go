@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/containernetworking/cni/pkg/types/current"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	conf2 "github.com/yunify/hostnic-cni/pkg/conf"
@@ -42,12 +42,12 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 
 	err := os.Remove(socketFilePath)
 	if err != nil {
-		log.WithError(err).Warningf("cannot remove file %s", socketFilePath)
+		log.Warningf("cannot remove file %s: %v", socketFilePath, err)
 	}
 
 	listener, err := net.Listen("unix", socketFilePath)
 	if err != nil {
-		log.WithError(err).Fatalf("Failed to listen to %s", socketFilePath)
+		log.Fatalf("Failed to listen to %s: %v", socketFilePath, err)
 	}
 
 	//start up server rpc routine
@@ -94,7 +94,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 
 	log.Infof("handle server add request (%v)", in.Args)
 	defer func() {
-		log.WithError(err).Infof("handle server add reply (%v %s)", in.Nic, rst.IPs[0].Address.IP.String())
+		log.Infof("handle server add reply (%v %s): %v", in.Nic, rst.IPs[0].Address.IP.String(), err)
 	}()
 
 	in.Args.VxNet = info.IPPool
@@ -122,7 +122,7 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 
 	log.Infof("handle server delete request (%v)", in.Args)
 	defer func() {
-		log.WithError(err).Infof("handle server delete reply (%v)", in.Nic)
+		log.Infof("handle server delete reply (%v): %v", in.Nic, err)
 	}()
 
 	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)

@@ -236,10 +236,8 @@ spec:
           image: cumirror/hostnic-plus:20210628-1306
           command:
             - /app/hostnic-controller
-            - --alsologtostderr
             - --v=5
-            - --log_dir=/tmp
-            - --log_file=controller.log
+            - --log_file=/var/run/hostnic/controller.log
             - --vxnet-pool=v-pool
           volumeMounts:
             - mountPath: /root/.qingcloud/

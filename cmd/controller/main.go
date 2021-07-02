@@ -38,15 +38,12 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool"
 )
 
-var (
-	masterURL  string
-	kubeconfig string
-)
-
 func main() {
 	var vxnetPool string
-	flag.StringVar(&vxnetPool, "vxnet-pool", "qingcloud-pool", "This field instructs vxnetpool name.")
-	klog.InitFlags(nil)
+	flag.StringVar(&vxnetPool, "vxnet-pool", "v-pool", "This field instructs vxnetpool name.")
+	klog.InitFlags(goflag.CommandLine)
+	goflag.Set("logtostderr", "false")
+	goflag.Set("alsologtostderr", "true")
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 
@@ -55,7 +52,7 @@ func main() {
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
 	}
@@ -102,9 +99,4 @@ func main() {
 
 	wg.Wait()
 	klog.Fatalf("Error running controller")
-}
-
-func init() {
-	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
-	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 }

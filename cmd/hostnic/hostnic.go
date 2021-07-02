@@ -43,6 +43,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+
 	ipam2 "github.com/yunify/hostnic-cni/cmd/hostnic/ipam"
 	constants "github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/log"

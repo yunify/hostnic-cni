@@ -22,11 +22,10 @@ import (
 	"flag"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
+	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
@@ -35,7 +34,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/config"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/db"
-	"github.com/yunify/hostnic-cni/pkg/log"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/server"
@@ -44,9 +42,10 @@ import (
 )
 
 func main() {
-	//parse flag and setup logrus
-	logOpts := log.NewLogOptions()
-	logOpts.AddFlags()
+	//parse flag and setup klog
+	log.InitFlags(flag.CommandLine)
+	flag.Set("logtostderr", "false")
+	flag.Set("alsologtostderr", "true")
 	dbOpts := db.NewLevelDBOptions()
 	dbOpts.AddFlags()
 	flag.Parse()
@@ -54,7 +53,6 @@ func main() {
 	defer func() {
 		db.CloseDB()
 	}()
-	log.Setup(logOpts)
 
 	// set up signals so we handle the first shutdown signals gracefully
 	stopCh := signals.SetupSignalHandler()
@@ -62,9 +60,9 @@ func main() {
 	// load ipam server config
 	conf, err := conf.TryLoadFromDisk(constants.DefaultConfigName, constants.DefaultConfigPath)
 	if err != nil {
-		logrus.WithError(err).Fatalf("failed to load config")
+		log.Fatalf("failed to load config: %v", err)
 	}
-	logrus.Infof("hostnic config is %v", conf)
+	log.Infof("hostnic config is %v", conf)
 
 	// setup qcclient, k8s
 	qcclient.SetupQingCloudClient(qcclient.Options{
@@ -73,17 +71,17 @@ func main() {
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		log.Fatalf("Error building kubeconfig: %v", err)
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		log.Fatalf("Error building kubernetes clientset: %v", err)
 	}
 
 	client, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building example clientset: %s", err.Error())
+		log.Fatalf("Error building example clientset: %v", err)
 	}
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
@@ -94,10 +92,10 @@ func main() {
 	networkutils.SetupNetworkHelper()
 	allocator.SetupAllocator(conf.Pool)
 
-	logrus.Info("all setup done, startup daemon")
+	log.Info("all setup done, startup daemon")
 	allocator.Alloc.Start(stopCh)
 	server.NewIPAMServer(conf.Server, clusterConfig, ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
 
 	<-stopCh
-	logrus.Info("daemon exited")
+	log.Info("daemon exited")
 }

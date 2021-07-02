@@ -10,7 +10,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	cnet "github.com/projectcalico/libcalico-go/lib/net"
-	log "github.com/sirupsen/logrus"
+	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	rpc "github.com/yunify/hostnic-cni/pkg/rpc"
@@ -48,52 +48,52 @@ type qingcloudAPIWrapper struct {
 func SetupQingCloudClient(opts Options) {
 	instanceID, err := ioutil.ReadFile(instanceIDFile)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to load instance-id")
+		log.Fatalf("failed to load instance-id: %v", err)
 	}
 
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
-		log.WithError(err).Fatal("failed to new sdk default config")
+		log.Fatalf("failed to new sdk default config: %v", err)
 	}
 	if err = qsdkconfig.LoadUserConfig(); err != nil {
-		log.WithError(err).Fatal("failed to load user config")
+		log.Fatalf("failed to load user config: %v", err)
 	}
 
-	log.Infof("qsdkconfig inited %v", qsdkconfig)
+	log.Infof("qsdkconfig inited: %v", qsdkconfig)
 
 	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk service")
+		log.Fatalf("failed to init qingcloud sdk service: %v", err)
 	}
 
 	nicService, err := qcService.Nic(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk nic service")
+		log.Fatalf("failed to init qingcloud sdk nic service: %v", err)
 	}
 
 	vxNetService, err := qcService.VxNet(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk vxnet service")
+		log.Fatalf("failed to init qingcloud sdk vxnet service: %v", err)
 	}
 
 	jobService, err := qcService.Job(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk job service")
+		log.Fatalf("failed to init qingcloud sdk job service: %v", err)
 	}
 
 	instanceService, err := qcService.Instance(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk instance service")
+		log.Fatalf("failed to init qingcloud sdk instance service: %v", err)
 	}
 
 	tagService, err := qcService.Tag(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk tag service")
+		log.Fatalf("failed to init qingcloud sdk tag service: %v", err)
 	}
 
 	vipService, err := qcService.VIP(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk tag service")
+		log.Fatalf("failed to init qingcloud sdk vip service: %v", err)
 	}
 
 	//useid
@@ -102,10 +102,10 @@ func SetupQingCloudClient(opts Options) {
 		AccessKeys: []*string{&qsdkconfig.AccessKeyID},
 	})
 	if err != nil {
-		log.WithError(err).Fatal("failed to DescribeAccessKeys")
+		log.Fatalf("failed to DescribeAccessKeys: %v", err)
 	}
 	if len(output.AccessKeySet) == 0 {
-		log.WithField("output", spew.Sdump(output)).Fatal("DescribeAccessKeys is empty")
+		log.Fatalf("DescribeAccessKeys is empty: %s", spew.Sdump(output))
 	}
 	userId := *output.AccessKeySet[0].Owner
 
@@ -133,15 +133,9 @@ func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int) ([]*rpc.HostNic, e
 		Offset:  &offset,
 		NICName: service.String(constants.NicPrefix + q.instanceID),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetCreatedNics")
+		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -180,16 +174,10 @@ func (q *qingcloudAPIWrapper) GetAttachedNics() ([]*rpc.HostNic, error) {
 		Status:    service.String("in-use"),
 		Limit:     service.Int(constants.NicNumLimit + 1),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetPrimaryNIC")
+		log.Errorf("failed to GetPrimaryNIC: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -207,16 +195,9 @@ func (q *qingcloudAPIWrapper) AttachNics(nicIDs []string) (string, error) {
 		Instance: &q.instanceID,
 	}
 
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
-
 	output, err := q.nicService.AttachNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to AttachNics")
+		log.Errorf("failed to AttachNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
@@ -257,16 +238,10 @@ func (q *qingcloudAPIWrapper) GetNics(nics []string) (map[string]*rpc.HostNic, e
 		Nics:  service.StringSlice(nics),
 		Limit: service.Int(constants.NicNumLimit),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetNics")
+		log.Errorf("failed to GetNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -291,15 +266,10 @@ func (q *qingcloudAPIWrapper) CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips
 		input.Count = service.Int(len(ips))
 		input.PrivateIPs = service.StringSlice(ips)
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.CreateNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to create nics")
+		log.Errorf("failed to create nics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, "", err
 	}
 
@@ -340,15 +310,10 @@ func (q *qingcloudAPIWrapper) DeattachNics(nicIDs []string, sync bool) (string, 
 	input := &service.DetachNicsInput{
 		Nics: service.StringSlice(nicIDs),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.DetachNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DeattachNics")
+		log.Errorf("failed to DeattachNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
@@ -369,15 +334,10 @@ func (q *qingcloudAPIWrapper) DeleteNics(nicIDs []string) error {
 	input := &service.DeleteNicsInput{
 		Nics: service.StringSlice(nicIDs),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.DeleteNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DeleteNics")
+		log.Errorf("failed to DeleteNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return err
 	}
 
@@ -393,15 +353,10 @@ func (q *qingcloudAPIWrapper) DescribeNicJobs(ids []string) ([]string, map[strin
 		Jobs:  service.StringSlice(ids),
 		Limit: service.Int(constants.NicNumLimit),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.jobService.DescribeJobs(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetJobs")
+		log.Errorf("failed to GetJobs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, nil, err
 	}
 
@@ -431,15 +386,10 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 	if public {
 		input.VxNetType = service.Int(2)
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.vxNetService.DescribeVxNets(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetVxNets")
+		log.Errorf("failed to GetVxNets: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -542,15 +492,10 @@ func (q *qingcloudAPIWrapper) CreateVIPs(vxnet *rpc.VxNet) (string, error) {
 		VxNetID:  &vxnet.ID,
 		VIPRange: &vipRange,
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.vipService.CreateVIPs(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to CreateVIPs")
+		log.Errorf("failed to CreateVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
@@ -564,16 +509,10 @@ func (q *qingcloudAPIWrapper) DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
 		VxNets:  []*string{&vxnet.ID},
 		Limit:   service.Int(constants.NicNumLimit),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 
 	output, err := q.vipService.DescribeVxNetsVIPs(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DescribeVIPs")
+		log.Errorf("failed to DescribeVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -599,15 +538,10 @@ func (q *qingcloudAPIWrapper) DeleteVIPs(vips []string) (string, error) {
 	input := &service.DeleteVIPsInput{
 		VIPs: service.StringSlice(vips),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.vipService.DeleteVIPs(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DeleteVIPs")
+		log.Errorf("failed to DeleteVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
