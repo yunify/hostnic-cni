@@ -38,6 +38,12 @@ rules:
     verbs:
       - '*'
   - apiGroups:
+      - vxnet.qingcloud.com
+    resources:
+      - '*'
+    verbs:
+      - '*'
+  - apiGroups:
       - ""
     resources:
       - events

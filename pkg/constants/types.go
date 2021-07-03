@@ -39,6 +39,7 @@ const (
 	DefaultLowPoolSize  = 3
 	DefaultHighPoolSize = 5
 
+	VIPNumLimit           = 253
 	NicNumLimit           = 63
 	VxnetNicNumLimit      = 252
 	DefaultRouteTableBase = 260

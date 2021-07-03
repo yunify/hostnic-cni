@@ -402,7 +402,7 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 		}
 
 		if qcVxNet.Router != nil {
-			if qcVxNet.Router.DYNIPStart == nil || qcVxNet.Router.DYNIPEnd == nil {
+			if *qcVxNet.Router.DYNIPStart == "" || *qcVxNet.Router.DYNIPEnd == "" {
 				return nil, fmt.Errorf("vxnet %s should open DHCP", *qcVxNet.VxNetID)
 			}
 			vxnetItem.Gateway = *qcVxNet.Router.ManagerIP
@@ -512,7 +512,7 @@ func (q *qingcloudAPIWrapper) DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
 	input := &service.DescribeVxNetsVIPsInput{
 		VIPName: &vipName,
 		VxNets:  []*string{&vxnet.ID},
-		Limit:   service.Int(constants.NicNumLimit),
+		Limit:   service.Int(constants.VIPNumLimit),
 	}
 
 	output, err := q.vipService.DescribeVxNetsVIPs(input)

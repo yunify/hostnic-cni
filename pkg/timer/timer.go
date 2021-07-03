@@ -36,7 +36,7 @@ Loop:
 			func() {
 				defer func() {
 					if err := recover(); err != nil {
-						log.Info("handle failed: %v", err)
+						log.Infof("handle failed: %v", err)
 					}
 				}()
 				t.callback()
