@@ -6,9 +6,9 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: (devel)
   creationTimestamp: null
-  name: vxnetpools.network.kubesphere.io
+  name: vxnetpools.vxnet.qingcloud.com
 spec:
-  group: network.kubesphere.io
+  group: vxnet.qingcloud.com
   names:
     kind: VxNetPool
     listKind: VxNetPoolList

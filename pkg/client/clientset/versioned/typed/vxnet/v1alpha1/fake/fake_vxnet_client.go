@@ -19,30 +19,22 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/network/v1alpha1"
+	v1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/vxnet/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeNetworkV1alpha1 struct {
+type FakeVxnetV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkV1alpha1) IPAMBlocks() v1alpha1.IPAMBlockInterface {
-	return &FakeIPAMBlocks{c}
-}
-
-func (c *FakeNetworkV1alpha1) IPAMHandles() v1alpha1.IPAMHandleInterface {
-	return &FakeIPAMHandles{c}
-}
-
-func (c *FakeNetworkV1alpha1) IPPools() v1alpha1.IPPoolInterface {
-	return &FakeIPPools{c}
+func (c *FakeVxnetV1alpha1) VxNetPools() v1alpha1.VxNetPoolInterface {
+	return &FakeVxNetPools{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeNetworkV1alpha1) RESTClient() rest.Interface {
+func (c *FakeVxnetV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

@@ -38,10 +38,13 @@ import (
 	"k8s.io/klog/v2"
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
+	vxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
+	vxnetinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/vxnet/v1alpha1"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
+	vxnetlisters "github.com/yunify/hostnic-cni/pkg/client/listers/vxnet/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
@@ -62,7 +65,7 @@ type VxNetPoolController struct {
 	ippoolsLister networklisters.IPPoolLister
 	ippoolsSynced cache.InformerSynced
 
-	poolsLister networklisters.VxNetPoolLister
+	poolsLister vxnetlisters.VxNetPoolLister
 	poolsSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -81,7 +84,7 @@ type VxNetPoolController struct {
 	// vxnet cache data
 	vxNetCache map[string]*rpc.VxNet
 	// vip cache data
-	vipCache map[string]([]*rpc.VIP)
+	vipCache map[string][]*rpc.VIP
 	// job info
 	// vips in vxnet -> jobID
 	jobs map[string]string
@@ -94,7 +97,7 @@ func NewVxNetPoolController(
 	clientset clientset.Interface,
 	vxnetPool string,
 	ippoolInformer networkinformers.IPPoolInformer,
-	poolInformer networkinformers.VxNetPoolInformer) *VxNetPoolController {
+	poolInformer vxnetinformers.VxNetPoolInformer) *VxNetPoolController {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -119,7 +122,7 @@ func NewVxNetPoolController(
 		// iaas
 		vxnetPool:  vxnetPool,
 		vxNetCache: make(map[string]*rpc.VxNet),
-		vipCache:   make(map[string]([]*rpc.VIP)),
+		vipCache:   make(map[string][]*rpc.VIP),
 		jobs:       make(map[string]string),
 	}
 
@@ -291,8 +294,8 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 	return nil
 }
 
-func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]networkv1alpha1.PoolInfo, error) {
-	var pools []networkv1alpha1.PoolInfo
+func (c *VxNetPoolController) getPools(pool *vxnetv1alpha1.VxNetPool) ([]vxnetv1alpha1.PoolInfo, error) {
+	var pools []vxnetv1alpha1.PoolInfo
 	for _, vxnet := range pool.Spec.Vxnets {
 		if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
@@ -304,7 +307,7 @@ func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]netwo
 			for _, item := range blocks.Items {
 				subnets = append(subnets, item.Name)
 			}
-			pools = append(pools, networkv1alpha1.PoolInfo{
+			pools = append(pools, vxnetv1alpha1.PoolInfo{
 				Name:    vxnet.Name,
 				IPPool:  vxnet.Name,
 				Subnets: subnets,
@@ -315,7 +318,7 @@ func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]netwo
 	return pools, nil
 }
 
-func (c *VxNetPoolController) updatePoolStatus(pool *networkv1alpha1.VxNetPool, ready bool) error {
+func (c *VxNetPoolController) updatePoolStatus(pool *vxnetv1alpha1.VxNetPool, ready bool) error {
 	pools, err := c.getPools(pool)
 	if err != nil {
 		return err
@@ -328,7 +331,7 @@ func (c *VxNetPoolController) updatePoolStatus(pool *networkv1alpha1.VxNetPool, 
 	poolCopy.Status.Ready = ready
 	poolCopy.Status.Pools = pools
 
-	_, err = c.clientset.NetworkV1alpha1().VxNetPools().UpdateStatus(context.TODO(), poolCopy, metav1.UpdateOptions{})
+	_, err = c.clientset.VxnetV1alpha1().VxNetPools().UpdateStatus(context.TODO(), poolCopy, metav1.UpdateOptions{})
 	return err
 }
 
@@ -386,13 +389,12 @@ func (c *VxNetPoolController) handleObject(obj interface{}) {
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the vxnet resource that 'owns' it.
 func (c *VxNetPoolController) createIPPool(name string, blockSize int, vxnet *rpc.VxNet) (*networkv1alpha1.IPPool, error) {
-	labels := map[string]string{
-		"controller": name,
-	}
 	ippool := &networkv1alpha1.IPPool{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: labels,
+			Name: name,
+			Labels: map[string]string{
+				"controller": name,
+			},
 		},
 		Spec: networkv1alpha1.IPPoolSpec{
 			Type:       networkv1alpha1.IPPoolTypeLocal,
@@ -413,7 +415,7 @@ func (c *VxNetPoolController) createBlocksFromIPPool(ippool *networkv1alpha1.IPP
 	return c.ipamClient.AutoGenerateBlocksFromPool(ippool.Name)
 }
 
-func (c *VxNetPoolController) prepareQcloudResource(pool *networkv1alpha1.VxNetPool) (bool, error) {
+func (c *VxNetPoolController) prepareQcloudResource(pool *vxnetv1alpha1.VxNetPool) (bool, error) {
 	// 1. check vxnet
 	for _, vxnet := range pool.Spec.Vxnets {
 		if _, ok := c.getVxNetInfo(vxnet.Name); !ok {
@@ -444,7 +446,7 @@ func (c *VxNetPoolController) prepareQcloudResource(pool *networkv1alpha1.VxNetP
 }
 
 // create ippool and ipamblock
-func (c *VxNetPoolController) prepareK8SResource(pool *networkv1alpha1.VxNetPool) (bool, error) {
+func (c *VxNetPoolController) prepareK8SResource(pool *vxnetv1alpha1.VxNetPool) (bool, error) {
 	for _, vxnet := range pool.Spec.Vxnets {
 		ippool, err := c.ippoolsLister.Get(vxnet.Name)
 		if err != nil {

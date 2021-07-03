@@ -22,10 +22,10 @@ import (
 	"context"
 	time "time"
 
-	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
+	vxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
 	versioned "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
+	v1alpha1 "github.com/yunify/hostnic-cni/pkg/client/listers/vxnet/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -61,16 +61,16 @@ func NewFilteredVxNetPoolInformer(client versioned.Interface, resyncPeriod time.
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkV1alpha1().VxNetPools().List(context.TODO(), options)
+				return client.VxnetV1alpha1().VxNetPools().List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NetworkV1alpha1().VxNetPools().Watch(context.TODO(), options)
+				return client.VxnetV1alpha1().VxNetPools().Watch(context.TODO(), options)
 			},
 		},
-		&networkv1alpha1.VxNetPool{},
+		&vxnetv1alpha1.VxNetPool{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *vxNetPoolInformer) defaultInformer(client versioned.Interface, resyncPe
 }
 
 func (f *vxNetPoolInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&networkv1alpha1.VxNetPool{}, f.defaultInformer)
+	return f.factory.InformerFor(&vxnetv1alpha1.VxNetPool{}, f.defaultInformer)
 }
 
 func (f *vxNetPoolInformer) Lister() v1alpha1.VxNetPoolLister {

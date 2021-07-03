@@ -22,7 +22,7 @@ import (
 	"context"
 	"time"
 
-	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
+	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
 	scheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -56,7 +56,7 @@ type vxNetPools struct {
 }
 
 // newVxNetPools returns a VxNetPools
-func newVxNetPools(c *NetworkV1alpha1Client) *vxNetPools {
+func newVxNetPools(c *VxnetV1alpha1Client) *vxNetPools {
 	return &vxNetPools{
 		client: c.RESTClient(),
 	}
