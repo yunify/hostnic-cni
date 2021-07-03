@@ -23,6 +23,8 @@ const (
 	instanceIDFile      = "/etc/qingcloud/instance-id"
 	defaultOpTimeout    = 180 * time.Second
 	defaultWaitInterval = 5 * time.Second
+
+	reservedVIPCount = 12
 )
 
 type Options struct {
@@ -400,10 +402,13 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 		}
 
 		if qcVxNet.Router != nil {
+			if qcVxNet.Router.DYNIPStart == nil || qcVxNet.Router.DYNIPEnd == nil {
+				return nil, fmt.Errorf("vxnet %s should open DHCP", *qcVxNet.VxNetID)
+			}
 			vxnetItem.Gateway = *qcVxNet.Router.ManagerIP
 			vxnetItem.Network = *qcVxNet.Router.IPNetwork
 			vxnetItem.IPStart = *qcVxNet.Router.DYNIPStart
-			vxnetItem.IPEnd = *qcVxNet.Router.DYNIPEnd
+			vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount)
 		} else {
 			return nil, fmt.Errorf("vxnet %s should bind to vpc", *qcVxNet.VxNetID)
 		}
@@ -554,4 +559,10 @@ func IPRangeCount(from, to string) int {
 	startInt := cnet.IPToBigInt(*startIP)
 	endInt := cnet.IPToBigInt(*endIP)
 	return int(big.NewInt(0).Sub(endInt, startInt).Int64() + 1)
+}
+
+func getIPEndAfterReserved(end string, reservedCount int64) string {
+	e := cnet.ParseIP(end)
+	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount))
+	return cnet.BigIntToIP(i).String()
 }

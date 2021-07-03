@@ -50,13 +50,6 @@ import (
 
 const controllerAgentName = "hostnic-controller"
 
-const (
-	// SuccessSynced created used as part of the Event 'reason' when a Foo is synced
-	JobCreated = "Created"
-	JobSucceed = "Succeed"
-	JobFailed  = "Failed"
-)
-
 // Controller is the controller implementation for Foo resources
 type VxNetPoolController struct {
 	// kubeclientset is a standard kubernetes clientset
