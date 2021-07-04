@@ -13,6 +13,7 @@ type NetworkUtilsWrap interface {
 	// for hostnic-node
 	SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 	CleanupNetwork(nic *rpc.HostNic) error
+	CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 
 	// for hostnic-cni
 	SetupPodNetwork(nic *rpc.HostNic, ip string) error
@@ -53,13 +54,8 @@ func (n NetworkUtilsFake) LinkByMacAddr(macAddr string) (netlink.Link, error) {
 func (n NetworkUtilsFake) SetupPodNetwork(nic *rpc.HostNic, ip string) error {
 	return nil
 }
-func (n NetworkUtilsFake) CleanupPodNetwork(nic *rpc.HostNic, ip string) error {
-	return nil
-}
 
-func (n NetworkUtilsFake) CleanupNetwork(nic *rpc.HostNic) error {
-	delete(n.Rules, nic.PrimaryAddress)
-	delete(n.Routes, int(nic.RouteTableNum))
+func (n NetworkUtilsFake) CleanupPodNetwork(nic *rpc.HostNic, ip string) error {
 	return nil
 }
 
@@ -98,6 +94,16 @@ func (n NetworkUtilsFake) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 	n.Rules[nic.PrimaryAddress] = *rule
 
 	return rpc.Phase_Succeeded, nil
+}
+
+func (n NetworkUtilsFake) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
+	return rpc.Phase_Succeeded, nil
+}
+
+func (n NetworkUtilsFake) CleanupNetwork(nic *rpc.HostNic) error {
+	delete(n.Rules, nic.PrimaryAddress)
+	delete(n.Routes, int(nic.RouteTableNum))
+	return nil
 }
 
 func SetupNetworkFakeHelper() {

@@ -59,23 +59,56 @@ func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
 //Note: setup NetworkManager to disable dhcp on nic
 // SetupNicNetwork adds default route to route table (nic-<nic_table>)
 func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
-	// Get links by addrs
-	// case 1: only vxnet-hostnic
-	// case 2: bridge and bridge_slave
-	name := constants.GetHostNicName(nic.VxNet.ID)
-	links, err := n.linksByMacAddr(nic.HardwareAddr)
-	if len(links) == 0 {
-		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v", name, err)
-	}
-	if len(links) > 2 {
-		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %d unexpected", nic.HardwareAddr, len(links))
+	devName := constants.GetHostNicName(nic.VxNet.ID)
+	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
+	master, slave, err := n.getLinksByMacAddr(nic.HardwareAddr)
+	if master == nil && slave == nil {
+		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v %v %v", nic.HardwareAddr, master, slave, err)
 	}
 
-	if len(links) == 1 {
-		if err := n.setupNicNetwork(nic); err != nil {
+	// nic has attached, but bridge not set
+	if slave == nil {
+		if err := n.setupNicNetwork(devName, master); err != nil {
 			return rpc.Phase_CreateAndAttach, err
 		}
-		if err := n.setupBridgeNetwork(links[0], constants.GetHostNicBridgeName(int(nic.RouteTableNum))); err != nil {
+		if err := n.setupBridgeNetwork(master, brName); err != nil {
+			return rpc.Phase_JoinBridge, err
+		}
+		if err := n.setupRouteTable(nic); err != nil {
+			return rpc.Phase_SetRouteTable, err
+		}
+	} else {
+		// do nothing: nic has attached and bridge is ready
+	}
+
+	return rpc.Phase_Succeeded, nil
+}
+
+func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
+	devName := constants.GetHostNicName(nic.VxNet.ID)
+	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
+	master, slave, err := n.getLinksByMacAddr(nic.HardwareAddr)
+	if master == nil && slave == nil {
+		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v %v %v", nic.HardwareAddr, master, slave, err)
+	}
+
+	if slave == nil {
+		// nic has attached, but bridge not set: maybe node reboot, just rebuild all
+		if err := n.setupNicNetwork(devName, master); err != nil {
+			return rpc.Phase_CreateAndAttach, err
+		}
+		if err := n.setupBridgeNetwork(master, brName); err != nil {
+			return rpc.Phase_JoinBridge, err
+		}
+		if err := n.setupRouteTable(nic); err != nil {
+			return rpc.Phase_SetRouteTable, err
+		}
+	} else {
+		// maybe agent reboot, then check all and do some repair
+		if err := n.setupNicNetwork(devName, slave); err != nil {
+			return rpc.Phase_CreateAndAttach, err
+		}
+		if err := n.setupBridgeNetwork(slave, brName); err != nil {
 			return rpc.Phase_JoinBridge, err
 		}
 		if err := n.setupRouteTable(nic); err != nil {
@@ -93,23 +126,18 @@ func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
 
 //Note: setup NetworkManager to disable dhcp on nic
 // SetupNicNetwork adds default route to route table (nic-<nic_table>)
-func (n NetworkUtils) setupNicNetwork(nic *rpc.HostNic) error {
-	name := constants.GetHostNicName(nic.VxNet.ID)
-	link, err := n.LinkByMacAddr(nic.HardwareAddr)
-	if err != nil {
-		return fmt.Errorf("failed to get link %s: %v", name, err)
-	}
-
+func (n NetworkUtils) setupNicNetwork(name string, link netlink.Link) error {
+	var err error
 	if link.Attrs().Name != name {
 		err = netlink.LinkSetName(link, name)
 		if err != nil {
-			return fmt.Errorf("failed to set link %s name to %s: %v", nic.ID, name, err)
+			return fmt.Errorf("failed to set link %d name to %s: %v", link.Attrs().Index, name, err)
 		}
 	}
 	if link.Attrs().Alias != name {
 		err = netlink.LinkSetAlias(link, name)
 		if err != nil {
-			return fmt.Errorf("failed to set link %s alias to %s: %v", nic.HardwareAddr, name, err)
+			return fmt.Errorf("failed to set link %d alias to %s: %v", link.Attrs().Index, name, err)
 		}
 	}
 
@@ -130,13 +158,13 @@ func (n NetworkUtils) setupNicNetwork(nic *rpc.HostNic) error {
 	return nil
 }
 
+//create br and add hostnic to br
 func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error {
-	//create br, then add hostnic to br, and set route to br
 	la := netlink.NewLinkAttrs()
 	la.Name = brName
 	br := &netlink.Bridge{LinkAttrs: la}
 	err := netlink.LinkAdd(br)
-	if err != nil {
+	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to add %s to %s: %v\n", link.Attrs().Name, la.Name, err)
 	}
 	err = netlink.LinkSetMaster(link, br)
@@ -152,32 +180,22 @@ func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error
 }
 
 func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
-	ls, err := n.linksByMacAddr(nic.HardwareAddr)
-	if len(ls) != 2 || err != nil {
-		return fmt.Errorf("failed to get link %s: %v", nic.HardwareAddr, ls)
-	}
-
-	var link netlink.Link
-	for _, l := range ls {
-		if l.Type() == "bridge" {
-			link = l
-		}
-	}
-	if link == nil {
-		return fmt.Errorf("failed to found link %s for bridge", nic.HardwareAddr)
+	master, slave, err := n.getLinksByMacAddr(nic.HardwareAddr)
+	if master == nil || slave == nil || err != nil {
+		return fmt.Errorf("failed to get link %s: %v %v %v", nic.HardwareAddr, master, slave, err)
 	}
 
 	_, dst, _ := net.ParseCIDR(nic.VxNet.Network)
 	routes := []netlink.Route{
-		// Add a direct link route for the host's NIC PodIP only
+		// Add a direct link route for Pods in the same vxnet
 		{
-			LinkIndex: link.Attrs().Index,
+			LinkIndex: master.Attrs().Index,
 			Dst:       dst,
 			Scope:     netlink.SCOPE_LINK,
 			Table:     int(nic.RouteTableNum),
 		},
 		{
-			LinkIndex: link.Attrs().Index,
+			LinkIndex: master.Attrs().Index,
 			Dst: &net.IPNet{
 				IP:   net.IPv4zero,
 				Mask: net.CIDRMask(0, 32),
@@ -190,7 +208,7 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 
 	for _, r := range routes {
 		if err := netlink.RouteAdd(&r); err != nil && !os.IsExist(err) {
-			return fmt.Errorf("failed to add route %v : %v", r, err)
+			return fmt.Errorf("failed to add route %v: %v", r, err)
 		}
 	}
 
@@ -200,7 +218,7 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 	fromPodRule.Src = dst
 	err = netlink.RuleAdd(fromPodRule)
 	if err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed to add rule %s : %v", fromPodRule, err)
+		return fmt.Errorf("failed to add rule %s: %v", fromPodRule, err)
 	}
 
 	return nil
@@ -222,20 +240,24 @@ func (n NetworkUtils) LinkByMacAddr(macAddr string) (netlink.Link, error) {
 	return nil, constants.ErrNicNotFound
 }
 
-func (n NetworkUtils) linksByMacAddr(macAddr string) ([]netlink.Link, error) {
-	var ls []netlink.Link
+func (n NetworkUtils) getLinksByMacAddr(macAddr string) (netlink.Link, netlink.Link, error) {
+	var master, slave netlink.Link
 	links, err := netlink.LinkList()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, link := range links {
 		attr := link.Attrs()
 		if attr.HardwareAddr.String() == macAddr {
-			ls = append(ls, link)
+			if attr.MasterIndex != 0 {
+				slave = link
+			} else {
+				master = link
+			}
 		}
 	}
-	return ls, nil
+	return master, slave, nil
 }
 
 func setArpReply(br string, ip string, macAddress string, action string) error {

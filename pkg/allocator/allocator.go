@@ -173,7 +173,7 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 
 	vxnetName := args.VxNet
 	if nic, ok := a.nics[vxnetName]; ok {
-		log.Infof("Find hostNic for vxnet %s: %v %s", vxnetName, nic.Nic.ID, nic.getPhase())
+		log.Infof("Find hostNic %s: %s", getNicKey(nic.Nic), nic.getPhase())
 		if nic.isOK() {
 			// just update Nic's pods
 			if err := a.addNicPod(nic.Nic, args); err != nil {
@@ -185,7 +185,7 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 			phase, err := networkutils.NetworkHelper.SetupNetwork(nic.Nic)
 			if err != nil {
 				if err := a.setNicStatus(nic.Nic, phase); err != nil {
-					log.Errorf("setNicStatus failed: %s %s %v", nic, phase.String(), err)
+					log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nic.Nic), phase.String(), err)
 				}
 				return nil, err
 			}
@@ -271,6 +271,18 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 }
 
 func (a *Allocator) HostNicCheck() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for _, nic := range a.nics {
+		if !nic.isOK() {
+			phase, err := networkutils.NetworkHelper.CheckAndRepairNetwork(nic.Nic)
+			if err := a.setNicStatus(nic.Nic, phase); err != nil {
+				log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nic.Nic), phase.String(), err)
+			}
+			log.Infof("Repair hostNic %s: %s %v", getNicKey(nic.Nic), nic.getPhase(), err)
+		}
+	}
 }
 
 func (a *Allocator) Start(stopCh <-chan struct{}) error {
