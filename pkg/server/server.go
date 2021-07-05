@@ -66,40 +66,45 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 // AddNetwork handle add pod request
 func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
 	var (
-		err  error
-		info ipam.PoolInfo
-		rst  *current.Result
+		err   error
+		info  ipam.PoolInfo
+		rst   *current.Result
+		podIP string
 	)
 
-	log.Infoln(s.clusterConfig.GetConfig())
+	log.Infof("AddNetwork request (%v)", in.Args)
+	defer func() {
+		log.Infof("AddNetwork reply (%s): from %v get (%s) %v", allocator.GetNicKey(in.Nic), info, podIP, err)
+	}()
 
+	handleID := podHandleKey(in.Args)
 	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
-		rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
-			HandleID: podKey(in.Args),
+		if rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
+			HandleID: handleID,
 			Blocks:   blocks,
 			Info:     &info,
-		})
-		log.Infof("handle server add request (%v) from ipam %v: %v, %v", in.Args, info, rst, err)
+		}); err != nil {
+			log.Errorf("AddNetwork request (%v) from blocks failed: %v", in.Args, err)
+			return nil, err
+		}
 	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
-		rst, err = s.ipamclient.AutoAssignFromPools(ipam.AutoAssignArgs{
-			HandleID: podKey(in.Args),
+		if rst, err = s.ipamclient.AutoAssignFromPools(ipam.AutoAssignArgs{
+			HandleID: handleID,
 			Pools:    pools,
 			Info:     &info,
-		})
-		log.Infof("handle server add request (%v) from ipam %v: %v, %v", in.Args, info, rst, err)
+		}); err != nil {
+			log.Errorf("AddNetwork request (%v) from pools failed: %v", in.Args, err)
+			return nil, err
+		}
 	} else {
-		log.Infof("handle server add request (%v): pool or block not found", in.Args)
+		log.Errorf("AddNetwork request (%v): pool or block not found", in.Args)
 		return nil, fmt.Errorf("pool or block not found")
 	}
 
-	log.Infof("handle server add request (%v)", in.Args)
-	defer func() {
-		log.Infof("handle server add reply (%v %s): %v", in.Nic, rst.IPs[0].Address.IP.String(), err)
-	}()
-
+	podIP = rst.IPs[0].Address.IP.String()
 	in.Args.VxNet = info.IPPool
-	in.Args.PodIP = rst.IPs[0].Address.IP.String()
-	in.IP = rst.IPs[0].Address.IP.String()
+	in.Args.PodIP = podIP
+	in.IP = podIP
 	in.Nic, err = allocator.Alloc.AllocHostNic(in.Args)
 	return in, err
 }
@@ -108,27 +113,19 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
 	var err error
 
-	log.Infoln(s.clusterConfig.GetConfig())
-
-	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
-		err = s.ipamclient.ReleaseByHandle(podKey(in.Args))
-		log.Infof("handle server delete request (%v) from blocks %v: %v", in.Args, blocks, err)
-	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
-		err = s.ipamclient.ReleaseByHandle(podKey(in.Args))
-		log.Infof("handle server delete request (%v) from pool %v: %v", in.Args, pools, err)
-	} else {
-		log.Infof("handle server delete request (%v): pool or block not found", in.Args)
-	}
-
-	log.Infof("handle server delete request (%v)", in.Args)
+	log.Infof("DelNetwork request (%v)", in.Args)
 	defer func() {
-		log.Infof("handle server delete reply (%v): %v", in.Nic, err)
+		log.Infof("DelNetwork reply (%s): %s %v", allocator.GetNicKey(in.Nic), in.IP, err)
 	}()
 
+	handleID := podHandleKey(in.Args)
+	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
+		log.Errorf("DelNetwork request (%v) release by %s failed: %v", in.Args, handleID, err)
+	}
 	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
-	return in, nil
+	return in, err
 }
 
-func podKey(pod *rpc.PodInfo) string {
+func podHandleKey(pod *rpc.PodInfo) string {
 	return pod.Namespace + "-" + pod.Name + "-" + pod.Containter
 }

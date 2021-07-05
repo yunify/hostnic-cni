@@ -336,7 +336,6 @@ func SetupAllocator(conf conf.PoolConf) {
 		if status, ok := Alloc.nics[nic.VxNet.ID]; !ok {
 			// nic not attached at this node
 		} else {
-			// TODO: maybe we need rebuild bridge and rules
 			Alloc.setNicStatus(status.Nic, rpc.Phase_Init)
 			log.Infof("Restore create nic %s %s routetable num %d", nic.ID, getNicKey(status.Nic), status.Nic.RouteTableNum)
 		}
@@ -353,4 +352,11 @@ func getPodKey(info *rpc.PodInfo) string {
 
 func getNicKey(nic *rpc.HostNic) string {
 	return nic.VxNet.ID + "/" + nic.ID
+}
+
+func GetNicKey(nic *rpc.HostNic) string {
+	if nic == nil || nic.VxNet == nil {
+		return ""
+	}
+	return getNicKey(nic)
 }

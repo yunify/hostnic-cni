@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -53,7 +50,7 @@ import (
 
 const controllerAgentName = "hostnic-controller"
 
-// Controller is the controller implementation for Foo resources
+// Controller is the controller implementation for vxnetpool resources
 type VxNetPoolController struct {
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
@@ -74,9 +71,6 @@ type VxNetPoolController struct {
 	// time, and makes it easy to ensure we are never processing the same item
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
-	// recorder is an event recorder for recording Event resources to the
-	// Kubernetes API.
-	recorder record.EventRecorder
 
 	// qingcloud info
 	rwLock    sync.RWMutex
@@ -99,15 +93,7 @@ func NewVxNetPoolController(
 	ippoolInformer networkinformers.IPPoolInformer,
 	poolInformer vxnetinformers.VxNetPoolInformer) *VxNetPoolController {
 
-	// Create event broadcaster
-	// Add sample-controller types to the default Kubernetes Scheme so Events can be
-	// logged for sample-controller types.
 	utilruntime.Must(poolscheme.AddToScheme(scheme.Scheme))
-	klog.V(4).Info("Creating event broadcaster")
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartStructuredLogging(0)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	controller := &VxNetPoolController{
 		kubeclientset: kubeclientset,
@@ -117,8 +103,8 @@ func NewVxNetPoolController(
 		ippoolsSynced: ippoolInformer.Informer().HasSynced,
 		poolsLister:   poolInformer.Lister(),
 		poolsSynced:   poolInformer.Informer().HasSynced,
-		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
-		recorder:      recorder,
+		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
+
 		// iaas
 		vxnetPool:  vxnetPool,
 		vxNetCache: make(map[string]*rpc.VxNet),
@@ -163,7 +149,7 @@ func (c *VxNetPoolController) Run(threadiness int, stopCh <-chan struct{}) error
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting Foo controller")
+	klog.Infof("Starting %s", controllerAgentName)
 
 	go c.timer.Run(stopCh)
 
@@ -174,7 +160,7 @@ func (c *VxNetPoolController) Run(threadiness int, stopCh <-chan struct{}) error
 	}
 
 	klog.Info("Starting workers")
-	// Launch two workers to process Foo resources
+	// Launch two workers to process resources
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
@@ -249,7 +235,7 @@ func (c *VxNetPoolController) processNextWorkItem() bool {
 }
 
 // syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the Foo resource
+// converge the two. It then updates the Status block of the resource
 // with the current status of the resource.
 func (c *VxNetPoolController) syncHandler(name string) error {
 	if name != c.vxnetPool {
@@ -259,8 +245,7 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 
 	pool, err := c.poolsLister.Get(name)
 	if err != nil {
-		// The Foo resource may no longer exist, in which case we stop
-		// processing.
+		// The resource may no longer exist, in which case we stop processing.
 		if errors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("vxnetpool '%s' in work queue no longer exists", name))
 			return nil
@@ -346,9 +331,9 @@ func (c *VxNetPoolController) enqueuePool(obj interface{}) {
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
-// to find the Foo resource that 'owns' it. It does this by looking at the
+// to find the resource that 'owns' it. It does this by looking at the
 // objects metadata.ownerReferences field for an appropriate OwnerReference.
-// It then enqueues that Foo resource to be processed. If the object does not
+// It then enqueues that resource to be processed. If the object does not
 // have an appropriate OwnerReference, it will simply be skipped.
 func (c *VxNetPoolController) handleObject(obj interface{}) {
 	var object metav1.Object
@@ -368,19 +353,18 @@ func (c *VxNetPoolController) handleObject(obj interface{}) {
 	}
 	klog.V(4).Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
-		// If this object is not owned by a Foo, we should not do anything more
-		// with it.
+		// If this object is not owned by a vxnetpool, we should not do anything more with it.
 		if ownerRef.Kind != "VxNetPool" {
 			return
 		}
 
-		foo, err := c.poolsLister.Get(ownerRef.Name)
+		pool, err := c.poolsLister.Get(ownerRef.Name)
 		if err != nil {
-			klog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
+			klog.V(4).Infof("ignoring orphaned object '%s' of pool '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
 
-		c.enqueuePool(foo)
+		c.enqueuePool(pool)
 		return
 	}
 }
