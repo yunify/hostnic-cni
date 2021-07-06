@@ -45,6 +45,7 @@ type Interface interface {
 	ReleaseByHandle(handleID string) error
 
 	GetUtilization(args GetUtilizationArgs) ([]*PoolUtilization, error)
+	GetPoolBlocksUtilization(args GetUtilizationArgs) ([]*PoolBlocksUtilization, error)
 }
 
 // Interface used to access the enabled IPPools.

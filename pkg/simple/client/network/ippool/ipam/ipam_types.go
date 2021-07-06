@@ -59,3 +59,36 @@ type PoolUtilization struct {
 
 	Reserved int
 }
+
+type BlockUtilization struct {
+	// This block's name.
+	Name string
+
+	// Number of possible IPs in this block.
+	Capacity int
+
+	// Number of available IPs in this block.
+	Unallocated int
+
+	Allocate int
+
+	Reserved int
+}
+
+type PoolBlocksUtilization struct {
+	// This pool's name.
+	Name string
+
+	// Number of possible IPs in this block.
+	Capacity int
+
+	// Number of available IPs in this block.
+	Unallocated int
+
+	Allocate int
+
+	Reserved int
+
+	// This blocks' util which belong to pool.
+	Blocks []*BlockUtilization
+}

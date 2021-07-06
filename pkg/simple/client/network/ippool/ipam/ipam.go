@@ -500,6 +500,71 @@ func (c IPAMClient) GetUtilization(args GetUtilizationArgs) ([]*PoolUtilization,
 	return usage, nil
 }
 
+func (c IPAMClient) GetPoolBlocksUtilization(args GetUtilizationArgs) ([]*PoolBlocksUtilization, error) {
+	var usage []*PoolBlocksUtilization
+
+	// Read all pools.
+	allPools, err := c.getAllPools()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allPools) <= 0 {
+		return nil, fmt.Errorf("not found pool")
+	}
+
+	// Identify the ones we want and create a PoolUtilization for each of those.
+	wantAllPools := len(args.Pools) == 0
+	wantedPools := set.FromArray(args.Pools)
+	for _, pool := range allPools {
+		if wantAllPools || wantedPools.Contains(pool.Name) {
+			cap := pool.NumAddresses()
+			reserved := pool.NumReservedAddresses()
+			usage = append(usage, &PoolBlocksUtilization{
+				Name:        pool.Name,
+				Capacity:    cap,
+				Reserved:    reserved,
+				Allocate:    0,
+				Unallocated: cap - reserved,
+			})
+		}
+	}
+
+	// Find which pool this block belongs to.
+	for _, poolUse := range usage {
+		blocks, err := c.ListBlocks(poolUse.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(blocks) <= 0 {
+			continue
+		} else {
+			poolUse.Reserved = 0
+			poolUse.Allocate = 0
+		}
+
+		for _, block := range blocks {
+			cap := block.NumAddresses()
+			free := block.NumFreeAddresses()
+			reserved := block.NumReservedAddresses()
+			poolUse.Allocate += cap - free - reserved
+			poolUse.Reserved += reserved
+			poolUse.Blocks = append(poolUse.Blocks, &BlockUtilization{
+				Name:        block.Name,
+				Capacity:    cap,
+				Reserved:    reserved,
+				Allocate:    cap - free - reserved,
+				Unallocated: free,
+			})
+		}
+
+		poolUse.Unallocated = poolUse.Capacity - poolUse.Allocate - poolUse.Reserved
+	}
+
+	return usage, nil
+}
+
 // findUnclaimedBlock finds a block cidr which does not yet exist within the given list of pools. The provided pools
 // should already be sanitized and only include existing, enabled pools. Note that the block may become claimed
 // between receiving the cidr from this function and attempting to claim the corresponding block as this function
