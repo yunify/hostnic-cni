@@ -543,8 +543,8 @@ func (c IPAMClient) findUnclaimedBlock(pool *v1alpha1.IPPool) (*v1alpha1.IPAMBlo
 			// Check if a block already exists for this subnet.
 			if _, ok := exists[fmt.Sprintf("%s", subnet.String())]; !ok {
 				reservedAttr := &v1alpha1.ReservedAttr{
-					StartOfBlock: pool.StartReservedAddressed(),
-					EndOfBlock:   pool.EndReservedAddressed(),
+					StartOfBlock: StartReservedAddressed(*subnet, pool.Spec.RangeStart),
+					EndOfBlock:   EndReservedAddressed(*subnet, pool.Spec.RangeEnd),
 					Handle:       v1alpha1.ReservedHandle,
 					Note:         v1alpha1.ReservedNote,
 				}

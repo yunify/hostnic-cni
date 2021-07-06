@@ -66,18 +66,19 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 // AddNetwork handle add pod request
 func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
 	var (
-		err   error
-		info  ipam.PoolInfo
-		rst   *current.Result
-		podIP string
+		err      error
+		info     ipam.PoolInfo
+		rst      *current.Result
+		podIP    string
+		handleID string
 	)
 
 	log.Infof("AddNetwork request (%v)", in.Args)
 	defer func() {
-		log.Infof("AddNetwork reply (%s): from %v get (%s) %v", allocator.GetNicKey(in.Nic), info, podIP, err)
+		log.Infof("AddNetwork reply (%s): from (%v) get (%s) nic (%s) %v", handleID, info, podIP, allocator.GetNicKey(in.Nic), err)
 	}()
 
-	handleID := podHandleKey(in.Args)
+	handleID = podHandleKey(in.Args)
 	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
 		if rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
 			HandleID: handleID,
@@ -111,14 +112,17 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 
 // DelNetwork handle del pod request
 func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
-	var err error
+	var (
+		err      error
+		handleID string
+	)
 
 	log.Infof("DelNetwork request (%v)", in.Args)
 	defer func() {
-		log.Infof("DelNetwork reply (%s): %s %v", allocator.GetNicKey(in.Nic), in.IP, err)
+		log.Infof("DelNetwork reply (%s): ip (%s) nic (%s) %v", handleID, in.IP, allocator.GetNicKey(in.Nic), err)
 	}()
 
-	handleID := podHandleKey(in.Args)
+	handleID = podHandleKey(in.Args)
 	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
 		log.Errorf("DelNetwork request (%v) release by %s failed: %v", in.Args, handleID, err)
 	}
