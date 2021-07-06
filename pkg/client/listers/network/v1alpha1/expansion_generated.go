@@ -29,3 +29,7 @@ type IPAMHandleListerExpansion interface{}
 // IPPoolListerExpansion allows custom methods to be added to
 // IPPoolLister.
 type IPPoolListerExpansion interface{}
+
+// VxNetPoolListerExpansion allows custom methods to be added to
+// VxNetPoolLister.
+type VxNetPoolListerExpansion interface{}

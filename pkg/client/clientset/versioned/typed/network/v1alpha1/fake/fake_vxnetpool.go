@@ -21,7 +21,7 @@ package fake
 import (
 	"context"
 
-	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
+	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,12 +32,12 @@ import (
 
 // FakeVxNetPools implements VxNetPoolInterface
 type FakeVxNetPools struct {
-	Fake *FakeVxnetV1alpha1
+	Fake *FakeNetworkV1alpha1
 }
 
-var vxnetpoolsResource = schema.GroupVersionResource{Group: "vxnet.qingcloud.com", Version: "v1alpha1", Resource: "vxnetpools"}
+var vxnetpoolsResource = schema.GroupVersionResource{Group: "network.qingcloud.com", Version: "v1alpha1", Resource: "vxnetpools"}
 
-var vxnetpoolsKind = schema.GroupVersionKind{Group: "vxnet.qingcloud.com", Version: "v1alpha1", Kind: "VxNetPool"}
+var vxnetpoolsKind = schema.GroupVersionKind{Group: "network.qingcloud.com", Version: "v1alpha1", Kind: "VxNetPool"}
 
 // Get takes name of the vxNetPool, and returns the corresponding vxNetPool object, and an error if there is any.
 func (c *FakeVxNetPools) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.VxNetPool, err error) {

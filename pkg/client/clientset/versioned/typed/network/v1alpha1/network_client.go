@@ -29,9 +29,10 @@ type NetworkV1alpha1Interface interface {
 	IPAMBlocksGetter
 	IPAMHandlesGetter
 	IPPoolsGetter
+	VxNetPoolsGetter
 }
 
-// NetworkV1alpha1Client is used to interact with features provided by the network.kubesphere.io group.
+// NetworkV1alpha1Client is used to interact with features provided by the network.qingcloud.com group.
 type NetworkV1alpha1Client struct {
 	restClient rest.Interface
 }
@@ -46,6 +47,10 @@ func (c *NetworkV1alpha1Client) IPAMHandles() IPAMHandleInterface {
 
 func (c *NetworkV1alpha1Client) IPPools() IPPoolInterface {
 	return newIPPools(c)
+}
+
+func (c *NetworkV1alpha1Client) VxNetPools() VxNetPoolInterface {
+	return newVxNetPools(c)
 }
 
 // NewForConfig creates a new NetworkV1alpha1Client for the given config.

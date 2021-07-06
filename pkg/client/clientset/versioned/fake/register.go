@@ -20,7 +20,6 @@ package fake
 
 import (
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
-	vxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,7 +32,6 @@ var codecs = serializer.NewCodecFactory(scheme)
 
 var localSchemeBuilder = runtime.SchemeBuilder{
 	networkv1alpha1.AddToScheme,
-	vxnetv1alpha1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

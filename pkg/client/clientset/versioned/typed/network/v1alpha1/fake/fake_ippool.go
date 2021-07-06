@@ -35,9 +35,9 @@ type FakeIPPools struct {
 	Fake *FakeNetworkV1alpha1
 }
 
-var ippoolsResource = schema.GroupVersionResource{Group: "network.kubesphere.io", Version: "v1alpha1", Resource: "ippools"}
+var ippoolsResource = schema.GroupVersionResource{Group: "network.qingcloud.com", Version: "v1alpha1", Resource: "ippools"}
 
-var ippoolsKind = schema.GroupVersionKind{Group: "network.kubesphere.io", Version: "v1alpha1", Kind: "IPPool"}
+var ippoolsKind = schema.GroupVersionKind{Group: "network.qingcloud.com", Version: "v1alpha1", Kind: "IPPool"}
 
 // Get takes name of the iPPool, and returns the corresponding iPPool object, and an error if there is any.
 func (c *FakeIPPools) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.IPPool, err error) {

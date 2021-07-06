@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	v1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
-	vxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/vxnet/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -53,17 +52,15 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=network.kubesphere.io, Version=v1alpha1
+	// Group=network.qingcloud.com, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("ipamblocks"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().IPAMBlocks().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("ipamhandles"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().IPAMHandles().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("ippools"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().IPPools().Informer()}, nil
-
-		// Group=vxnet.qingcloud.com, Version=v1alpha1
-	case vxnetv1alpha1.SchemeGroupVersion.WithResource("vxnetpools"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Vxnet().V1alpha1().VxNetPools().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("vxnetpools"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Network().V1alpha1().VxNetPools().Informer()}, nil
 
 	}
 

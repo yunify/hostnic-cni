@@ -30,6 +30,8 @@ type Interface interface {
 	IPAMHandles() IPAMHandleInformer
 	// IPPools returns a IPPoolInformer.
 	IPPools() IPPoolInformer
+	// VxNetPools returns a VxNetPoolInformer.
+	VxNetPools() VxNetPoolInformer
 }
 
 type version struct {
@@ -56,4 +58,9 @@ func (v *version) IPAMHandles() IPAMHandleInformer {
 // IPPools returns a IPPoolInformer.
 func (v *version) IPPools() IPPoolInformer {
 	return &iPPoolInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VxNetPools returns a VxNetPoolInformer.
+func (v *version) VxNetPools() VxNetPoolInformer {
+	return &vxNetPoolInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

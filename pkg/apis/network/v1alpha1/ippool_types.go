@@ -31,10 +31,10 @@ const (
 
 	// scope type > id > name
 	// id used to detect cidr overlap
-	IPPoolTypeLabel    = "ippool.network.kubesphere.io/type"
-	IPPoolNameLabel    = "ippool.network.kubesphere.io/name"
-	IPPoolIDLabel      = "ippool.network.kubesphere.io/id"
-	IPPoolDefaultLabel = "ippool.network.kubesphere.io/default"
+	IPPoolTypeLabel    = "ippool.network.qingcloud.com/type"
+	IPPoolNameLabel    = "ippool.network.qingcloud.com/name"
+	IPPoolIDLabel      = "ippool.network.qingcloud.com/id"
+	IPPoolDefaultLabel = "ippool.network.qingcloud.com/default"
 
 	IPPoolTypeNone   = "none"
 	IPPoolTypeLocal  = "local"
@@ -231,4 +231,4 @@ func (p IPPool) V4() bool {
 	return false
 }
 
-const IPPoolFinalizer = "finalizers.network.kubesphere.io/ippool"
+const IPPoolFinalizer = "finalizers.network.qingcloud.com/ippool"

@@ -35,9 +35,9 @@ type FakeIPAMHandles struct {
 	Fake *FakeNetworkV1alpha1
 }
 
-var ipamhandlesResource = schema.GroupVersionResource{Group: "network.kubesphere.io", Version: "v1alpha1", Resource: "ipamhandles"}
+var ipamhandlesResource = schema.GroupVersionResource{Group: "network.qingcloud.com", Version: "v1alpha1", Resource: "ipamhandles"}
 
-var ipamhandlesKind = schema.GroupVersionKind{Group: "network.kubesphere.io", Version: "v1alpha1", Kind: "IPAMHandle"}
+var ipamhandlesKind = schema.GroupVersionKind{Group: "network.qingcloud.com", Version: "v1alpha1", Kind: "IPAMHandle"}
 
 // Get takes name of the iPAMHandle, and returns the corresponding iPAMHandle object, and an error if there is any.
 func (c *FakeIPAMHandles) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.IPAMHandle, err error) {

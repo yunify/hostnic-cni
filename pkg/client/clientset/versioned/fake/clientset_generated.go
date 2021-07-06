@@ -22,8 +22,6 @@ import (
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/network/v1alpha1"
 	fakenetworkv1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/network/v1alpha1/fake"
-	vxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/vxnet/v1alpha1"
-	fakevxnetv1alpha1 "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/typed/vxnet/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -81,9 +79,4 @@ var _ clientset.Interface = &Clientset{}
 // NetworkV1alpha1 retrieves the NetworkV1alpha1Client
 func (c *Clientset) NetworkV1alpha1() networkv1alpha1.NetworkV1alpha1Interface {
 	return &fakenetworkv1alpha1.FakeNetworkV1alpha1{Fake: &c.Fake}
-}
-
-// VxnetV1alpha1 retrieves the VxnetV1alpha1Client
-func (c *Clientset) VxnetV1alpha1() vxnetv1alpha1.VxnetV1alpha1Interface {
-	return &fakevxnetv1alpha1.FakeVxnetV1alpha1{Fake: &c.Fake}
 }

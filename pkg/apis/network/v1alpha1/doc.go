@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The KubeSphere authors.
+Copyright 2020 The KubeSphere authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,7 @@ limitations under the License.
 */
 
 // Package v1alpha1 contains API Schema definitions for the network v1alpha1 API group
-// +k8s:openapi-gen=true
 // +k8s:deepcopy-gen=package,register
-// +k8s:conversion-gen=kubesphere.io/kubesphere/pkg/apis/network
 // +k8s:defaulter-gen=TypeMeta
-// +groupName=network.kubesphere.io
+// +groupName=network.qingcloud.com
 package v1alpha1

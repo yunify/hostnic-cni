@@ -6,14 +6,14 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: (devel)
   creationTimestamp: null
-  name: ipamblocks.network.kubesphere.io
+  name: ipamhandles.network.qingcloud.com
 spec:
-  group: network.kubesphere.io
+  group: network.qingcloud.com
   names:
-    kind: IPAMBlock
-    listKind: IPAMBlockList
-    plural: ipamblocks
-    singular: ipamblock
+    kind: IPAMHandle
+    listKind: IPAMHandleList
+    plural: ipamhandles
+    singular: ipamhandle
   scope: Cluster
   versions:
   - name: v1alpha1
@@ -33,42 +33,20 @@ spec:
           metadata:
             type: object
           spec:
-            description: Specification of the IPAMBlock.
+            description: Specification of the IPAMHandle.
             properties:
-              allocations:
-                description: 'TODO: https://github.com/kubernetes-sigs/controller-tools/issues/461'
-                items:
-                  nullable: true
+              block:
+                additionalProperties:
                   type: integer
-                type: array
-              attributes:
-                items:
-                  properties:
-                    handle_id:
-                      type: string
-                    secondary:
-                      additionalProperties:
-                        type: string
-                      type: object
-                  type: object
-                type: array
-              cidr:
-                type: string
+                type: object
               deleted:
                 type: boolean
-              id:
-                format: int32
-                type: integer
-              unallocated:
-                items:
-                  type: integer
-                type: array
+              handleID:
+                type: string
             required:
-            - attributes
-            - cidr
+            - block
             - deleted
-            - id
-            - unallocated
+            - handleID
             type: object
         type: object
     served: true
