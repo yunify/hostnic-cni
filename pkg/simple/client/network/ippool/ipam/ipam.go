@@ -189,11 +189,12 @@ func (c IPAMClient) findOrClaimBlock(pool *v1alpha1.IPPool, minFreeIps int) (*v1
 	if err != nil {
 		return nil, err
 	}
+	blockName := b.BlockName()
 	controllerutil.SetControllerReference(pool, b, scheme.Scheme)
 	b, err = c.client.NetworkV1alpha1().IPAMBlocks().Create(context.Background(), b, metav1.CreateOptions{})
 	if err != nil {
 		if k8serrors.IsAlreadyExists(err) {
-			b, err = c.queryBlock(b.BlockName())
+			b, err = c.queryBlock(blockName)
 		}
 		if err != nil {
 			return nil, err
@@ -783,11 +784,12 @@ func (c IPAMClient) AutoGenerateBlocksFromPool(poolName string) error {
 				Note:         v1alpha1.ReservedNote,
 			}
 			block := v1alpha1.NewBlock(pool, *subnet, reservedAttr)
+			blockName := block.BlockName()
 			controllerutil.SetControllerReference(pool, block, scheme.Scheme)
 			block, err = c.client.NetworkV1alpha1().IPAMBlocks().Create(context.Background(), block, metav1.CreateOptions{})
 			if err != nil {
 				if k8serrors.IsAlreadyExists(err) {
-					block, err = c.queryBlock(block.BlockName())
+					block, err = c.queryBlock(blockName)
 				}
 				if err != nil {
 					return err
