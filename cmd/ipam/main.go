@@ -41,11 +41,15 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
 
+var qps, burst int
+
 func main() {
 	//parse flag and setup klog
 	log.InitFlags(flag.CommandLine)
 	flag.Set("logtostderr", "false")
 	flag.Set("alsologtostderr", "true")
+	flag.IntVar(&qps, "k8s-api-qps", 80, "maximum QPS to k8s apiserver from this client.")
+	flag.IntVar(&burst, "k8s-api-burst", 100, "maximum burst for throttle from this client.")
 	dbOpts := db.NewLevelDBOptions()
 	dbOpts.AddFlags()
 	flag.Parse()
@@ -74,6 +78,8 @@ func main() {
 		log.Fatalf("Error building kubeconfig: %v", err)
 	}
 
+	cfg.QPS = float32(qps)
+	cfg.Burst = burst
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		log.Fatalf("Error building kubernetes clientset: %v", err)
