@@ -31,7 +31,7 @@ const (
 	DefaultSocketPath     = "/var/run/hostnic/hostnic.socket"
 	DefaultUnixSocketPath = "unix://" + DefaultSocketPath
 	DefaultConfigPath     = "/etc/hostnic"
-	DefaultConfigName     = "hostnic.json"
+	DefaultConfigName     = "hostnic"
 
 	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
@@ -62,6 +62,9 @@ const (
 
 	ToContainerRulePriority   = 1535
 	FromContainerRulePriority = 1536
+
+	CalicoAnnotationPodIP  = "cni.projectcalico.org/podIP"
+	CalicoAnnotationPodIPs = "cni.projectcalico.org/podIPs"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {

@@ -2,6 +2,7 @@ package conf
 
 import (
 	"fmt"
+
 	"github.com/spf13/viper"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 )
@@ -26,7 +27,8 @@ type PoolConf struct {
 }
 
 type ServerConf struct {
-	ServerPath string `json:"serverPath,omitempty" yaml:"serverPath,omitempty"`
+	ServerPath    string `json:"serverPath,omitempty" yaml:"serverPath,omitempty"`
+	NetworkPolicy string `json:"networkPolicy,omitempty" yaml:"networkPolicy,omitempty"`
 }
 
 // TryLoadFromDisk loads configuration from default location after server startup

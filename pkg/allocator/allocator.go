@@ -252,7 +252,6 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 			if err := a.delNicPod(status.Nic, pod); err != nil {
 				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err)
 			}
-			args.Containter = pod.Containter
 			return status.Nic, pod.PodIP, nil
 		}
 	}

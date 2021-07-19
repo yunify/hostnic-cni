@@ -85,7 +85,7 @@ func main() {
 		log.Fatalf("Error building kubernetes clientset: %v", err)
 	}
 
-	client, err := clientset.NewForConfig(cfg)
+	ipamclient, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		log.Fatalf("Error building example clientset: %v", err)
 	}
@@ -100,7 +100,7 @@ func main() {
 
 	log.Info("all setup done, startup daemon")
 	allocator.Alloc.Start(stopCh)
-	server.NewIPAMServer(conf.Server, clusterConfig, ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
+	server.NewIPAMServer(conf.Server, clusterConfig, kubeClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
 
 	<-stopCh
 	log.Info("daemon exited")

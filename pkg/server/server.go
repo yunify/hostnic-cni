@@ -2,30 +2,37 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 
 	"github.com/containernetworking/cni/pkg/types/current"
 	"google.golang.org/grpc"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/allocator"
-	conf2 "github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
 
 type IPAMServer struct {
-	conf          conf2.ServerConf
+	conf          conf.ServerConf
+	kubeclient    kubernetes.Interface
 	ipamclient    ipam.IPAMClient
 	clusterConfig *config.ClusterConfig
 }
 
-func NewIPAMServer(conf conf2.ServerConf, clusterConfig *config.ClusterConfig, ipamclient ipam.IPAMClient) *IPAMServer {
+func NewIPAMServer(conf conf.ServerConf, clusterConfig *config.ClusterConfig, kubeclient kubernetes.Interface, ipamclient ipam.IPAMClient) *IPAMServer {
 	return &IPAMServer{
 		conf:          conf,
+		kubeclient:    kubeclient,
 		ipamclient:    ipamclient,
 		clusterConfig: clusterConfig,
 	}
@@ -103,6 +110,17 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	}
 
 	podIP = rst.IPs[0].Address.IP.String()
+
+	if s.conf.NetworkPolicy == "calico" {
+		// patch pod's annotations for calico policy
+		if err := s.patchPodIPAnnotations(in.Args.Namespace, in.Args.Name, podIP); err != nil {
+			if err := s.ipamclient.ReleaseByHandle(handleID); err != nil {
+				log.Errorf("AddNetwork request (%v) ReleaseByHandle failed: %v", in.Args, err)
+			}
+			return nil, err
+		}
+	}
+
 	in.Args.VxNet = info.IPPool
 	in.Args.PodIP = podIP
 	in.IP = podIP
@@ -130,6 +148,34 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	return in, err
 }
 
+func (s *IPAMServer) patchPodIPAnnotations(ns, podName string, ip string) error {
+	patch, err := calculateAnnotationPatch(constants.CalicoAnnotationPodIP, ip, constants.CalicoAnnotationPodIPs, ip)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kubeclient.CoreV1().Pods(ns).Patch(context.TODO(), podName, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "status")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func podHandleKey(pod *rpc.PodInfo) string {
 	return pod.Namespace + "-" + pod.Name + "-" + pod.Containter
+}
+
+func calculateAnnotationPatch(namesAndValues ...string) ([]byte, error) {
+	patch := map[string]interface{}{}
+	metadata := map[string]interface{}{}
+	patch["metadata"] = metadata
+	annotations := map[string]interface{}{}
+	metadata["annotations"] = annotations
+
+	for i := 0; i < len(namesAndValues); i += 2 {
+		annotations[namesAndValues[i]] = namesAndValues[i+1]
+	}
+
+	return json.Marshal(patch)
 }

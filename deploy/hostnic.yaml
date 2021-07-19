@@ -393,6 +393,7 @@ rules:
       - ""
     resources:
       - pods
+      - pods/status
       - nodes
       - configmaps
       - namespaces
@@ -447,6 +448,9 @@ data:
         "poolHigh":5,
         "poolLow":3,
         "maxNic":60
+      },
+      "server":{
+        "networkPolicy": "calico"
       }
     }
   hostnic-cni: |
