@@ -39,6 +39,7 @@ import (
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
@@ -70,8 +71,7 @@ type VxNetPoolController struct {
 	workqueue workqueue.RateLimitingInterface
 
 	// qingcloud info
-	rwLock    sync.RWMutex
-	vxnetPool string
+	rwLock sync.RWMutex
 	// vxnet cache data
 	vxNetCache map[string]*rpc.VxNet
 	// vip cache data
@@ -86,7 +86,6 @@ type VxNetPoolController struct {
 func NewVxNetPoolController(
 	kubeclientset kubernetes.Interface,
 	clientset clientset.Interface,
-	vxnetPool string,
 	ippoolInformer networkinformers.IPPoolInformer,
 	poolInformer networkinformers.VxNetPoolInformer) *VxNetPoolController {
 
@@ -103,7 +102,6 @@ func NewVxNetPoolController(
 		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
 
 		// iaas
-		vxnetPool:  vxnetPool,
 		vxNetCache: make(map[string]*rpc.VxNet),
 		vipCache:   make(map[string][]*rpc.VIP),
 		jobs:       make(map[string]string),
@@ -235,7 +233,7 @@ func (c *VxNetPoolController) processNextWorkItem() bool {
 // converge the two. It then updates the Status block of the resource
 // with the current status of the resource.
 func (c *VxNetPoolController) syncHandler(name string) error {
-	if name != c.vxnetPool {
+	if name != constants.IPAMVxnetPoolName {
 		klog.Infof("Don't care about %s", name)
 		return nil
 	}
@@ -522,7 +520,7 @@ func (c *VxNetPoolController) setJob(vips, job string) {
 
 func (c *VxNetPoolController) qingCloudSync() {
 	var change bool
-	pool, err := c.poolsLister.Get(c.vxnetPool)
+	pool, err := c.poolsLister.Get(constants.IPAMVxnetPoolName)
 	if err != nil {
 		klog.Errorf("Get VxNetPool failed: %v", err)
 		return

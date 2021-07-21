@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -16,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sinformers "k8s.io/client-go/informers"
 	coreinfomers "k8s.io/client-go/informers/core/v1"
-	clientset "k8s.io/client-go/kubernetes"
+	k8sclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -26,16 +27,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
-	kubesphereclient "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
-	ksinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
+	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	networkInformer "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/controller/utils"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool"
 )
 
-var (
-	ErrCIDROverlap = fmt.Errorf("CIDR is overlap")
-)
+type workItem struct {
+	Event string
+	Name  string
+}
 
 type IPPoolController struct {
 	eventBroadcaster record.EventBroadcaster
@@ -54,8 +57,8 @@ type IPPoolController struct {
 	ipamblockInformer networkInformer.IPAMBlockInformer
 	ipamblockSynced   cache.InformerSynced
 
-	client           clientset.Interface
-	kubesphereClient kubesphereclient.Interface
+	k8sclient k8sclientset.Interface
+	client    clientset.Interface
 }
 
 func (c *IPPoolController) enqueueIPPools(obj interface{}) {
@@ -77,7 +80,7 @@ func (c *IPPoolController) addFinalizer(pool *networkv1alpha1.IPPool) error {
 	clone.Labels[networkv1alpha1.IPPoolNameLabel] = clone.Name
 	clone.Labels[networkv1alpha1.IPPoolTypeLabel] = clone.Spec.Type
 	clone.Labels[networkv1alpha1.IPPoolIDLabel] = fmt.Sprintf("%d", clone.ID())
-	pool, err := c.kubesphereClient.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
+	pool, err := c.client.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
 	if err != nil {
 		klog.V(3).Infof("Error adding  finalizer to pool %s: %v", pool.Name, err)
 		return err
@@ -89,7 +92,7 @@ func (c *IPPoolController) addFinalizer(pool *networkv1alpha1.IPPool) error {
 func (c *IPPoolController) removeFinalizer(pool *networkv1alpha1.IPPool) error {
 	clone := pool.DeepCopy()
 	controllerutil.RemoveFinalizer(clone, networkv1alpha1.IPPoolFinalizer)
-	pool, err := c.kubesphereClient.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
+	pool, err := c.client.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
 	if err != nil {
 		klog.V(3).Infof("Error removing  finalizer from pool %s: %v", pool.Name, err)
 		return err
@@ -132,7 +135,7 @@ func (c *IPPoolController) ValidateCreate(obj runtime.Object) error {
 		}
 	}
 
-	pools, err := c.kubesphereClient.NetworkV1alpha1().IPPools().List(context.TODO(), metav1.ListOptions{
+	pools, err := c.client.NetworkV1alpha1().IPPools().List(context.TODO(), metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{
 			networkv1alpha1.IPPoolIDLabel: fmt.Sprintf("%d", b.ID()),
 		}).String(),
@@ -151,7 +154,7 @@ func (c *IPPoolController) ValidateCreate(obj runtime.Object) error {
 }
 
 func (c *IPPoolController) validateDefaultIPPool(p *networkv1alpha1.IPPool) error {
-	pools, err := c.kubesphereClient.NetworkV1alpha1().IPPools().List(context.TODO(), metav1.ListOptions{
+	pools, err := c.client.NetworkV1alpha1().IPPools().List(context.TODO(), metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(
 			labels.Set{
 				networkv1alpha1.IPPoolDefaultLabel: "",
@@ -219,7 +222,7 @@ func (c *IPPoolController) disableIPPool(old *networkv1alpha1.IPPool) error {
 	clone := old.DeepCopy()
 	clone.Spec.Disabled = true
 
-	_, err := c.kubesphereClient.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
+	_, err := c.client.NetworkV1alpha1().IPPools().Update(context.TODO(), clone, metav1.UpdateOptions{})
 
 	return err
 }
@@ -234,7 +237,7 @@ func (c *IPPoolController) updateIPPoolStatus(old *networkv1alpha1.IPPool) error
 		return nil
 	}
 
-	_, err = c.kubesphereClient.NetworkV1alpha1().IPPools().UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
+	_, err = c.client.NetworkV1alpha1().IPPools().UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update ippool %s status  %v", old.Name, err)
 	}
@@ -326,8 +329,10 @@ func (c *IPPoolController) Run(workers int, stopCh <-chan struct{}) error {
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runIPPoolWorker, time.Second, stopCh)
-		go wait.Until(c.runNSWorker, time.Second, stopCh)
 	}
+
+	// only one thread to handle ns
+	go wait.Until(c.runNSWorker, time.Second, stopCh)
 
 	<-stopCh
 	return nil
@@ -365,60 +370,132 @@ func (c *IPPoolController) runNSWorker() {
 	}
 }
 
-func (c *IPPoolController) processNS(name string) error {
-	ns, err := c.nsInformer.Lister().Get(name)
-	if apierrors.IsNotFound(err) {
+func contains(items []string, item string) bool {
+	for _, v := range items {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *IPPoolController) getFreeIPAMBlock(apps map[string][]string) (string, error) {
+	vxnetpool, err := c.client.NetworkV1alpha1().VxNetPools().Get(context.TODO(), constants.IPAMVxnetPoolName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	status := vxnetpool.Status
+	if !status.Ready {
+		return "", fmt.Errorf("waiting for VxNetPool %s to be ready", constants.IPAMVxnetPoolName)
+	}
+
+	used := make(map[string]struct{})
+	for k, v := range apps {
+		if k == constants.IPAMDefaultPoolKey {
+			for _, pool := range status.Pools {
+				if contains(v, pool.IPPool) {
+					for _, subnet := range pool.Subnets {
+						used[subnet] = struct{}{}
+					}
+				}
+			}
+		} else {
+			for _, subnet := range v {
+				used[subnet] = struct{}{}
+			}
+		}
+	}
+
+	for _, pool := range status.Pools {
+		for _, subnet := range pool.Subnets {
+			if _, ok := used[subnet]; !ok {
+				return subnet, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no free subnet was found")
+}
+
+func (c *IPPoolController) processNS(item workItem) error {
+	klog.V(4).Infof("Processing namespace %v", item)
+	startTime := time.Now()
+	defer func() {
+		klog.V(4).Infof("Finished processing namespace %v (%v)", item, time.Since(startTime))
+	}()
+
+	_, err := c.nsInformer.Lister().Get(item.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	cm, err := c.k8sclient.CoreV1().ConfigMaps(constants.IPAMConfigNamespace).Get(context.TODO(), constants.IPAMConfigName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if cm.Data[constants.IPAMAutoAssignForNamespace] != "on" {
+		klog.V(4).Infof("Skip handle %v: autoAssign is off", item)
 		return nil
 	}
 
-	/*
-		var poolsName []string
-		if ns.Labels != nil {
-			pools, err := c.ippoolInformer.Lister().List(labels.SelectorFromSet(labels.Set{
-				networkv1alpha1.IPPoolDefaultLabel: "",
-			}))
-			if err != nil {
-				return err
-			}
+	var apps map[string][]string
+	if err := json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &apps); err != nil {
+		return err
+	}
 
-			for _, pool := range pools {
-				if pool.Status.Synced {
-					poolsName = append(poolsName, pool.Name)
-				}
-			}
+	change := false
+	if item.Event == constants.EventADD {
+		if subnets, ok := apps[item.Name]; ok && len(subnets) > 0 {
+			// ns has sunbet config, do nothing
+			klog.V(4).Infof("Namespace %s has subnets %v", item.Name, subnets)
+			return nil
 		}
 
-		clone := ns.DeepCopy()
-		err = c.provider.UpdateNamespace(clone, poolsName)
+		// ns has no sunbet, pick one for it
+		subnet, err := c.getFreeIPAMBlock(apps)
 		if err != nil {
 			return err
 		}
-	*/
-
-	clone := ns.DeepCopy()
-	if reflect.DeepEqual(clone, ns) {
-		return nil
+		klog.V(4).Infof("Namespace %s get subnet %s", item.Name, subnet)
+		change = true
+		apps[item.Name] = []string{subnet}
 	}
 
-	_, err = c.client.CoreV1().Namespaces().Update(context.TODO(), clone, metav1.UpdateOptions{})
-	return err
+	if item.Event == constants.EventDelete {
+		// delete ns's subnet config
+		if _, ok := apps[item.Name]; ok {
+			change = true
+			delete(apps, item.Name)
+		}
+	}
+
+	if change {
+		data, _ := json.Marshal(apps)
+		clone := cm.DeepCopy()
+		clone.Data[constants.IPAMConfigDate] = string(data)
+		_, err := c.k8sclient.CoreV1().ConfigMaps(constants.IPAMConfigNamespace).Update(context.TODO(), clone, metav1.UpdateOptions{})
+		return err
+	}
+
+	return nil
 }
 
 func (c *IPPoolController) processNSItem() bool {
-	key, quit := c.nsQueue.Get()
+	obj, quit := c.nsQueue.Get()
 	if quit {
 		return false
 	}
-	defer c.nsQueue.Done(key)
+	defer c.nsQueue.Done(obj)
 
-	err := c.processNS(key.(string))
+	err := c.processNS(obj.(workItem))
 	if err == nil {
-		c.nsQueue.Forget(key)
+		c.nsQueue.Forget(obj)
 		return true
 	}
 
-	c.nsQueue.AddRateLimited(key)
-	utilruntime.HandleError(fmt.Errorf("error processing ns %v (will retry): %v", key, err))
+	c.nsQueue.AddRateLimited(obj)
+	utilruntime.HandleError(fmt.Errorf("error processing ns %v (will retry): %v", obj, err))
 	return true
 }
 
@@ -432,38 +509,22 @@ func (c *IPPoolController) enqueueIPAMBlocks(obj interface{}) {
 	c.ippoolQueue.Add(poolName)
 }
 
-func (c *IPPoolController) enqueueNamespace(old interface{}, new interface{}) {
-	workspaceOld := ""
-	if old != nil {
-		nsOld := old.(*corev1.Namespace)
-		if nsOld.Labels != nil {
-			//workspaceOld = nsOld.Labels[constants.WorkspaceLabelKey]
-		}
-	}
-
-	nsNew := new.(*corev1.Namespace)
-	workspaceNew := ""
-	if nsNew.Labels != nil {
-		//workspaceNew = nsNew.Labels[constants.WorkspaceLabelKey]
-	}
-
-	if workspaceOld != workspaceNew {
-		c.nsQueue.Add(nsNew.Name)
-	}
+func (c *IPPoolController) enqueueNamespace(obj interface{}) {
+	c.nsQueue.Add(obj)
 }
 
 func NewIPPoolController(
+	k8sclient k8sclientset.Interface,
 	client clientset.Interface,
-	kubesphereClient kubesphereclient.Interface,
-	kubesphereInformers ksinformers.SharedInformerFactory,
-	kubernetesInformers k8sinformers.SharedInformerFactory,
+	k8sInformers k8sinformers.SharedInformerFactory,
+	informers informers.SharedInformerFactory,
 	provider ippool.Provider) *IPPoolController {
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(func(format string, args ...interface{}) {
 		klog.Info(fmt.Sprintf(format, args))
 	})
-	broadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{Interface: client.CoreV1().Events("")})
+	broadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{Interface: k8sclient.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "ippool-controller"})
 
 	c := &IPPoolController{
@@ -471,47 +532,23 @@ func NewIPPoolController(
 		eventRecorder:    recorder,
 		ippoolQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ippool"),
 		nsQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ippool-ns"),
+		k8sclient:        k8sclient,
 		client:           client,
-		kubesphereClient: kubesphereClient,
 		provider:         provider,
 	}
-	c.ippoolInformer = kubesphereInformers.Network().V1alpha1().IPPools()
+	c.ippoolInformer = informers.Network().V1alpha1().IPPools()
 	c.ippoolSynced = c.ippoolInformer.Informer().HasSynced
-	c.ipamblockInformer = kubesphereInformers.Network().V1alpha1().IPAMBlocks()
+	c.ipamblockInformer = informers.Network().V1alpha1().IPAMBlocks()
 	c.ipamblockSynced = c.ipamblockInformer.Informer().HasSynced
-	c.nsInformer = kubernetesInformers.Core().V1().Namespaces()
+	c.nsInformer = k8sInformers.Core().V1().Namespaces()
 	c.nsSynced = c.nsInformer.Informer().HasSynced
 
 	c.ippoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: c.enqueueIPPools,
 		UpdateFunc: func(old, new interface{}) {
-			_, defaultOld := old.(*networkv1alpha1.IPPool).Labels[networkv1alpha1.IPPoolDefaultLabel]
-			_, defaultNew := new.(*networkv1alpha1.IPPool).Labels[networkv1alpha1.IPPoolDefaultLabel]
-			if defaultOld != defaultNew {
-				nss, err := c.nsInformer.Lister().List(labels.Everything())
-				if err != nil {
-					return
-				}
-
-				for _, ns := range nss {
-					c.enqueueNamespace(nil, ns)
-				}
-			}
 			c.enqueueIPPools(new)
 		},
-		DeleteFunc: func(new interface{}) {
-			_, defaultNew := new.(*networkv1alpha1.IPPool).Labels[networkv1alpha1.IPPoolDefaultLabel]
-			if defaultNew {
-				nss, err := c.nsInformer.Lister().List(labels.Everything())
-				if err != nil {
-					return
-				}
-
-				for _, ns := range nss {
-					c.enqueueNamespace(nil, ns)
-				}
-			}
-		},
+		DeleteFunc: nil,
 	})
 
 	//just for update ippool status
@@ -524,10 +561,19 @@ func NewIPPoolController(
 	})
 
 	c.nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(new interface{}) {
-			c.enqueueNamespace(nil, new)
+		AddFunc: func(obj interface{}) {
+			c.enqueueNamespace(workItem{
+				Name:  obj.(*corev1.Namespace).Name,
+				Event: constants.EventADD,
+			})
 		},
-		UpdateFunc: c.enqueueNamespace,
+		UpdateFunc: nil,
+		DeleteFunc: func(obj interface{}) {
+			c.enqueueNamespace(workItem{
+				Name:  obj.(*corev1.Namespace).Name,
+				Event: constants.EventDelete,
+			})
+		},
 	})
 
 	return c

@@ -622,7 +622,6 @@ spec:
             - /app/hostnic-controller
             - --v=5
             - --log_file=/var/run/hostnic/controller.log
-            - --vxnet-pool=v-pool
           volumeMounts:
             - mountPath: /root/.qingcloud/
               name: apiaccesskey

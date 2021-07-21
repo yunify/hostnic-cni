@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/yunify/hostnic-cni/pkg/constants"
+
 	corev1 "k8s.io/api/core/v1"
 	v1Informers "k8s.io/client-go/informers/core/v1"
 	v1Listers "k8s.io/client-go/listers/core/v1"
@@ -23,24 +25,14 @@ data:
     }
 */
 
-const (
-	DefaultIPAMConfigNamespace = "kube-system"
-	DefaultIPAMConfigName      = "hostnic-ipam-config"
-	DefaultIPAMConfigDate      = "ipam"
-	IPAMDefaultPoolKey         = "Default"
-
-	EeventADD    = "add"
-	EeventUpdate = "update"
-	EeventDelete = "delete"
-)
-
 type ClusterConfig struct {
 	configMapSynced   cache.InformerSynced
 	configMapLister   v1Listers.ConfigMapLister
 	configMapInformer cache.SharedIndexInformer
 
-	lock *sync.RWMutex
-	apps map[string][]string
+	lock       *sync.RWMutex
+	apps       map[string][]string
+	autoAssign bool
 }
 
 func NewClusterConfig(configMapInformer v1Informers.ConfigMapInformer) *ClusterConfig {
@@ -53,17 +45,17 @@ func NewClusterConfig(configMapInformer v1Informers.ConfigMapInformer) *ClusterC
 
 	configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			c.configHandle(obj.(*corev1.ConfigMap), EeventADD)
+			c.configHandle(obj.(*corev1.ConfigMap), constants.EventADD)
 		},
 		UpdateFunc: func(old, new interface{}) {
 			newconf := new.(*corev1.ConfigMap)
 			oldConf := old.(*corev1.ConfigMap)
 			if !reflect.DeepEqual(newconf.Data, oldConf.Data) {
-				c.configHandle(newconf, EeventUpdate)
+				c.configHandle(newconf, constants.EventUpdate)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			c.configHandle(obj.(*corev1.ConfigMap), EeventDelete)
+			c.configHandle(obj.(*corev1.ConfigMap), constants.EventDelete)
 		},
 	})
 
@@ -82,17 +74,24 @@ func (c *ClusterConfig) configHandle(cm *corev1.ConfigMap, event string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if cm.Namespace == DefaultIPAMConfigNamespace && cm.Name == DefaultIPAMConfigName {
-		if event == EeventDelete || cm.DeletionTimestamp != nil {
+	if cm.Namespace == constants.IPAMConfigNamespace && cm.Name == constants.IPAMConfigName {
+		if event == constants.EventDelete || cm.DeletionTimestamp != nil {
 			c.apps = nil
+			c.autoAssign = false
 			return
 		}
 
 		var apps map[string][]string
-		if err := json.Unmarshal([]byte(cm.Data[DefaultIPAMConfigDate]), &apps); err == nil {
+		if err := json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &apps); err == nil {
 			c.apps = apps
 		} else {
-			klog.Errorf("Get configmap %s/%s failed: %v", DefaultIPAMConfigNamespace, DefaultIPAMConfigName, err)
+			klog.Errorf("Get configmap %s/%s failed: %v", constants.IPAMConfigNamespace, constants.IPAMConfigName, err)
+		}
+
+		if cm.Data[constants.IPAMAutoAssignForNamespace] == "on" {
+			c.autoAssign = true
+		} else {
+			c.autoAssign = false
 		}
 	}
 }
@@ -109,8 +108,12 @@ func (c *ClusterConfig) GetDefaultIPPools() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	rst := make([]string, len(c.apps[IPAMDefaultPoolKey]))
-	copy(rst, c.apps[IPAMDefaultPoolKey])
+	if c.autoAssign {
+		return nil
+	}
+
+	rst := make([]string, len(c.apps[constants.IPAMDefaultPoolKey]))
+	copy(rst, c.apps[constants.IPAMDefaultPoolKey])
 	return rst
 }
 

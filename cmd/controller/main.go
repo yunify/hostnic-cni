@@ -22,7 +22,7 @@ import (
 	"time"
 
 	flag "github.com/spf13/pflag"
-	kubeinformers "k8s.io/client-go/informers"
+	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
@@ -38,12 +38,14 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool"
 )
 
+var qps, burst int
+
 func main() {
-	var vxnetPool string
-	flag.StringVar(&vxnetPool, "vxnet-pool", "v-pool", "This field instructs vxnetpool name.")
 	klog.InitFlags(goflag.CommandLine)
 	goflag.Set("logtostderr", "false")
 	goflag.Set("alsologtostderr", "true")
+	flag.IntVar(&qps, "k8s-api-qps", 80, "maximum QPS to k8s apiserver from this client.")
+	flag.IntVar(&burst, "k8s-api-burst", 100, "maximum burst for throttle from this client.")
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 
@@ -57,7 +59,9 @@ func main() {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(cfg)
+	cfg.QPS = float32(qps)
+	cfg.Burst = burst
+	k8sClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
 	}
@@ -67,18 +71,18 @@ func main() {
 		klog.Fatalf("Error building example clientset: %s", err.Error())
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*30)
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
 
-	c1 := controller.NewVxNetPoolController(kubeClient, client, vxnetPool,
-		informerFactory.Network().V1alpha1().IPPools(),
-		informerFactory.Network().V1alpha1().VxNetPools())
+	c1 := controller.NewVxNetPoolController(k8sClient, client,
+		informerFactory.Network().V1alpha1().IPPools(), informerFactory.Network().V1alpha1().VxNetPools())
 
-	c2 := controller.NewIPPoolController(kubeClient, client, informerFactory, kubeInformerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal))
+	c2 := controller.NewIPPoolController(k8sClient, client,
+		k8sInformerFactory, informerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal))
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-	kubeInformerFactory.Start(stopCh)
+	k8sInformerFactory.Start(stopCh)
 	informerFactory.Start(stopCh)
 
 	wg := sync.WaitGroup{}

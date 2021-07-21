@@ -65,6 +65,20 @@ const (
 
 	CalicoAnnotationPodIP  = "cni.projectcalico.org/podIP"
 	CalicoAnnotationPodIPs = "cni.projectcalico.org/podIPs"
+
+	IPAMVxnetPoolName = "v-pool"
+
+	IPAMConfigNamespace = "kube-system"
+	IPAMConfigName      = "hostnic-ipam-config"
+
+	// configmap's data field
+	IPAMAutoAssignForNamespace = "subnet-auto-assign"
+	IPAMConfigDate             = "ipam"
+	IPAMDefaultPoolKey         = "Default"
+
+	EventADD    = "add"
+	EventUpdate = "update"
+	EventDelete = "delete"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {

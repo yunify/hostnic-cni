@@ -22,7 +22,7 @@ import (
 	"flag"
 	"time"
 
-	kubeinformers "k8s.io/client-go/informers"
+	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	log "k8s.io/klog/v2"
@@ -80,7 +80,7 @@ func main() {
 
 	cfg.QPS = float32(qps)
 	cfg.Burst = burst
-	kubeClient, err := kubernetes.NewForConfig(cfg)
+	k8sClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		log.Fatalf("Error building kubernetes clientset: %v", err)
 	}
@@ -90,9 +90,9 @@ func main() {
 		log.Fatalf("Error building example clientset: %v", err)
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	clusterConfig := config.NewClusterConfig(kubeInformerFactory.Core().V1().ConfigMaps())
-	kubeInformerFactory.Start(stopCh)
+	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*30)
+	clusterConfig := config.NewClusterConfig(k8sInformerFactory.Core().V1().ConfigMaps())
+	k8sInformerFactory.Start(stopCh)
 	clusterConfig.Sync(stopCh)
 
 	networkutils.SetupNetworkHelper()
@@ -100,7 +100,7 @@ func main() {
 
 	log.Info("all setup done, startup daemon")
 	allocator.Alloc.Start(stopCh)
-	server.NewIPAMServer(conf.Server, clusterConfig, kubeClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
+	server.NewIPAMServer(conf.Server, clusterConfig, k8sClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
 
 	<-stopCh
 	log.Info("daemon exited")
