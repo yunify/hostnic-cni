@@ -24,6 +24,14 @@ type PoolConf struct {
 	RouteTableBase int      `json:"routeTableBase,omitempty" yaml:"routeTableBase,omitempty"`
 	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`
 	VxNets         []string `json:"vxNets,omitempty" yaml:"vxNets,omitempty"`
+
+	//free hostnic opts
+	NodeThreshold  int `json:"nodeThreshold,omitempty" yaml:"nodeThreshold,omitempty"`
+	VxnetThreshold int `json:"vxnetThreshold,omitempty" yaml:"vxnetThreshold,omitempty"`
+	FreePeriod     int `json:"freePeriod,omitempty" yaml:"freePeriod,omitempty"`
+
+	//metrics opts
+	MetricsPort int `json:"metricsPort,omitempty" yaml:"metricsPort,omitempty"`
 }
 
 type ServerConf struct {
@@ -35,7 +43,8 @@ type ServerConf struct {
 // return nil error if configuration file not exists
 func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 	viper.SetConfigName(name)
-	viper.AddConfigPath(".")
+	viper.SetConfigType("json")
+	viper.AddConfigPath("./")
 	viper.AddConfigPath(path)
 
 	conf := &IpamConf{
@@ -46,6 +55,10 @@ func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 			Sync:           constants.DefaultJobSyn,
 			RouteTableBase: constants.DefaultRouteTableBase,
 			NodeSync:       constants.DefaultNodeSync,
+			NodeThreshold:  constants.DefaultNodeThreshold,
+			VxnetThreshold: constants.DefaultVxnetThreshold,
+			FreePeriod:     constants.DefaultFreePeriod,
+			MetricsPort:    constants.DefaultMetricsPort,
 		},
 		Server: ServerConf{
 			ServerPath: constants.DefaultSocketPath,

@@ -129,12 +129,22 @@ func (q *qingcloudAPIWrapper) GetInstanceID() string {
 	return q.instanceID
 }
 
-func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int) ([]*rpc.HostNic, error) {
-	input := &service.DescribeNicsInput{
-		Limit:   &num,
-		Offset:  &offset,
-		NICName: service.String(constants.NicPrefix + q.instanceID),
+func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int, vxnets []*string) ([]*rpc.HostNic, error) {
+	var input *service.DescribeNicsInput
+	if vxnets == nil {
+		input = &service.DescribeNicsInput{
+			Limit:   &num,
+			Offset:  &offset,
+			NICName: service.String(constants.NicPrefix + q.instanceID),
+		}
+	} else {
+		input = &service.DescribeNicsInput{
+			Limit:  &num,
+			Offset: &offset,
+			VxNets: vxnets,
+		}
 	}
+
 	output, err := q.nicService.DescribeNics(input)
 	if err != nil {
 		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
@@ -157,13 +167,13 @@ func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int) ([]*rpc.HostNic, e
 
 	if len(netIDs) > 0 {
 		tmp := removeDupByMap(netIDs)
-		vxnets, err := q.GetVxNets(tmp)
+		tmpVxnets, err := q.GetVxNets(tmp)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, nic := range nics {
-			nic.VxNet = vxnets[nic.VxNet.ID]
+			nic.VxNet = tmpVxnets[nic.VxNet.ID]
 		}
 	}
 

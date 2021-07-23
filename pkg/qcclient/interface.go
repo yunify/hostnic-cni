@@ -8,7 +8,7 @@ type QingCloudAPI interface {
 	GetInstanceID() string
 
 	//bootstrap
-	GetCreatedNics(num, offsite int) ([]*rpc.HostNic, error)
+	GetCreatedNics(num, offset int, vxnets []*string) ([]*rpc.HostNic, error)
 
 	//vxnet info
 	GetVxNets([]string) (map[string]*rpc.VxNet, error)

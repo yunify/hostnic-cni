@@ -30,14 +30,19 @@ import (
 const (
 	DefaultSocketPath     = "/var/run/hostnic/hostnic.socket"
 	DefaultUnixSocketPath = "unix://" + DefaultSocketPath
-	DefaultConfigPath     = "/etc/hostnic"
-	DefaultConfigName     = "hostnic"
+	DefaultConfigPath     = "/etc/hostnic/"
+	DefaultConfigName     = "hostnic.json"
 
 	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
 
 	DefaultLowPoolSize  = 3
 	DefaultHighPoolSize = 5
+
+	DefaultNodeThreshold  = 5
+	DefaultVxnetThreshold = 10
+	DefaultFreePeriod     = 60
+	DefaultMetricsPort    = 8080
 
 	VIPNumLimit           = 253
 	NicNumLimit           = 63
@@ -59,6 +64,9 @@ const (
 	ManglePreroutingChain = "HOSTNIC-PREROUTING"
 	MangleOutputChain     = "HOSTNIC-OUTPUT"
 	MangleForward         = "HOSTNIC-FORWARD"
+
+	FreeHostnicRetry = 15
+	ResourceNotFound = "ResourceNotFound"
 
 	ToContainerRulePriority   = 1535
 	FromContainerRulePriority = 1536

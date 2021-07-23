@@ -8,15 +8,19 @@ import (
 	"os"
 
 	"github.com/containernetworking/cni/pkg/types/current"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
+	"net/http"
 
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
+	"github.com/yunify/hostnic-cni/pkg/metrics"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
@@ -56,6 +60,25 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 	if err != nil {
 		log.Fatalf("Failed to listen to %s: %v", socketFilePath, err)
 	}
+
+	//start up metrics server routine
+	hostnicMetricsManager := metrics.NewHostnicMetricsManager()
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(hostnicMetricsManager)
+	gatherers := prometheus.Gatherers{
+		reg,
+	}
+	h := promhttp.HandlerFor(gatherers,
+		promhttp.HandlerOpts{
+			ErrorLog:      nil,
+			ErrorHandling: promhttp.ContinueOnError,
+		})
+	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r)
+	})
+	go func() {
+		http.ListenAndServe(fmt.Sprintf(":%d", allocator.Alloc.GetMetricsPort()), nil)
+	}()
 
 	//start up server rpc routine
 	grpcServer := grpc.NewServer()
@@ -145,6 +168,33 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 		log.Errorf("DelNetwork request (%v) release by %s failed: %v", in.Args, handleID, err)
 	}
 	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
+	return in, err
+}
+
+func (s *IPAMServer) ShowNics(context context.Context, in *rpc.Nothing) (*rpc.NicInfoList, error) {
+	log.Info("ShowNics request")
+	ret := &rpc.NicInfoList{}
+	var err error
+	defer func() {
+		log.Infof("ShowNics reply:%v %v", ret.Items, err)
+	}()
+	nics := allocator.Alloc.GetNics()
+	for _, v := range nics {
+		info := &rpc.NicInfo{
+			Id:     v.Nic.ID,
+			Vxnet:  v.Nic.VxNet.ID,
+			Phase:  v.Nic.Phase.String(),
+			Status: v.Nic.Status.String(),
+			Pods:   int32(len(v.Pods)),
+		}
+		ret.Items = append(ret.Items, info)
+	}
+	return ret, err
+}
+
+func (s *IPAMServer) ClearNics(context context.Context, in *rpc.Nothing) (*rpc.Nothing, error) {
+	log.Info("ClearNics request")
+	err := allocator.Alloc.ClearFreeHostnic(true)
 	return in, err
 }
 

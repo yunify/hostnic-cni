@@ -3,6 +3,7 @@ package allocator
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,6 +172,12 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
+	err := a.reloadDb()
+	if err != nil {
+		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
+		return nil, err
+	}
+
 	vxnetName := args.VxNet
 	if nic, ok := a.nics[vxnetName]; ok {
 		log.Infof("Find hostNic %s: %s", getNicKey(nic.Nic), nic.getPhase())
@@ -289,8 +296,127 @@ func (a *Allocator) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
+func (a *Allocator) GetNics() map[string]*nicStatus {
+	return a.nics
+}
+
+func (a *Allocator) GetMetricsPort() int {
+	return a.conf.MetricsPort
+}
+
+func (a *Allocator) reloadDb() error {
+	dbCache := make(map[string]*nicStatus)
+	err := db.Iterator(func(value interface{}) error {
+		var nic nicStatus
+		json.Unmarshal(value.([]byte), &nic)
+		dbCache[nic.Nic.VxNet.ID] = &nic
+		return nil
+	})
+	if err != nil {
+		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
+		return err
+	}
+	a.nics = dbCache
+	return nil
+}
+
+func (a *Allocator) ClearFreeHostnic(manual bool) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	err := a.reloadDb()
+	if err != nil {
+		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
+		return err
+	}
+	maxVxnetNicsCount := a.getVxnetMaxNicNum()
+	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !manual {
+		log.Infof("no hostnic to free:%d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+		return nil
+	}
+	var nicsToDel []string
+	var vxnetToDel []string
+	for k, v := range a.nics {
+		log.Infof("clearFreeHostnic: %s %s %s %d %d %d", k, v.Nic.VxNet, v.Nic.ID, maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+		if len(v.Pods) == 0 {
+			nicsToDel = append(nicsToDel, v.Nic.ID)
+			vxnetToDel = append(vxnetToDel, v.Nic.VxNet.ID)
+		}
+	}
+	err = deattachNicsWithRetry(constants.FreeHostnicRetry, nicsToDel)
+
+	for {
+		count := 0
+		for _, nic := range nicsToDel {
+			_, e := networkutils.NetworkHelper.LinkByMacAddr(nic)
+			if e == constants.ErrNicNotFound {
+				count++
+			}
+		}
+		time.Sleep(1 * time.Second)
+		if count == len(nicsToDel) {
+			break
+		}
+	}
+
+	err = a.deleteNicsWithRetry(constants.FreeHostnicRetry, nicsToDel, vxnetToDel)
+	return err
+}
+
+func (a *Allocator) getVxnetMaxNicNum() int {
+	cache := make(map[string]bool)
+	for _, v := range a.nics {
+		cache[v.Nic.VxNet.ID] = true
+	}
+	maxVxnetNicsCount := 0
+	for k, _ := range cache {
+		//this api can not get nics by all vxnets,so loop to get nics per vxnet,iaas need to fix this?
+		createdNics, err := qcclient.QClient.GetCreatedNics(constants.VxnetNicNumLimit, 0, []*string{&k})
+		if err == nil && len(createdNics) > maxVxnetNicsCount {
+			maxVxnetNicsCount = len(createdNics)
+		}
+	}
+	return maxVxnetNicsCount
+}
+
+func deattachNicsWithRetry(retry int, nics []string) error {
+	var err error
+	for i := 0; i < retry; i++ {
+		_, err := qcclient.QClient.DeattachNics(nics, false)
+		if err == nil {
+			log.Infof("deattach hostnics success:%v", nics)
+			break
+		} else {
+			log.Infof("deattach hostnics failed:%d %v %v", i, nics, err)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return err
+}
+
+func (a *Allocator) deleteNicsWithRetry(retry int, nics []string, vxnets []string) error {
+	var err error
+	for i := 0; i < retry; i++ {
+		err = qcclient.QClient.DeleteNics(nics)
+		if err == nil || strings.Contains(err.Error(), constants.ResourceNotFound) {
+			log.Infof("delete hostnics success:%v", nics)
+			for _, vxnet := range vxnets {
+				log.Infof("delete cache and db:%v", vxnet)
+				db.DeleteNetworkInfo(vxnet)
+				delete(a.nics, vxnet)
+			}
+			break
+		} else {
+			log.Infof("delete hostnics failed:%d %v %v", i, nics, err)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return err
+}
+
 func (a *Allocator) run(stopCh <-chan struct{}) {
 	jobTimer := time.NewTicker(time.Duration(a.conf.Sync) * time.Second).C
+	freeTimer := time.NewTicker(time.Duration(a.conf.FreePeriod) * time.Minute).C
 	for {
 		select {
 		case <-stopCh:
@@ -299,6 +425,9 @@ func (a *Allocator) run(stopCh <-chan struct{}) {
 		case <-jobTimer:
 			log.Infof("period job sync")
 			a.HostNicCheck()
+		case <-freeTimer:
+			log.Infof("period free sync")
+			a.ClearFreeHostnic(false)
 		}
 	}
 }
@@ -326,7 +455,7 @@ func SetupAllocator(conf conf.PoolConf) {
 	//
 	// restore create nics
 	//
-	nics, err := qcclient.QClient.GetCreatedNics(constants.NicNumLimit, 0)
+	nics, err := qcclient.QClient.GetCreatedNics(constants.NicNumLimit, 0, nil)
 	if err != nil {
 		log.Fatalf("Failed to get created nics from qingcloud: %v", err)
 	}

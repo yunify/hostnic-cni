@@ -1,12 +1,16 @@
 syntax = "proto3";
 
 package rpc;
-
+option go_package = "./pkg/rpc";
 // The service definition.
 service CNIBackend {
   rpc AddNetwork (IPAMMessage) returns (IPAMMessage) {
   }
   rpc DelNetwork (IPAMMessage) returns (IPAMMessage) {
+  }
+  rpc ShowNics (Nothing) returns (NicInfoList) {
+  }
+  rpc ClearNics (Nothing) returns (Nothing) {
   }
 }
 
@@ -73,4 +77,20 @@ message VIP {
   string Name = 2;
   string Addr = 3;
   string VxNetID = 4;
+}
+
+message NicInfo {
+    string Id = 1;
+    string Vxnet = 2;
+    string Phase = 3;
+    string Status = 4;
+    int32 Pods = 5;
+}
+
+message NicInfoList {
+    repeated NicInfo items = 1;
+}
+
+message Nothing {
+
 }
