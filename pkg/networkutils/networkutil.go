@@ -35,7 +35,7 @@ func (n NetworkUtils) SetupPodNetwork(nic *rpc.HostNic, ip string) error {
 		return fmt.Errorf("failed to add rule %s : %v", toPodRule, err)
 	}
 
-	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), ip, nic.HardwareAddr, "-A")
+	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), ip, nic.HardwareAddr, "-I")
 }
 
 //After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.

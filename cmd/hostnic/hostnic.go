@@ -390,13 +390,18 @@ func checkIptables(conf *constants.NetConf) error {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
+	var err error
+
+	logrus.Infof("cmdAdd args %v", args)
+	defer func() {
+		logrus.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
+	}()
+
 	conf := constants.NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
+	if err = json.Unmarshal(args.StdinData, &conf); err != nil {
 		return fmt.Errorf("failed to load netconf %s: %v", spew.Sdump(args), err)
 	}
-
-	err := checkConf(&conf)
-	if err != nil {
+	if err = checkConf(&conf); err != nil {
 		return err
 	}
 
@@ -409,7 +414,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	// podInfo.NicType is from annotation
 	conf.HostNicType = podInfo.NicType
 
-	if err := ip.EnableForward(result.IPs); err != nil {
+	if err = ip.EnableForward(result.IPs); err != nil {
 		return fmt.Errorf("could not enable IP forwarding: %v", err)
 	}
 
@@ -507,18 +512,20 @@ func cmdDelPassThrough(svcIfName, contIfName string, netns ns.NetNS) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
+	var err error
+
+	logrus.Infof("cmdDel args %v", args)
+	defer func() {
+		logrus.Infof("cmdDel for %s rst: %v", args.ContainerID, err)
+	}()
+
 	conf := constants.NetConf{}
-	err := json.Unmarshal(args.StdinData, &conf)
-	if err != nil {
+	if err = json.Unmarshal(args.StdinData, &conf); err != nil {
 		return fmt.Errorf("failed to load netconf: %v", err)
 	}
-
-	err = checkConf(&conf)
-	if err != nil {
+	if err = checkConf(&conf); err != nil {
 		return err
 	}
-
-	logrus.Infof("delete args %v", args)
 
 	ipamMsg, err := ipam2.AddrUnalloc(args, true)
 	if err != nil {
