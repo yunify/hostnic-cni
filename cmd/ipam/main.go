@@ -41,7 +41,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
 
-var qps, burst int
+var qps, burst, metricsPort int
 
 func main() {
 	//parse flag and setup klog
@@ -50,6 +50,7 @@ func main() {
 	flag.Set("alsologtostderr", "true")
 	flag.IntVar(&qps, "k8s-api-qps", 80, "maximum QPS to k8s apiserver from this client.")
 	flag.IntVar(&burst, "k8s-api-burst", 100, "maximum burst for throttle from this client.")
+	flag.IntVar(&metricsPort, "metrics-port", 8080, "metrics port")
 	dbOpts := db.NewLevelDBOptions()
 	dbOpts.AddFlags()
 	flag.Parse()
@@ -100,7 +101,7 @@ func main() {
 
 	log.Info("all setup done, startup daemon")
 	allocator.Alloc.Start(stopCh)
-	server.NewIPAMServer(conf.Server, clusterConfig, k8sClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal)).Start(stopCh)
+	server.NewIPAMServer(conf.Server, clusterConfig, k8sClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal), metricsPort).Start(stopCh)
 
 	<-stopCh
 	log.Info("daemon exited")

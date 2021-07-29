@@ -29,9 +29,6 @@ type PoolConf struct {
 	NodeThreshold  int `json:"nodeThreshold,omitempty" yaml:"nodeThreshold,omitempty"`
 	VxnetThreshold int `json:"vxnetThreshold,omitempty" yaml:"vxnetThreshold,omitempty"`
 	FreePeriod     int `json:"freePeriod,omitempty" yaml:"freePeriod,omitempty"`
-
-	//metrics opts
-	MetricsPort int `json:"metricsPort,omitempty" yaml:"metricsPort,omitempty"`
 }
 
 type ServerConf struct {
@@ -58,7 +55,6 @@ func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 			NodeThreshold:  constants.DefaultNodeThreshold,
 			VxnetThreshold: constants.DefaultVxnetThreshold,
 			FreePeriod:     constants.DefaultFreePeriod,
-			MetricsPort:    constants.DefaultMetricsPort,
 		},
 		Server: ServerConf{
 			ServerPath: constants.DefaultSocketPath,

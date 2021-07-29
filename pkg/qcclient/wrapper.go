@@ -129,22 +129,7 @@ func (q *qingcloudAPIWrapper) GetInstanceID() string {
 	return q.instanceID
 }
 
-func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int, vxnets []*string) ([]*rpc.HostNic, error) {
-	var input *service.DescribeNicsInput
-	if vxnets == nil {
-		input = &service.DescribeNicsInput{
-			Limit:   &num,
-			Offset:  &offset,
-			NICName: service.String(constants.NicPrefix + q.instanceID),
-		}
-	} else {
-		input = &service.DescribeNicsInput{
-			Limit:  &num,
-			Offset: &offset,
-			VxNets: vxnets,
-		}
-	}
-
+func (q *qingcloudAPIWrapper) GetCreatedNics(input *service.DescribeNicsInput) ([]*rpc.HostNic, error) {
 	output, err := q.nicService.DescribeNics(input)
 	if err != nil {
 		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)

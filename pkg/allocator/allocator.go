@@ -15,6 +15,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
+	"github.com/yunify/qingcloud-sdk-go/service"
 )
 
 type nicStatus struct {
@@ -172,12 +173,6 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	err := a.reloadDb()
-	if err != nil {
-		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
-		return nil, err
-	}
-
 	vxnetName := args.VxNet
 	if nic, ok := a.nics[vxnetName]; ok {
 		log.Infof("Find hostNic %s: %s", getNicKey(nic.Nic), nic.getPhase())
@@ -300,37 +295,12 @@ func (a *Allocator) GetNics() map[string]*nicStatus {
 	return a.nics
 }
 
-func (a *Allocator) GetMetricsPort() int {
-	return a.conf.MetricsPort
-}
-
-func (a *Allocator) reloadDb() error {
-	dbCache := make(map[string]*nicStatus)
-	err := db.Iterator(func(value interface{}) error {
-		var nic nicStatus
-		json.Unmarshal(value.([]byte), &nic)
-		dbCache[nic.Nic.VxNet.ID] = &nic
-		return nil
-	})
-	if err != nil {
-		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
-		return err
-	}
-	a.nics = dbCache
-	return nil
-}
-
-func (a *Allocator) ClearFreeHostnic(manual bool) error {
+func (a *Allocator) ClearFreeHostnic(force bool) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	err := a.reloadDb()
-	if err != nil {
-		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
-		return err
-	}
 	maxVxnetNicsCount := a.getVxnetMaxNicNum()
-	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !manual {
+	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !force {
 		log.Infof("no hostnic to free:%d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
 		return nil
 	}
@@ -343,7 +313,7 @@ func (a *Allocator) ClearFreeHostnic(manual bool) error {
 			vxnetToDel = append(vxnetToDel, v.Nic.VxNet.ID)
 		}
 	}
-	err = deattachNicsWithRetry(constants.FreeHostnicRetry, nicsToDel)
+	err := deattachNics(nicsToDel)
 
 	for {
 		count := 0
@@ -371,7 +341,14 @@ func (a *Allocator) getVxnetMaxNicNum() int {
 	maxVxnetNicsCount := 0
 	for k, _ := range cache {
 		//this api can not get nics by all vxnets,so loop to get nics per vxnet,iaas need to fix this?
-		createdNics, err := qcclient.QClient.GetCreatedNics(constants.VxnetNicNumLimit, 0, []*string{&k})
+		num := constants.VxnetNicNumLimit
+		offset := 0
+		input := &service.DescribeNicsInput{
+			Limit:  &num,
+			Offset: &offset,
+			VxNets: []*string{&k},
+		}
+		createdNics, err := qcclient.QClient.GetCreatedNics(input)
 		if err == nil && len(createdNics) > maxVxnetNicsCount {
 			maxVxnetNicsCount = len(createdNics)
 		}
@@ -379,17 +356,12 @@ func (a *Allocator) getVxnetMaxNicNum() int {
 	return maxVxnetNicsCount
 }
 
-func deattachNicsWithRetry(retry int, nics []string) error {
-	var err error
-	for i := 0; i < retry; i++ {
-		_, err := qcclient.QClient.DeattachNics(nics, false)
-		if err == nil {
-			log.Infof("deattach hostnics success:%v", nics)
-			break
-		} else {
-			log.Infof("deattach hostnics failed:%d %v %v", i, nics, err)
-		}
-		time.Sleep(1 * time.Second)
+func deattachNics(nics []string) error {
+	_, err := qcclient.QClient.DeattachNics(nics, true)
+	if err == nil {
+		log.Infof("deattach hostnics success:%v", nics)
+	} else {
+		log.Infof("deattach hostnics failed:%v %v", nics, err)
 	}
 	return err
 }
@@ -452,10 +424,15 @@ func SetupAllocator(conf conf.PoolConf) {
 		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
 	}
 
-	//
 	// restore create nics
-	//
-	nics, err := qcclient.QClient.GetCreatedNics(constants.NicNumLimit, 0, nil)
+	num := constants.NicNumLimit
+	offset := 0
+	input := &service.DescribeNicsInput{
+		Limit:   &num,
+		Offset:  &offset,
+		NICName: service.String(constants.NicPrefix + qcclient.QClient.GetInstanceID()),
+	}
+	nics, err := qcclient.QClient.GetCreatedNics(input)
 	if err != nil {
 		log.Fatalf("Failed to get created nics from qingcloud: %v", err)
 	}

@@ -59,7 +59,7 @@ build: vet fmt
 tools: vet fmt
 	#$(BUILD_ENV) go build -ldflags "-w" -o bin/db-client cmd/db-client/client.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/ipam-client cmd/ipam-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-free cmd/hostnic-free/hostnic-free.go
+	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-client cmd/hostnic-client/hostnic-client.go
 
 deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml

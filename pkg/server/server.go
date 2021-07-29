@@ -20,8 +20,8 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
-	"github.com/yunify/hostnic-cni/pkg/metrics"
 	"github.com/yunify/hostnic-cni/pkg/constants"
+	"github.com/yunify/hostnic-cni/pkg/metrics"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
@@ -31,14 +31,16 @@ type IPAMServer struct {
 	kubeclient    kubernetes.Interface
 	ipamclient    ipam.IPAMClient
 	clusterConfig *config.ClusterConfig
+	metricsPort   int
 }
 
-func NewIPAMServer(conf conf.ServerConf, clusterConfig *config.ClusterConfig, kubeclient kubernetes.Interface, ipamclient ipam.IPAMClient) *IPAMServer {
+func NewIPAMServer(conf conf.ServerConf, clusterConfig *config.ClusterConfig, kubeclient kubernetes.Interface, ipamclient ipam.IPAMClient, metricsPort int) *IPAMServer {
 	return &IPAMServer{
 		conf:          conf,
 		kubeclient:    kubeclient,
 		ipamclient:    ipamclient,
 		clusterConfig: clusterConfig,
+		metricsPort:   metricsPort,
 	}
 }
 
@@ -77,7 +79,7 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 		h.ServeHTTP(w, r)
 	})
 	go func() {
-		http.ListenAndServe(fmt.Sprintf(":%d", allocator.Alloc.GetMetricsPort()), nil)
+		http.ListenAndServe(fmt.Sprintf(":%d", s.metricsPort), nil)
 	}()
 
 	//start up server rpc routine

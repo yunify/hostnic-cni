@@ -1,6 +1,9 @@
 package qcclient
 
-import "github.com/yunify/hostnic-cni/pkg/rpc"
+import (
+	"github.com/yunify/hostnic-cni/pkg/rpc"
+	"github.com/yunify/qingcloud-sdk-go/service"
+)
 
 // QingCloudAPI is a wrapper interface of qingcloud api
 type QingCloudAPI interface {
@@ -8,7 +11,7 @@ type QingCloudAPI interface {
 	GetInstanceID() string
 
 	//bootstrap
-	GetCreatedNics(num, offset int, vxnets []*string) ([]*rpc.HostNic, error)
+	GetCreatedNics(input *service.DescribeNicsInput) ([]*rpc.HostNic, error)
 
 	//vxnet info
 	GetVxNets([]string) (map[string]*rpc.VxNet, error)
