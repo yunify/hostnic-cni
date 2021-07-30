@@ -311,25 +311,14 @@ func (a *Allocator) ClearFreeHostnic(force bool) error {
 		if len(v.Pods) == 0 {
 			nicsToDel = append(nicsToDel, v.Nic.ID)
 			vxnetToDel = append(vxnetToDel, v.Nic.VxNet.ID)
-		}
-	}
-	err := deattachNics(nicsToDel)
-
-	for {
-		count := 0
-		for _, nic := range nicsToDel {
-			_, e := networkutils.NetworkHelper.LinkByMacAddr(nic)
-			if e == constants.ErrNicNotFound {
-				count++
+			err := networkutils.NetworkHelper.CleanupNetwork(v.Nic)
+			if err != nil {
+				log.Infof("cleanupNetwork:%v %v", v.Nic, err)
 			}
 		}
-		time.Sleep(1 * time.Second)
-		if count == len(nicsToDel) {
-			break
-		}
 	}
-
-	err = a.deleteNicsWithRetry(constants.FreeHostnicRetry, nicsToDel, vxnetToDel)
+	deattachNics(nicsToDel)
+	err := a.deleteNicsWithRetry(constants.FreeHostnicRetry, nicsToDel, vxnetToDel)
 	return err
 }
 

@@ -121,7 +121,12 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 
 //After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
 func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
-	return nil
+	err := n.clearBridgeNetwork(nic)
+	if err != nil {
+		return err
+	}
+	err = n.clearRule(nic)
+	return err
 }
 
 //Note: setup NetworkManager to disable dhcp on nic
@@ -179,6 +184,19 @@ func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error
 	return nil
 }
 
+func (n NetworkUtils) clearBridgeNetwork(nic *rpc.HostNic) error {
+	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
+	br, err := netlink.LinkByName(brName)
+	if err != nil {
+		return fmt.Errorf("failed to get br %s to del: %v", brName, err)
+	}
+	err = netlink.LinkDel(br)
+	if err != nil {
+		return fmt.Errorf("failed to del br %s: %v", brName, err)
+	}
+	return nil
+}
+
 func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 	master, slave, err := n.getLinksByMacAddr(nic.HardwareAddr)
 	if master == nil || slave == nil || err != nil {
@@ -221,6 +239,19 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 		return fmt.Errorf("failed to add rule %s: %v", fromPodRule, err)
 	}
 
+	return nil
+}
+
+func (n NetworkUtils) clearRule(nic *rpc.HostNic) error {
+	_, dst, _ := net.ParseCIDR(nic.VxNet.Network)
+	fromPodRule := netlink.NewRule()
+	fromPodRule.Priority = constants.FromContainerRulePriority
+	fromPodRule.Table = int(nic.RouteTableNum)
+	fromPodRule.Src = dst
+	err := netlink.RuleDel(fromPodRule)
+	if err != nil {
+		return fmt.Errorf("failed to del rule %s: %v", fromPodRule, err)
+	}
 	return nil
 }
 
