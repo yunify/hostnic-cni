@@ -27,21 +27,28 @@ func main() {
 
 	conn, err := grpc.Dial(constants.DefaultUnixSocketPath, grpc.WithInsecure())
 	if err != nil {
-		fmt.Printf("failed to connect server, err=%v \n", err)
+		fmt.Printf("failed to connect ipam: %v\n", err)
 		return
 	}
 	defer conn.Close()
 
 	client := rpc.NewCNIBackendClient(conn)
 	result, err := client.ShowNics(context.Background(), &rpc.Nothing{})
+	if err != nil {
+		fmt.Printf("failed to get nics: %v\n", err)
+		return
+	}
 
 	fmt.Println("********************* current node nics *********************")
 	for _, nic := range result.Items {
-		fmt.Printf("id:%s, vxnet:%s, phase:%s, status:%s, pods:%d \n", nic.Id, nic.Vxnet, nic.Phase, nic.Status, nic.Pods)
+		fmt.Printf("%s %s %s %s %d\n", nic.Vxnet, nic.Id, nic.Phase, nic.Status, nic.Pods)
 	}
 
 	if clear {
-		_, err = client.ClearNics(context.Background(), &rpc.Nothing{})
-		fmt.Printf("ClearNics error:%v \n", err)
+		if _, err := client.ClearNics(context.Background(), &rpc.Nothing{}); err != nil {
+			fmt.Printf("ClearNics OK\n")
+		} else {
+			fmt.Printf("ClearNics failed: %v\n", err)
+		}
 	}
 }

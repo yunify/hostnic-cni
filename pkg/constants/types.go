@@ -41,8 +41,8 @@ const (
 
 	DefaultNodeThreshold  = 5
 	DefaultVxnetThreshold = 10
-	DefaultFreePeriod     = 60
-	DefaultMetricsPort    = 8080
+	// Minute
+	DefaultFreePeriod = 60
 
 	VIPNumLimit           = 253
 	NicNumLimit           = 63
@@ -65,7 +65,6 @@ const (
 	MangleOutputChain     = "HOSTNIC-OUTPUT"
 	MangleForward         = "HOSTNIC-FORWARD"
 
-	FreeHostnicRetry = 15
 	ResourceNotFound = "ResourceNotFound"
 
 	ToContainerRulePriority   = 1535

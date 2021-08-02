@@ -58,14 +58,15 @@ build: vet fmt
 
 tools: vet fmt
 	#$(BUILD_ENV) go build -ldflags "-w" -o bin/db-client cmd/db-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/ipam-client cmd/ipam-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-client cmd/hostnic-client/hostnic-client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/ipam-client cmd/tools/ipam-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/hostnic-client cmd/tools/hostnic-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/vxnet-client cmd/tools/vxnet-client/client.go
 
 deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml
 	kustomize build config/${TARGET} > ${DEPLOY}
 
-publish: build
+publish: build tools
 	docker build -t ${IMG} .
 	docker push ${IMG}
 

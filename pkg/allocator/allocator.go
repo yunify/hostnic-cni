@@ -15,7 +15,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"github.com/yunify/qingcloud-sdk-go/service"
 )
 
 type nicStatus struct {
@@ -125,6 +124,16 @@ func (a *Allocator) delNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
 			return err
 		}
 	}
+
+	return nil
+}
+
+func (a *Allocator) delNic(vxnet string) error {
+	log.Infof("delNic: %s", vxnet)
+	if err := db.DeleteNetworkInfo(vxnet); err != nil {
+		return err
+	}
+	delete(a.nics, vxnet)
 
 	return nil
 }
@@ -295,84 +304,67 @@ func (a *Allocator) GetNics() map[string]*nicStatus {
 	return a.nics
 }
 
+func (a *Allocator) freeHostnic(nic *rpc.HostNic) error {
+	if err := networkutils.NetworkHelper.CleanupNetwork(nic); err != nil {
+		log.Errorf("CleanupNetwork for vxnet %s failed: nic %s %v", nic.VxNet.ID, nic.ID, err)
+		return err
+	}
+
+	if _, err := qcclient.QClient.DeattachNics([]string{nic.ID}, true); err != nil {
+		log.Errorf("DeattachNics for vxnet %s failed: nic %s failed: %v", nic.VxNet.ID, nic.ID, err)
+		return err
+	}
+
+	if err := qcclient.QClient.DeleteNics([]string{nic.ID}); err != nil && !strings.Contains(err.Error(), constants.ResourceNotFound) {
+		log.Errorf("DeleteNics for vxnet %s failed: nic %s failed: %v", nic.VxNet.ID, nic.ID, err)
+		// nic has deattached, so return nil to skip repair
+	}
+
+	return nil
+}
+
 func (a *Allocator) ClearFreeHostnic(force bool) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
 	maxVxnetNicsCount := a.getVxnetMaxNicNum()
 	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !force {
-		log.Infof("no hostnic to free:%d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+		log.Infof("no hostnic to free: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
 		return nil
 	}
-	var nicsToDel []string
-	var vxnetToDel []string
-	for k, v := range a.nics {
-		log.Infof("clearFreeHostnic: %s %s %s %d %d %d", k, v.Nic.VxNet, v.Nic.ID, maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
-		if len(v.Pods) == 0 {
-			nicsToDel = append(nicsToDel, v.Nic.ID)
-			vxnetToDel = append(vxnetToDel, v.Nic.VxNet.ID)
-			err := networkutils.NetworkHelper.CleanupNetwork(v.Nic)
-			if err != nil {
-				log.Infof("cleanupNetwork:%v %v", v.Nic, err)
+
+	log.Infof("freeHostnic: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+	for vxnet, status := range a.nics {
+		if len(status.Pods) == 0 {
+			if err := a.freeHostnic(status.Nic); err != nil {
+				log.Errorf("freeHostnic for vxnet %s failed: nic %s %v", vxnet, status.Nic.ID, err)
+				// set status to init to repair nics which free failed
+				if err := a.setNicStatus(status.Nic, rpc.Phase_Init); err != nil {
+					log.Errorf("setNicStatus failed: %s %s %v", getNicKey(status.Nic), rpc.Phase_Init.String(), err)
+				}
+			} else {
+				if err := a.delNic(vxnet); err != nil {
+					log.Errorf("delNic failed: %s %v", getNicKey(status.Nic), err)
+				}
+				log.Infof("freeHostnic for vxnet %s success: nic %s", vxnet, status.Nic.ID)
 			}
 		}
 	}
-	deattachNics(nicsToDel)
-	err := a.deleteNicsWithRetry(constants.FreeHostnicRetry, nicsToDel, vxnetToDel)
-	return err
+	return nil
 }
 
 func (a *Allocator) getVxnetMaxNicNum() int {
-	cache := make(map[string]bool)
-	for _, v := range a.nics {
-		cache[v.Nic.VxNet.ID] = true
-	}
-	maxVxnetNicsCount := 0
-	for k, _ := range cache {
-		//this api can not get nics by all vxnets,so loop to get nics per vxnet,iaas need to fix this?
-		num := constants.VxnetNicNumLimit
-		offset := 0
-		input := &service.DescribeNicsInput{
-			Limit:  &num,
-			Offset: &offset,
-			VxNets: []*string{&k},
-		}
-		createdNics, err := qcclient.QClient.GetCreatedNics(input)
-		if err == nil && len(createdNics) > maxVxnetNicsCount {
-			maxVxnetNicsCount = len(createdNics)
-		}
-	}
-	return maxVxnetNicsCount
-}
-
-func deattachNics(nics []string) error {
-	_, err := qcclient.QClient.DeattachNics(nics, true)
-	if err == nil {
-		log.Infof("deattach hostnics success:%v", nics)
-	} else {
-		log.Infof("deattach hostnics failed:%v %v", nics, err)
-	}
-	return err
-}
-
-func (a *Allocator) deleteNicsWithRetry(retry int, nics []string, vxnets []string) error {
-	var err error
-	for i := 0; i < retry; i++ {
-		err = qcclient.QClient.DeleteNics(nics)
-		if err == nil || strings.Contains(err.Error(), constants.ResourceNotFound) {
-			log.Infof("delete hostnics success:%v", nics)
-			for _, vxnet := range vxnets {
-				log.Infof("delete cache and db:%v", vxnet)
-				db.DeleteNetworkInfo(vxnet)
-				delete(a.nics, vxnet)
-			}
-			break
+	maxNicsCount := 0
+	for vxnet := range a.nics {
+		if nics, err := qcclient.QClient.GetCreatedNicsByVxNet(vxnet); err != nil {
+			return 0
 		} else {
-			log.Infof("delete hostnics failed:%d %v %v", i, nics, err)
+			if maxNicsCount < len(nics) {
+				maxNicsCount = len(nics)
+			}
 		}
-		time.Sleep(1 * time.Second)
 	}
-	return err
+	return maxNicsCount
 }
 
 func (a *Allocator) run(stopCh <-chan struct{}) {
@@ -414,14 +406,7 @@ func SetupAllocator(conf conf.PoolConf) {
 	}
 
 	// restore create nics
-	num := constants.NicNumLimit
-	offset := 0
-	input := &service.DescribeNicsInput{
-		Limit:   &num,
-		Offset:  &offset,
-		NICName: service.String(constants.NicPrefix + qcclient.QClient.GetInstanceID()),
-	}
-	nics, err := qcclient.QClient.GetCreatedNics(input)
+	nics, err := qcclient.QClient.GetCreatedNicsByName(constants.NicPrefix + qcclient.QClient.GetInstanceID())
 	if err != nil {
 		log.Fatalf("Failed to get created nics from qingcloud: %v", err)
 	}

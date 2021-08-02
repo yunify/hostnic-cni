@@ -121,12 +121,10 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 
 //After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
 func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
-	err := n.clearBridgeNetwork(nic)
-	if err != nil {
+	if err := n.clearRouteTable(nic); err != nil {
 		return err
 	}
-	err = n.clearRule(nic)
-	return err
+	return n.clearBridgeNetwork(nic)
 }
 
 //Note: setup NetworkManager to disable dhcp on nic
@@ -188,10 +186,13 @@ func (n NetworkUtils) clearBridgeNetwork(nic *rpc.HostNic) error {
 	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
 	br, err := netlink.LinkByName(brName)
 	if err != nil {
-		return fmt.Errorf("failed to get br %s to del: %v", brName, err)
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return nil
+		}
+		return fmt.Errorf("failed to lookup br %s: %v", brName, err)
 	}
-	err = netlink.LinkDel(br)
-	if err != nil {
+
+	if err = netlink.LinkDel(br); err != nil {
 		return fmt.Errorf("failed to del br %s: %v", brName, err)
 	}
 	return nil
@@ -242,14 +243,15 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 	return nil
 }
 
-func (n NetworkUtils) clearRule(nic *rpc.HostNic) error {
+// Note: When br was deleted, associated rules in route table will be deleted by kernel, so skip route table clear.
+func (n NetworkUtils) clearRouteTable(nic *rpc.HostNic) error {
 	_, dst, _ := net.ParseCIDR(nic.VxNet.Network)
 	fromPodRule := netlink.NewRule()
 	fromPodRule.Priority = constants.FromContainerRulePriority
 	fromPodRule.Table = int(nic.RouteTableNum)
 	fromPodRule.Src = dst
 	err := netlink.RuleDel(fromPodRule)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to del rule %s: %v", fromPodRule, err)
 	}
 	return nil

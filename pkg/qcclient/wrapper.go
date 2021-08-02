@@ -129,7 +129,11 @@ func (q *qingcloudAPIWrapper) GetInstanceID() string {
 	return q.instanceID
 }
 
-func (q *qingcloudAPIWrapper) GetCreatedNics(input *service.DescribeNicsInput) ([]*rpc.HostNic, error) {
+func (q *qingcloudAPIWrapper) GetCreatedNicsByName(name string) ([]*rpc.HostNic, error) {
+	input := &service.DescribeNicsInput{
+		Limit:   service.Int(constants.NicNumLimit),
+		NICName: service.String(name),
+	}
 	output, err := q.nicService.DescribeNics(input)
 	if err != nil {
 		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
@@ -152,13 +156,53 @@ func (q *qingcloudAPIWrapper) GetCreatedNics(input *service.DescribeNicsInput) (
 
 	if len(netIDs) > 0 {
 		tmp := removeDupByMap(netIDs)
-		tmpVxnets, err := q.GetVxNets(tmp)
+		vxnets, err := q.GetVxNets(tmp)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, nic := range nics {
-			nic.VxNet = tmpVxnets[nic.VxNet.ID]
+			nic.VxNet = vxnets[nic.VxNet.ID]
+		}
+	}
+
+	return nics, nil
+}
+
+func (q *qingcloudAPIWrapper) GetCreatedNicsByVxNet(vxnet string) ([]*rpc.HostNic, error) {
+	input := &service.DescribeNicsInput{
+		Limit:  service.Int(constants.VxnetNicNumLimit),
+		VxNets: []*string{service.String(vxnet)},
+	}
+	output, err := q.nicService.DescribeNics(input)
+	if err != nil {
+		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	var (
+		nics   []*rpc.HostNic
+		netIDs []string
+	)
+	for _, nic := range output.NICSet {
+		if *nic.Role != 0 {
+			continue
+		}
+		nics = append(nics, constructHostnic(&rpc.VxNet{
+			ID: *nic.VxNetID,
+		}, nic))
+		netIDs = append(netIDs, *nic.VxNetID)
+	}
+
+	if len(netIDs) > 0 {
+		tmp := removeDupByMap(netIDs)
+		vxnets, err := q.GetVxNets(tmp)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, nic := range nics {
+			nic.VxNet = vxnets[nic.VxNet.ID]
 		}
 	}
 
@@ -507,7 +551,8 @@ func (q *qingcloudAPIWrapper) DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
 	input := &service.DescribeVxNetsVIPsInput{
 		VIPName: &vipName,
 		VxNets:  []*string{&vxnet.ID},
-		Limit:   service.Int(constants.VIPNumLimit),
+		// TODO: Limit not work, max item is 100
+		Limit: service.Int(constants.VIPNumLimit),
 	}
 
 	output, err := q.vipService.DescribeVxNetsVIPs(input)
