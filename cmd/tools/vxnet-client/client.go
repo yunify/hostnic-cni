@@ -57,7 +57,7 @@ func main() {
 	flag.Parse()
 
 	if vxnet == "" {
-		fmt.Printf("Plesse set vxnet\n")
+		fmt.Printf("Plesse input vxnet: ./vxnet-client --vxnet vxnet-xxxxxxxx\n")
 		return
 	}
 

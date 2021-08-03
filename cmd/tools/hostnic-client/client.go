@@ -46,9 +46,9 @@ func main() {
 
 	if clear {
 		if _, err := client.ClearNics(context.Background(), &rpc.Nothing{}); err != nil {
-			fmt.Printf("ClearNics OK\n")
-		} else {
 			fmt.Printf("ClearNics failed: %v\n", err)
+		} else {
+			fmt.Printf("ClearNics OK\n")
 		}
 	}
 }
