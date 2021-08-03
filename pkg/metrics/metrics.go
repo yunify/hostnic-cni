@@ -13,11 +13,10 @@ type HostnicMetricsManager struct {
 }
 
 type HostnicVxnetInfo struct {
-	Node   string
-	Vxnet  string
-	Phase  string
-	Status string
-	Mac    string
+	Node  string
+	Vxnet string
+	Phase string
+	Mac   string
 }
 
 type HostnicVxnetPodInfo struct {
@@ -36,11 +35,10 @@ func (c *HostnicMetricsManager) GenerateMetrics() (vxnetInfos []HostnicVxnetInfo
 	node := os.Getenv("MY_NODE_NAME")
 	for _, nic := range nics {
 		hostnicVxnetInfos = append(hostnicVxnetInfos, HostnicVxnetInfo{
-			Node:   node,
-			Vxnet:  nic.Nic.VxNet.ID,
-			Phase:  nic.Nic.Phase.String(),
-			Status: nic.Nic.Status.String(),
-			Mac:    nic.Nic.HardwareAddr,
+			Node:  node,
+			Vxnet: nic.Nic.VxNet.ID,
+			Phase: nic.Nic.Phase.String(),
+			Mac:   nic.Nic.HardwareAddr,
 		})
 		for _, pod := range nic.Pods {
 			hostnicVxnetPodInfos = append(hostnicVxnetPodInfos, HostnicVxnetPodInfo{
@@ -71,7 +69,6 @@ func (c *HostnicMetricsManager) Collect(ch chan<- prometheus.Metric) {
 			hostnicVxnetInfo.Node,
 			hostnicVxnetInfo.Vxnet,
 			hostnicVxnetInfo.Phase,
-			hostnicVxnetInfo.Status,
 			hostnicVxnetInfo.Mac,
 		)
 	}
@@ -95,7 +92,7 @@ func NewHostnicMetricsManager() *HostnicMetricsManager {
 		HostnicVxnetCount: prometheus.NewDesc(
 			"hostnic_vxnet_count",
 			"describe vxnet in node with hostnic cni",
-			[]string{"node_name", "vxnet_name", "phase", "status", "mac"},
+			[]string{"node_name", "vxnet_name", "phase", "mac"},
 			prometheus.Labels{},
 		),
 		HostnicVxnetPodCount: prometheus.NewDesc(

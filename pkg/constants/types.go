@@ -39,10 +39,10 @@ const (
 	DefaultLowPoolSize  = 3
 	DefaultHighPoolSize = 5
 
-	DefaultNodeThreshold  = 5
-	DefaultVxnetThreshold = 10
+	DefaultNodeThreshold  = 32
+	DefaultVxnetThreshold = 128
 	// Minute
-	DefaultFreePeriod = 60
+	DefaultFreePeriod = 12 * 60
 
 	VIPNumLimit           = 253
 	NicNumLimit           = 63
