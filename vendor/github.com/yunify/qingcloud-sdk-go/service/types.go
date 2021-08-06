@@ -612,6 +612,7 @@ type ClusterNode struct {
 	VolumeIDs                  *string     `json:"volume_ids" name:"volume_ids"`
 	VolumeType                 *int        `json:"volume_type" name:"volume_type"`
 	VxNetID                    *string     `json:"vxnet_id" name:"vxnet_id"`
+	HostMachine                *string     `json:"host_machine" name:"host_machine"`
 }
 
 func (v *ClusterNode) Validate() error {

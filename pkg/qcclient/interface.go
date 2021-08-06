@@ -30,6 +30,8 @@ type QingCloudAPI interface {
 	CreateVIPs(vxnet *rpc.VxNet) (string, error)
 	DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
 	DeleteVIPs(vips []string) (string, error)
+
+	DescribeClusterNodes(clusterID string) ([]*rpc.Node, error)
 }
 
 var (

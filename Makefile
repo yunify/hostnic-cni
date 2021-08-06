@@ -61,6 +61,7 @@ tools: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/ipam-client cmd/tools/ipam-client/client.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/hostnic-client cmd/tools/hostnic-client/client.go
 	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/vxnet-client cmd/tools/vxnet-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/patch-node cmd/tools/node-patch/patch.go
 
 deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml

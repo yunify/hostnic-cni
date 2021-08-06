@@ -40,6 +40,7 @@ type qingcloudAPIWrapper struct {
 	jobService      *service.JobService
 	tagService      *service.TagService
 	vipService      *service.VIPService
+	clusterService  *service.ClusterService
 
 	userID     string
 	instanceID string
@@ -98,6 +99,11 @@ func SetupQingCloudClient(opts Options) {
 		log.Fatalf("failed to init qingcloud sdk vip service: %v", err)
 	}
 
+	clusterService, err := qcService.Cluster(qsdkconfig.Zone)
+	if err != nil {
+		log.Fatalf("failed to init qingcloud sdk cluster service: %v", err)
+	}
+
 	//useid
 	api, _ := qcService.Accesskey(qsdkconfig.Zone)
 	output, err := api.DescribeAccessKeys(&service.DescribeAccessKeysInput{
@@ -118,6 +124,7 @@ func SetupQingCloudClient(opts Options) {
 		jobService:      jobService,
 		tagService:      tagService,
 		vipService:      vipService,
+		clusterService:  clusterService,
 
 		userID:     userId,
 		instanceID: string(instanceID),
@@ -591,6 +598,33 @@ func (q *qingcloudAPIWrapper) DeleteVIPs(vips []string) (string, error) {
 	}
 
 	return *output.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) DescribeClusterNodes(clusterID string) ([]*rpc.Node, error) {
+	input := &service.DescribeClusterNodesInput{
+		Cluster: service.String(clusterID),
+	}
+
+	output, err := q.clusterService.DescribeClusterNodes(input)
+	if err != nil {
+		log.Errorf("failed to DescribeClusterNodes: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	var nodes []*rpc.Node
+	for _, node := range output.NodeSet {
+		item := &rpc.Node{
+			InstanceID:  *node.InstanceID,
+			NodeID:      *node.NodeID,
+			HostMachine: *node.HostMachine,
+			PrivateIP:   *node.PrivateIP,
+			ClusterID:   *node.ClusterID,
+			Status:      *node.Status,
+		}
+		nodes = append(nodes, item)
+	}
+
+	return nodes, nil
 }
 
 func IPRangeCount(from, to string) int {

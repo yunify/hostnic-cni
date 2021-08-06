@@ -79,6 +79,15 @@ message VIP {
   string VxNetID = 4;
 }
 
+message Node {
+  string InstanceID = 1;
+  string NodeID = 2;
+  string HostMachine = 3;
+  string PrivateIP = 4;
+  string ClusterID = 5;
+  string Status = 6;
+}
+
 message NicInfo {
     string Id = 1;
     string Vxnet = 2;
