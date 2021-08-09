@@ -86,6 +86,13 @@ const (
 	EventADD    = "add"
 	EventUpdate = "update"
 	EventDelete = "delete"
+
+	MetricsSubnetModeCapacity     = "capacity"
+	MetricsSubnetModeUnallocated  = "unallocated"
+	MetricsSubnetModeAllocate     = "allocate"
+	MetricsSubnetModeReserved     = "reserved"
+	MetricsSubnetModeCount        = "subnet-count"
+	MetricsSubnetDefaultNamespace = "all-ns-to-default-vxnet"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {

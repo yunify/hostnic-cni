@@ -32,15 +32,18 @@ type IPAMServer struct {
 	ipamclient    ipam.IPAMClient
 	clusterConfig *config.ClusterConfig
 	metricsPort   int
+	oddPodCount   *float64
 }
 
 func NewIPAMServer(conf conf.ServerConf, clusterConfig *config.ClusterConfig, kubeclient kubernetes.Interface, ipamclient ipam.IPAMClient, metricsPort int) *IPAMServer {
+	count := float64(0)
 	return &IPAMServer{
 		conf:          conf,
 		kubeclient:    kubeclient,
 		ipamclient:    ipamclient,
 		clusterConfig: clusterConfig,
 		metricsPort:   metricsPort,
+		oddPodCount:   &count,
 	}
 }
 
@@ -64,7 +67,7 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 	}
 
 	//start up metrics server routine
-	hostnicMetricsManager := metrics.NewHostnicMetricsManager()
+	hostnicMetricsManager := metrics.NewHostnicMetricsManager(s.kubeclient, s.ipamclient, s.oddPodCount)
 	reg := prometheus.NewPedanticRegistry()
 	reg.MustRegister(hostnicMetricsManager)
 	gatherers := prometheus.Gatherers{
@@ -117,6 +120,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Blocks:   blocks,
 			Info:     &info,
 		}); err != nil {
+			*s.oddPodCount = *s.oddPodCount + 1
 			log.Errorf("AddNetwork request (%v) from blocks failed: %v", in.Args, err)
 			return nil, err
 		}
@@ -126,10 +130,12 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Pools:    pools,
 			Info:     &info,
 		}); err != nil {
+			*s.oddPodCount = *s.oddPodCount + 1
 			log.Errorf("AddNetwork request (%v) from pools failed: %v", in.Args, err)
 			return nil, err
 		}
 	} else {
+		*s.oddPodCount = *s.oddPodCount + 1
 		log.Errorf("AddNetwork request (%v): pool or block not found", in.Args)
 		return nil, fmt.Errorf("pool or block not found")
 	}
@@ -142,6 +148,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			if err := s.ipamclient.ReleaseByHandle(handleID); err != nil {
 				log.Errorf("AddNetwork request (%v) ReleaseByHandle failed: %v", in.Args, err)
 			}
+			*s.oddPodCount = *s.oddPodCount + 1
 			return nil, err
 		}
 	}
@@ -150,6 +157,9 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	in.Args.PodIP = podIP
 	in.IP = podIP
 	in.Nic, err = allocator.Alloc.AllocHostNic(in.Args)
+	if err != nil {
+		*s.oddPodCount = *s.oddPodCount + 1
+	}
 	return in, err
 }
 

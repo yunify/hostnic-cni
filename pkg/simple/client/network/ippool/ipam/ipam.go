@@ -908,3 +908,12 @@ func IP2Resutl(ip *cnet.IPNet, pool *v1alpha1.IPPool) *current.Result {
 
 	return &result
 }
+
+func (c IPAMClient) GetAllPools() []networkv1alpha1.IPPool {
+	pools, err := c.client.NetworkV1alpha1().IPPools().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("GetAllPools error: %v", err)
+		return nil
+	}
+	return pools.Items
+}
