@@ -32,11 +32,18 @@ type IPAMServer struct {
 	ipamclient    ipam.IPAMClient
 	clusterConfig *config.ClusterConfig
 	metricsPort   int
-	oddPodCount   *float64
+	oddPodCount   *metrics.OddPodCount
 }
 
 func NewIPAMServer(conf conf.ServerConf, clusterConfig *config.ClusterConfig, kubeclient kubernetes.Interface, ipamclient ipam.IPAMClient, metricsPort int) *IPAMServer {
-	count := float64(0)
+	count := metrics.OddPodCount{
+		BlockFailedCount:        0,
+		PoolFailedCount:         0,
+		NotFoundCount:           0,
+		AllocFailedCount:        0,
+		FreeFromPoolFailedCount: 0,
+		FreeFromHostFailedCount: 0,
+	}
 	return &IPAMServer{
 		conf:          conf,
 		kubeclient:    kubeclient,
@@ -120,7 +127,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Blocks:   blocks,
 			Info:     &info,
 		}); err != nil {
-			*s.oddPodCount = *s.oddPodCount + 1
+			(*s.oddPodCount).BlockFailedCount = (*s.oddPodCount).BlockFailedCount + 1
 			log.Errorf("AddNetwork request (%v) from blocks failed: %v", in.Args, err)
 			return nil, err
 		}
@@ -130,12 +137,12 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Pools:    pools,
 			Info:     &info,
 		}); err != nil {
-			*s.oddPodCount = *s.oddPodCount + 1
+			(*s.oddPodCount).PoolFailedCount = (*s.oddPodCount).PoolFailedCount + 1
 			log.Errorf("AddNetwork request (%v) from pools failed: %v", in.Args, err)
 			return nil, err
 		}
 	} else {
-		*s.oddPodCount = *s.oddPodCount + 1
+		(*s.oddPodCount).NotFoundCount = (*s.oddPodCount).NotFoundCount + 1
 		log.Errorf("AddNetwork request (%v): pool or block not found", in.Args)
 		return nil, fmt.Errorf("pool or block not found")
 	}
@@ -148,7 +155,6 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			if err := s.ipamclient.ReleaseByHandle(handleID); err != nil {
 				log.Errorf("AddNetwork request (%v) ReleaseByHandle failed: %v", in.Args, err)
 			}
-			*s.oddPodCount = *s.oddPodCount + 1
 			return nil, err
 		}
 	}
@@ -158,7 +164,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	in.IP = podIP
 	in.Nic, err = allocator.Alloc.AllocHostNic(in.Args)
 	if err != nil {
-		*s.oddPodCount = *s.oddPodCount + 1
+		(*s.oddPodCount).AllocFailedCount = (*s.oddPodCount).AllocFailedCount + 1
 	}
 	return in, err
 }
@@ -178,8 +184,12 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	handleID = podHandleKey(in.Args)
 	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
 		log.Errorf("DelNetwork request (%v) release by %s failed: %v", in.Args, handleID, err)
+		(*s.oddPodCount).FreeFromPoolFailedCount = (*s.oddPodCount).FreeFromPoolFailedCount + 1
 	}
 	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
+	if err != nil {
+		(*s.oddPodCount).FreeFromHostFailedCount = (*s.oddPodCount).FreeFromHostFailedCount + 1
+	}
 	return in, err
 }
 
