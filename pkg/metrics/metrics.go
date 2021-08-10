@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
-	"k8s.io/klog/v2"
 )
 
 type HostnicMetricsManager struct {
@@ -194,7 +194,7 @@ func (c *HostnicMetricsManager) GenerateMetrics() HostnicMetrics {
 	//get hostnic-ipam-config configmap
 	cm, err := c.kubeclient.CoreV1().ConfigMaps(constants.IPAMConfigNamespace).Get(context.TODO(), constants.IPAMConfigName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("get hostnic-ipam-config configmap failed: %v", err)
+		klog.Errorf("get configmap %s failed: %v", constants.IPAMConfigName, err)
 		return HostnicMetrics{
 			HostnicVxnetInfos:    hostnicVxnetInfos,
 			HostnicVxnetPodInfos: hostnicVxnetPodInfos,
@@ -202,20 +202,13 @@ func (c *HostnicMetricsManager) GenerateMetrics() HostnicMetrics {
 	}
 	var datas map[string][]string
 	if err := json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &datas); err != nil {
-		klog.Errorf("unmarshal hostnic-ipam-config data failed: %v", err)
+		klog.Errorf("unmarshal ipam data failed: %v", err)
 		return HostnicMetrics{
 			HostnicVxnetInfos:    hostnicVxnetInfos,
 			HostnicVxnetPodInfos: hostnicVxnetPodInfos,
 		}
 	}
 
-	var allPools []string
-	for _, ippool := range c.ipamclient.GetAllPools() {
-		allPools = append(allPools, ippool.Name)
-	}
-	args := ipam.GetUtilizationArgs{
-		Pools: allPools,
-	}
 	var hostnicIpamVxnetAllocators []HostnicIpamVxnetAllocator
 	var hostnicIpamVxnetUnallocators []HostnicIpamVxnetUnallocator
 	var hostnicIpamVxnetTotals []HostnicIpamVxnetTotal
@@ -228,8 +221,8 @@ func (c *HostnicMetricsManager) GenerateMetrics() HostnicMetrics {
 	allocMap := make(map[string]HostnicIpamNamespaceAllocator)
 	unallocMap := make(map[string]HostnicIpamNamespaceUnallocator)
 	totalMap := make(map[string]HostnicIpamNamespaceTotal)
-	if utils, err := c.ipamclient.GetPoolBlocksUtilization(args); err != nil {
-		klog.Errorf("GetPoolBlocksUtilization failed: %v\n", err)
+	if utils, err := c.ipamclient.GetPoolBlocksUtilization(ipam.GetUtilizationArgs{}); err != nil {
+		klog.Errorf("GetPoolBlocksUtilization failed: %v", err)
 	} else {
 		for _, util := range utils {
 			hostnicIpamVxnetAllocators = append(hostnicIpamVxnetAllocators, HostnicIpamVxnetAllocator{
@@ -631,6 +624,7 @@ func getNamespaceByBlock(block string, datas map[string][]string) string {
 			}
 		}
 	}
-	//it means block name is default vxnet,and many ns can use this vxnet,so return an uniform name
-	return constants.MetricsSubnetDefaultNamespace
+
+	// return a dummy name when no mapping rule found for this subnet
+	return constants.MetricsDummyNamespaceForSubnet
 }
