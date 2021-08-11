@@ -1,3 +1,6 @@
+
+---
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,16 +17,12 @@ spec:
       targetPort: 9191
       name: hostnic-metrics-port
   type: ClusterIP
-  
+
 ---
 
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  labels:
-    app.kubernetes.io/name: hostnic
-    app.kubernetes.io/vendor: kubesphere
-    app.kubernetes.io/version: v1.1.0
   name: hostnic
   namespace: kube-system
 spec:
@@ -51,8 +50,8 @@ spec:
     rules:
     - alert: hostnic-vxnet-ipam
       annotations:
-        message: vxnet ip resources are not much left, the vxnet is {{ $labels.vxnet_name}}
-        summary: vxnet ip lack
+        message: there are not many IP addresses left in vxnet {{ $labels.vxnet_name}}
+        summary: lack of IP addresses in vxnet
       expr: max(hostnic_ipam_vxnet_allocator) by(vxnet_name) / max(hostnic_ipam_vxnet_total)
         by(vxnet_name) > 0.8
       for: 5m
@@ -60,8 +59,8 @@ spec:
         severity: warning
     - alert: hostnic-subnet-ipam
       annotations:
-        message: subnet ip resources are not much left, the subnet is {{ $labels.subnet_name}}
-        summary: subnet ip lack
+        message: there are not many IP addresses left in subnet {{ $labels.subnet_name}}
+        summary: lack of IP addresses in subnet
       expr: |
         max(hostnic_ipam_subnet_allocator) by(subnet_name) / max(hostnic_ipam_subnet_total) by(subnet_name) > 0.8
       for: 5m
@@ -69,7 +68,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-alloc-from-block-failed
       annotations:
-        message: ipam alloc from block failed, pod in node {{ $labels.node_name}}
+        message: ipam alloc from block failed in node {{ $labels.node_name}}
         summary: hostnic ipam alloc from block failed
       expr: min(irate(hostnic_ipam_alloc_from_block_failed[5m])) by(node_name) > 0
       for: 5m
@@ -77,7 +76,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-alloc-from-host-failed
       annotations:
-        message: ipam alloc from host failed, pod in node {{ $labels.node_name}}
+        message: ipam alloc from host failed in node {{ $labels.node_name}}
         summary: hostnic ipam alloc from host failed
       expr: min(irate(hostnic_ipam_alloc_from_host_failed[5m])) by(node_name) > 0
       for: 5m
@@ -85,7 +84,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-alloc-resource-notfound
       annotations:
-        message: ipam resource notfound, pod in node {{ $labels.node_name}}
+        message: ipam resource notfound in node {{ $labels.node_name}}
         summary: hostnic ipam alloc resource notfound
       expr: min(irate(hostnic_ipam_alloc_resource_notfound[5m])) by(node_name) > 0
       for: 5m
@@ -93,8 +92,8 @@ spec:
         severity: warning
     - alert: hostnic-attach-failed
       annotations:
-        message: hostnic attach to vm failed, vxnet is {{ $labels.vxnet_name}}
-        summary: hostnic attach failed
+        message: hostnic nic attach failed for vxnet {{ $labels.vxnet_name}} in node {{ $labels.node_name}}
+        summary: hostnic nic attach failed
       expr: |
         sum(hostnic_vxnet_count{phase!="Succeeded"}) by(vxnet_name) > 0
       for: 5m
@@ -102,7 +101,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-free-from-host-failed  
       annotations:
-        message: ipam free from host failed, pod in node {{ $labels.node_name}}
+        message: ipam free from host failed in node {{ $labels.node_name}}
         summary: hostnic ipam free from host failed
       expr: min(irate(hostnic_ipam_free_from_host_failed[5m])) by(node_name) > 0
       for: 5m
@@ -110,7 +109,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-free-from-pool-failed
       annotations:
-        message: ipam free from pool failed, pod in node {{ $labels.node_name}}
+        message: ipam free from pool failed in node {{ $labels.node_name}}
         summary: hostnic ipam free from pool failed
       expr: min(irate(hostnic_ipam_free_from_pool_failed[5m])) by(node_name) > 0
       for: 5m
@@ -118,8 +117,8 @@ spec:
         severity: warning
     - alert: hostnic-namespace-ipam
       annotations:
-        message: namespace ip resources are not much left, the namespace is {{ $labels.ns_name}}
-        summary: namespace ip lack
+        message: there are not many IP addresses left in namespace {{ $labels.ns_name}}
+        summary: lack of IP addresses in namespace
       expr: max(hostnic_ipam_namespace_allocator) by(ns_name) / max(hostnic_ipam_namespace_total)
         by(ns_name) > 0.8
       for: 5m
@@ -127,7 +126,7 @@ spec:
         severity: warning
     - alert: hostnic-ipam-alloc-from-pool-failed
       annotations:
-        message: ipam alloc from pool failed, pod in node {{ $labels.node_name}}
+        message: ipam alloc from pool failed in node {{ $labels.node_name}}
         summary: hostnic ipam alloc from pool failed
       expr: |
         min(irate(hostnic_ipam_alloc_from_pool_failed[5m])) by(node_name) > 0
