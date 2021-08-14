@@ -418,6 +418,44 @@ func (c *IPPoolController) getFreeIPAMBlock(apps map[string][]string) (string, e
 	return "", fmt.Errorf("no free subnet was found")
 }
 
+func (c *IPPoolController) getRelationNSFromBlock(block string) (string, error) {
+	cm, err := c.k8sclient.CoreV1().ConfigMaps(constants.IPAMConfigNamespace).Get(context.TODO(), constants.IPAMConfigName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	var apps map[string][]string
+	if err := json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &apps); err != nil {
+		return "", err
+	}
+
+	for ns, blocks := range apps {
+		if contains(blocks, block) {
+			return ns, nil
+		}
+	}
+	return "", nil
+}
+
+func (c *IPPoolController) isBlocksEmpty(blocks []string) (bool, error) {
+	for _, block := range blocks {
+		blockObj, exists, err := c.ipamblockInformer.Informer().GetStore().GetByKey(block)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			klog.Warningf("block %s not found", block)
+			continue
+		}
+
+		block := blockObj.(*networkv1alpha1.IPAMBlock)
+		if block.NumFreeAddresses() != 0 {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (c *IPPoolController) processNS(item workItem) error {
 	klog.V(4).Infof("Processing namespace %v", item)
 	startTime := time.Now()
@@ -460,6 +498,24 @@ func (c *IPPoolController) processNS(item workItem) error {
 		klog.V(4).Infof("Namespace %s get subnet %s", item.Name, subnet)
 		change = true
 		apps[item.Name] = []string{subnet}
+	}
+
+	// ns's blocks may be empty, and should be expanded
+	if item.Event == constants.EventUpdate {
+		if subnets, ok := apps[item.Name]; ok {
+			if ok, err := c.isBlocksEmpty(subnets); err != nil {
+				return err
+			} else if ok {
+				// ns has no free ip, expand subnet for it
+				subnet, err := c.getFreeIPAMBlock(apps)
+				if err != nil {
+					return err
+				}
+				klog.V(4).Infof("Namespace %s get subnet %s", item.Name, subnet)
+				change = true
+				apps[item.Name] = append(subnets, subnet)
+			}
+		}
 	}
 
 	if item.Event == constants.EventDelete {
@@ -505,8 +561,22 @@ func (c *IPPoolController) enqueueIPAMBlocks(obj interface{}) {
 		return
 	}
 
-	poolName := block.Labels[networkv1alpha1.IPPoolNameLabel]
-	c.ippoolQueue.Add(poolName)
+	// notify ippool controller to update status
+	c.ippoolQueue.Add(block.Labels[networkv1alpha1.IPPoolNameLabel])
+
+	// notify ns controller to update subnets
+	if block.NumFreeAddresses() == 0 {
+		ns, err := c.getRelationNSFromBlock(block.Name)
+		klog.Infof("subnet %s has no free addresses: (%s, %v)", block.Name, ns, err)
+		if err != nil || ns == "" {
+			return
+		}
+
+		c.enqueueNamespace(workItem{
+			Name:  ns,
+			Event: constants.EventUpdate,
+		})
+	}
 }
 
 func (c *IPPoolController) enqueueNamespace(obj interface{}) {

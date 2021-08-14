@@ -1,0 +1,77 @@
+
+---
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: hostnic.qingcloud.com
+webhooks:
+  - name: configmap.hostnic.qingcloud.com
+    clientConfig:
+      caBundle: ${CA_BUNDLE}
+      service:
+        name: hostnic-webhook
+        namespace: kube-system
+        path: /ipam-configmap-validate
+    failurePolicy: Fail
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    rules:
+      - resources: ["configmaps"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hostnic-webhook
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: hostnic-webhook
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: hostnic-webhook
+    spec:
+      containers:
+        - name: hostnic-webhook
+          image: cumirror/hostnic-plus:20210815-2001
+          command:
+            - /app/hostnic-webhook
+            - --v=5
+            - --tls-private-key-file=/etc/qingcloud/certificates/key.pem
+            - --tls-cert-file=/etc/qingcloud/certificates/cert.pem
+            - --alsologtostderr
+          volumeMounts:
+            - mountPath: /etc/qingcloud/certificates/
+              name: webhook-certs
+              readOnly: true
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: hostnic-webhook-certs
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hostnic-webhook
+  namespace: kube-system
+  labels:
+    app: hostnic-webhook
+spec:
+  selector:
+    app: hostnic-webhook
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 8443
+      name: hostnic-webhook-port
+  type: ClusterIP

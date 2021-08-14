@@ -1,8 +1,5 @@
-tt ?= $(shell date "+%Y%m%d-%H%M")
-
 ARCH ?= amd64
 pgks ?= $(shell go list  ./pkg/... | grep -v rpc)
-IMG ?= cumirror/hostnic-plus:$(tt)
 #Debug level: 0, 1, 2 (1 true, 2 use bash)
 DEBUG?= 0
 TARGET?= default
@@ -20,7 +17,10 @@ ifeq ($(ARCH),x86_64)
   ARCH = amd64
 endif
 
-BUILD_ENV ?= GOOS=linux  GOARCH=$(ARCH)  CGO_ENABLED=0 
+BUILD_ENV ?= GOOS=linux  GOARCH=$(ARCH)  CGO_ENABLED=0
+CORE_BIN_DIR ?= bin/hostnic
+TOOLS_BIN_DIR ?= bin/hostnic/tools
+WEBHOOK_BIN_DIR ?= bin/webhook
 
 docker-unit-test: fmt vet
 	docker run --rm -e GO111MODULE=on  -v "${PWD}":/root/myapp -w /root/myapp golang:1.12 make unit-test 
@@ -47,29 +47,29 @@ clientset:
 	./hack/generate_client.sh
 
 rebuild: clientset manifests vet fmt
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-controller cmd/controller/main.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/ipam/main.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic cmd/hostnic/hostnic.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic-controller cmd/controller/main.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic-agent cmd/ipam/main.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic cmd/hostnic/hostnic.go
 
 build: vet fmt
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-controller cmd/controller/main.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic-agent cmd/ipam/main.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/hostnic cmd/hostnic/hostnic.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic-controller cmd/controller/main.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic-agent cmd/ipam/main.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(CORE_BIN_DIR)/hostnic cmd/hostnic/hostnic.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(WEBHOOK_BIN_DIR)/hostnic-webhook cmd/webhook/main.go cmd/webhook/webhook.go
 
 tools: vet fmt
-	#$(BUILD_ENV) go build -ldflags "-w" -o bin/db-client cmd/db-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/ipam-client cmd/tools/ipam-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/hostnic-client cmd/tools/hostnic-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/vxnet-client cmd/tools/vxnet-client/client.go
-	$(BUILD_ENV) go build -ldflags "-w" -o bin/tools/patch-node cmd/tools/node-patch/patch.go
+	#$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/db-client cmd/db-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/ipam-client cmd/tools/ipam-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/hostnic-client cmd/tools/hostnic-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/vxnet-client cmd/tools/vxnet-client/client.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/patch-node cmd/tools/node-patch/patch.go
 
 deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml
 	kustomize build config/${TARGET} > ${DEPLOY}
 
 publish: build tools
-	docker build -t ${IMG} .
-	docker push ${IMG}
+	hack/docker_build.sh
 
 generate-prototype: 
 	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto
