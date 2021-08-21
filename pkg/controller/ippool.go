@@ -35,11 +35,6 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool"
 )
 
-type workItem struct {
-	Event string
-	Name  string
-}
-
 type IPPoolController struct {
 	eventBroadcaster record.EventBroadcaster
 	eventRecorder    record.EventRecorder
@@ -456,14 +451,14 @@ func (c *IPPoolController) isBlocksEmpty(blocks []string) (bool, error) {
 	return true, nil
 }
 
-func (c *IPPoolController) processNS(item workItem) error {
-	klog.V(4).Infof("Processing namespace %v", item)
+func (c *IPPoolController) processNS(name string) error {
+	klog.V(4).Infof("Processing namespace %s", name)
 	startTime := time.Now()
 	defer func() {
-		klog.V(4).Infof("Finished processing namespace %v (%v)", item, time.Since(startTime))
+		klog.V(4).Infof("Finished processing namespace %s (%v)", name, time.Since(startTime))
 	}()
 
-	_, err := c.nsInformer.Lister().Get(item.Name)
+	ns, err := c.nsInformer.Lister().Get(name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
@@ -473,7 +468,7 @@ func (c *IPPoolController) processNS(item workItem) error {
 		return err
 	}
 	if cm.Data[constants.IPAMAutoAssignForNamespace] != "on" {
-		klog.V(4).Infof("Skip handle %v: autoAssign is off", item)
+		klog.V(4).Infof("Namespace %s is skipped: autoAssign is off", name)
 		return nil
 	}
 
@@ -483,47 +478,34 @@ func (c *IPPoolController) processNS(item workItem) error {
 	}
 
 	change := false
-	if item.Event == constants.EventADD {
-		if subnets, ok := apps[item.Name]; ok && len(subnets) > 0 {
-			// ns has sunbet config, do nothing
-			klog.V(4).Infof("Namespace %s has subnets %v", item.Name, subnets)
-			return nil
+	if ns == nil || ns.DeletionTimestamp != nil {
+		klog.V(4).Infof("Namespace %s is deleted", name)
+		// delete ns's subnet config
+		if _, ok := apps[name]; ok {
+			change = true
+			delete(apps, name)
+		}
+	} else {
+		subnets, ok := apps[name]
+		if ok {
+			isEmpty, err := c.isBlocksEmpty(subnets)
+			if err != nil {
+				return err
+			}
+			if !isEmpty {
+				klog.V(4).Infof("Namespace %s has subnets %v", name, subnets)
+				return nil
+			}
 		}
 
-		// ns has no sunbet, pick one for it
+		// expand namespace's subnets when it has no subnets or free addresses
 		subnet, err := c.getFreeIPAMBlock(apps)
 		if err != nil {
 			return err
 		}
-		klog.V(4).Infof("Namespace %s get subnet %s", item.Name, subnet)
+		klog.V(4).Infof("Namespace %s expand subnet %s on %v", name, subnet, subnets)
 		change = true
-		apps[item.Name] = []string{subnet}
-	}
-
-	// ns's blocks may be empty, and should be expanded
-	if item.Event == constants.EventUpdate {
-		if subnets, ok := apps[item.Name]; ok {
-			if ok, err := c.isBlocksEmpty(subnets); err != nil {
-				return err
-			} else if ok {
-				// ns has no free ip, expand subnet for it
-				subnet, err := c.getFreeIPAMBlock(apps)
-				if err != nil {
-					return err
-				}
-				klog.V(4).Infof("Namespace %s get subnet %s", item.Name, subnet)
-				change = true
-				apps[item.Name] = append(subnets, subnet)
-			}
-		}
-	}
-
-	if item.Event == constants.EventDelete {
-		// delete ns's subnet config
-		if _, ok := apps[item.Name]; ok {
-			change = true
-			delete(apps, item.Name)
-		}
+		apps[name] = append(subnets, subnet)
 	}
 
 	if change {
@@ -544,7 +526,7 @@ func (c *IPPoolController) processNSItem() bool {
 	}
 	defer c.nsQueue.Done(obj)
 
-	err := c.processNS(obj.(workItem))
+	err := c.processNS(obj.(string))
 	if err == nil {
 		c.nsQueue.Forget(obj)
 		return true
@@ -572,15 +554,18 @@ func (c *IPPoolController) enqueueIPAMBlocks(obj interface{}) {
 			return
 		}
 
-		c.enqueueNamespace(workItem{
-			Name:  ns,
-			Event: constants.EventUpdate,
-		})
+		c.nsQueue.Add(ns)
 	}
 }
 
 func (c *IPPoolController) enqueueNamespace(obj interface{}) {
-	c.nsQueue.Add(obj)
+	ns, ok := obj.(*corev1.Namespace)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("namespace informer returned non-namespace object: %#v", obj))
+		return
+	}
+
+	c.nsQueue.Add(ns.Name)
 }
 
 func NewIPPoolController(
@@ -631,19 +616,11 @@ func NewIPPoolController(
 	})
 
 	c.nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			c.enqueueNamespace(workItem{
-				Name:  obj.(*corev1.Namespace).Name,
-				Event: constants.EventADD,
-			})
+		AddFunc: c.enqueueNamespace,
+		UpdateFunc: func(old, new interface{}) {
+			c.enqueueNamespace(new)
 		},
-		UpdateFunc: nil,
-		DeleteFunc: func(obj interface{}) {
-			c.enqueueNamespace(workItem{
-				Name:  obj.(*corev1.Namespace).Name,
-				Event: constants.EventDelete,
-			})
-		},
+		DeleteFunc: c.enqueueNamespace,
 	})
 
 	return c
