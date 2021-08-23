@@ -445,8 +445,6 @@ data:
   hostnic: |
     {
       "pool":{
-        "poolHigh":5,
-        "poolLow":3,
         "maxNic":60
       },
       "server":{

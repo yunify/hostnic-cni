@@ -36,9 +36,6 @@ const (
 	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
 
-	DefaultLowPoolSize  = 3
-	DefaultHighPoolSize = 5
-
 	DefaultNodeThreshold  = 32
 	DefaultVxnetThreshold = 128
 	// Minute

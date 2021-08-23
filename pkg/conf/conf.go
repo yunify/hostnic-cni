@@ -13,10 +13,6 @@ type IpamConf struct {
 }
 
 type PoolConf struct {
-	//per vxnet
-	PoolHigh int `json:"poolHigh,omitempty" yaml:"poolHigh,omitempty"`
-	PoolLow  int `json:"poolLow,omitempty" yaml:"poolLow,omitempty"`
-
 	//global
 	MaxNic         int      `json:"maxNic,omitempty" yaml:"maxNic,omitempty"`
 	Sync           int      `json:"sync,omitempty" yaml:"sync,omitempty"`
@@ -46,8 +42,6 @@ func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 
 	conf := &IpamConf{
 		Pool: PoolConf{
-			PoolHigh:       constants.DefaultHighPoolSize,
-			PoolLow:        constants.DefaultLowPoolSize,
 			MaxNic:         constants.NicNumLimit,
 			Sync:           constants.DefaultJobSyn,
 			RouteTableBase: constants.DefaultRouteTableBase,
@@ -81,10 +75,6 @@ func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 }
 
 func validateConf(conf *IpamConf) error {
-	if conf.Pool.PoolLow > conf.Pool.PoolHigh {
-		return fmt.Errorf("PoolLow should less than PoolHigh")
-	}
-
 	if conf.Pool.MaxNic > constants.NicNumLimit {
 		return fmt.Errorf("MaxNic should less than 63")
 	}

@@ -96,14 +96,6 @@ func (c *ClusterConfig) configHandle(cm *corev1.ConfigMap, event string) {
 	}
 }
 
-// TODO: delete later
-func (c *ClusterConfig) GetConfig() map[string][]string {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	return c.apps
-}
-
 func (c *ClusterConfig) GetDefaultIPPools() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
