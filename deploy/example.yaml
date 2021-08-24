@@ -7,10 +7,12 @@ metadata:
   name: hostnic-ipam-config
   namespace: kube-system
 data:
-  subnet-auto-assign: "on"
+  subnet-auto-assign: "off"
   ipam: |
     {
-      "Default": ["vxnet-cwjk6xr"]
+      "Default": ["vxnet-xxxxxxxx"],
+      "test": ["4100-172-16-3-0-26", "4100-172-16-3-128-26"],
+      "abc": ["4100-172-16-3-64-26", "4100-172-16-3-192-26"]
     }
 
 ---
@@ -21,10 +23,8 @@ metadata:
   name: v-pool
 spec:
   vxnets:
-    - name: vxnet-nj02rbu
-    - name: vxnet-vfpl1e1
-    - name: vxnet-kuusp12
-    - name: vxnet-cwjk6xr
-  blockSize: 26
+    - name: vxnet-xxxxxxxx
+    - name: vxnet-yyyyyyyy
+  blockSize: 27
 
 ---

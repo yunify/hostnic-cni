@@ -41,7 +41,7 @@ spec:
     spec:
       containers:
         - name: hostnic-webhook
-          image: cumirror/hostnic-webhook:20210821-165610
+          image: qingcloud/hostnic-webhook:v1.0.0
           command:
             - /app/hostnic-webhook
             - --tls-private-key-file=/etc/qingcloud/certificates/key.pem

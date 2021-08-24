@@ -2,6 +2,7 @@ ARCH ?= amd64
 pgks ?= $(shell go list  ./pkg/... | grep -v rpc)
 #Debug level: 0, 1, 2 (1 true, 2 use bash)
 DEBUG?= 0
+TAG?= latest
 TARGET?= default
 DEPLOY?= deploy/hostnic.yaml
 
@@ -69,7 +70,7 @@ deploy:
 	kustomize build config/${TARGET} > ${DEPLOY}
 
 publish: build tools
-	hack/docker_build.sh
+	hack/docker_build.sh ${TAG}
 
 generate-prototype: 
 	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto

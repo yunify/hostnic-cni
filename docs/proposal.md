@@ -21,11 +21,12 @@ k8s对于CNI插件有以下要求：
 
 hostnic插件是基于上述原则进行设计的，网络的架构如下：
 ![网络架构](pod.png)
-如图中所示，首先会将IAAS的网卡挂载到主机上，然后在主机端将其IP移除（这是Pod 所用，主机端有这个IP会导致回路不正确）。每当有一个Pod 需要IP时，hostnic插件会做如下操作：
+如图中所示，每当有一个Pod 需要IP时，hostnic插件会做如下操作：
 1. 向Daemon获取一个IP信息（包括ip，mac，以及对应的namespace等）
-2. 启动对应的网卡（同样要再删除一遍IP）
-3. 创建一对veth，一端在root namespace，一端在Pod namespace里
-4. 在Pod namespace中，创建默认路由，并且指定静态arp，最终网络如下：
+2. IPAM模块会进行IP分配，如果Pod所在的节点没有IP对应vxnet的网卡，则会申请网卡并挂载到主机上，同时网卡也会加入bridge（这是为了进行arp代答）
+3. 如果节点上已经挂载了IP所属vxnet的网卡，则跳过步骤2
+4. 创建一对veth，一端在root namespace，一端在Pod namespace里
+5. 在Pod namespace中，创建默认路由，并且指定静态arp，最终网络如下：
    ```bash
     #在Pod内部的网络
     IP address
@@ -56,16 +57,16 @@ hostnic插件是基于上述原则进行设计的，网络的架构如下：
    ```
 
 ### From Pod
-每个Pod都对应一个独立的路由表(路由表号保证唯一，默认从260开始分配)， 路由表里存在两个表项：默认路由与本地链路路由
+相同vxnet的Pod都对应一个独立的路由表(路由表号保证唯一，默认从260开始分配)， 路由表里存在两个表项：默认路由与本地链路路由
 ```shell
-root@node2:~# ip route show table 264
-default via 172.22.0.1 dev hostnic_264
-172.22.0.0/24 dev hostnic_264 scope link
+root@node2:~# ip route show table 260
+default via 172.22.0.1 dev br_260
+172.22.0.0/24 dev br_260 scope link
 ```
 当数据包从Pod出来之后， 经过veth设备到达host network之后， 通过策略路由来控制数据包从上述路由表中查找路由
 ```bash
 root@node2:~# ip rule
-1536:   from 172.22.0.247 lookup 261
+1536:   from 172.22.0.0/24 lookup 260
 ```
 
 ### To Pod
@@ -78,30 +79,24 @@ root@node2:~# ip rule
 
 ### hairpin模式
 
-开启hairpin模式时， 同节点的Pod之间的流量都会离开主机， 目前只有kube-proxy为iptables模式时才支持hairpin。 
-
-此模式下， hostnic会在iptables mangle表中加入以下四条规则，用于mark相关数据包，用于后续策略路由控制, 其中172.22.0.22为节点IP地址， 10.233.0.0/18为service网络CIDR
-```shell
-root@node2:~# iptables -t mangle -S
--A PREROUTING -j HOSTNIC-PREROUTING
--A OUTPUT -j HOSTNIC-OUTPUT
--A HOSTNIC-OUTPUT -m conntrack --ctorigdst 10.233.0.0/18 -j MARK --set-xmark 0x10000/0x10000
--A HOSTNIC-PREROUTING -m conntrack --ctorigdst 172.22.0.22 -j MARK --set-xmark 0x10000/0x10000
-```
-
-此外， 需要添加的路由策略如下
-```shell
-root@node2:~# ip rule
-#hostnetwork访问pod
-1535:   from all to 172.22.0.247 fwmark 0x10000/0x10000 lookup main 
-#Pod访问Service，刚好Service对应的后端Pod为自己， 此时流量不出主机， 不然数据包会存在环路
-1535:   from 172.22.0.247 to 172.22.0.247 lookup main
-1535:   from all to 172.22.0.247 iif hostnic_261 lookup main  #控制进入Pod的流量
-#NodePort访问Pod， NodePort主机与Pod所在节点相同，此时从Pod返回的流量需要查找main表，从主网卡出去
-1536:   from 172.22.0.247 fwmark 0x10000/0x10000 lookup main
-1536:   from 172.22.0.247 iif vnicfc986c38a13 lookup 261  #控制从Pod出来的流量
-```
+暂不支持
 
 ## IPAM
 
-为了加快Pod获取的速度，`hostnic-daemon`会预先申请一些网卡，同样在Pod删除之后，也会将多余的网卡归还给IAAS
+为了加快Pod获取的速度，同一个节点上，相同vxnet的pod共用一块hostnic网卡，且这个网卡会加入到bridge下，通过ebtables进行arp代答，代答mac为hostnic网卡的mac。
+```bash
+root@node2:~# ebtables -t nat -L
+Bridge table: nat
+
+Bridge chain: PREROUTING, entries: 6, policy: ACCEPT
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.205 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.195 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.156 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.155 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.193 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+-p ARP --logical-in br_260 --arp-op Request --arp-ip-dst 172.22.0.154 -j arpreply --arpreply-mac 52:54:9e:d0:dd:96
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: POSTROUTING, entries: 0, policy: ACCEPT
+```

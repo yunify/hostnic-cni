@@ -3550,6 +3550,8 @@ spec:
               value: "false"
             - name: FELIX_ROUTESOURCE
               value: "WorkloadIPs"
+            - name: CALICO_IPV4POOL_NAT_OUTGOING
+              value: "false"
           securityContext:
             privileged: true
           resources:

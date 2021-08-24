@@ -13,8 +13,8 @@ spec:
         spec:
           containers:
             - name: node-patch
-              image: cumirror/hostnic-plus:20210806-1702
-              command: ["sh", "-c", "/app/tools/patch-node --clusterID cl-luft0h8j"]
+              image: qingcloud/hostnic-plus:v1.0.0
+              command: ["sh", "-c", "/app/tools/patch-node --clusterID CLUSTERID"]
               volumeMounts:
                 - mountPath: /root/.qingcloud/
                   name: apiaccesskey

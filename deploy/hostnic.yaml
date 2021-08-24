@@ -440,33 +440,6 @@ subjects:
 
 ---
 
-apiVersion: v1
-data:
-  hostnic: |
-    {
-      "pool":{
-        "maxNic":60
-      },
-      "server":{
-        "networkPolicy": "calico"
-      }
-    }
-  hostnic-cni: |
-    {
-      "cniVersion": "0.3.0",
-      "name": "hostnic",
-      "type": "hostnic",
-      "serviceCIDR" : "10.233.0.0/18",
-      "hairpin": false,
-      "natMark": "0x10000"
-    }
-kind: ConfigMap
-metadata:
-  name: hostnic-cfg-cm
-  namespace: kube-system
-
----
-
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -489,6 +462,7 @@ spec:
         - command:
             - /app/hostnic-agent
             - --v=5
+            - --metrics-port=9191
             - --log_file=/var/run/hostnic/agent.log
           env:
             - name: MY_NODE_NAME
@@ -501,7 +475,7 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
-          image: cumirror/hostnic-plus:20210706-1021
+          image: qingcloud/hostnic-plus:v1.0.0
           imagePullPolicy: IfNotPresent
           name: hostnic-node
           ports:
@@ -540,7 +514,7 @@ spec:
             - /app/install_hostnic.sh
           command:
             - /bin/sh
-          image: cumirror/hostnic-plus:20210706-1021
+          image: qingcloud/hostnic-plus:v1.0.0
           imagePullPolicy: IfNotPresent
           name: hostnic-init
           resources: {}
@@ -615,7 +589,7 @@ spec:
     spec:
       containers:
         - name: hostnic-controller
-          image: cumirror/hostnic-plus:20210706-1021
+          image: qingcloud/hostnic-plus:v1.0.0
           command:
             - /app/hostnic-controller
             - --v=5
@@ -645,22 +619,4 @@ spec:
         - hostPath:
             path: /var/run/hostnic
           name: hostnic-run
-
----
-
-apiVersion: v1
-stringData:
-  config.yaml: |-
-    qy_access_key_id: 'qy_access_key_id'
-    qy_secret_access_key: 'qy_secret_access_key'
-    host: 'api.qingcloud.com'
-    port: 443
-    protocol: 'https'
-    # your instance zone
-    zone: "pek3"
-kind: Secret
-metadata:
-  name: qcsecret
-  namespace: kube-system
-type: Opaque
 

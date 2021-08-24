@@ -3,9 +3,9 @@
 set -ex
 set -o pipefail
 
-REPO=${REPO:-cumirror}
-time=$(date "+%Y%m%d-%H%M%S")
-TAG=$time
+# push to qingcloud with default latest tag
+REPO=${REPO:-qingcloud}
+TAG="$1"
 
 # hostnic
 docker build -f build/hostnic/Dockerfile -t $REPO/hostnic-plus:$TAG .
