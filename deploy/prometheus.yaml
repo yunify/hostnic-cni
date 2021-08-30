@@ -57,12 +57,11 @@ spec:
       for: 5m
       labels:
         severity: warning
-    - alert: hostnic-subnet-ipam
+    - alert: hostnic-namespace-ipam
       annotations:
-        message: there are not many IP addresses left in subnet {{ $labels.subnet_name}}
-        summary: lack of IP addresses in subnet
-      expr: |
-        max(hostnic_ipam_subnet_allocator) by(subnet_name) / max(hostnic_ipam_subnet_total) by(subnet_name) > 0.8
+        message: there are no more IP addresses left in namespace {{ $labels.ns_name}}
+        summary: lack of IP addresses in namespace
+      expr: max(hostnic_ipam_namespace_total - hostnic_ipam_namespace_allocator) by(ns_name) == 0
       for: 5m
       labels:
         severity: warning
@@ -112,15 +111,6 @@ spec:
         message: ipam free from pool failed in node {{ $labels.node_name}}
         summary: hostnic ipam free from pool failed
       expr: min(irate(hostnic_ipam_free_from_pool_failed[5m])) by(node_name) > 0
-      for: 5m
-      labels:
-        severity: warning
-    - alert: hostnic-namespace-ipam
-      annotations:
-        message: there are not many IP addresses left in namespace {{ $labels.ns_name}}
-        summary: lack of IP addresses in namespace
-      expr: max(hostnic_ipam_namespace_allocator) by(ns_name) / max(hostnic_ipam_namespace_total)
-        by(ns_name) > 0.8
       for: 5m
       labels:
         severity: warning
