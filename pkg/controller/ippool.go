@@ -549,7 +549,7 @@ func (c *IPPoolController) enqueueIPAMBlocks(obj interface{}) {
 	// notify ns controller to update subnets
 	if block.NumFreeAddresses() == 0 {
 		ns, err := c.getRelationNSFromBlock(block.Name)
-		klog.Infof("subnet %s has no free addresses: (%s, %v)", block.Name, ns, err)
+		klog.V(4).Infof("subnet %s has no free addresses: (%s, %v)", block.Name, ns, err)
 		if err != nil || ns == "" {
 			return
 		}

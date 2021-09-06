@@ -2,8 +2,11 @@ package conf
 
 import (
 	"fmt"
+	"io/ioutil"
 
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/util/yaml"
+
 	"github.com/yunify/hostnic-cni/pkg/constants"
 )
 
@@ -34,7 +37,7 @@ type ServerConf struct {
 
 // TryLoadFromDisk loads configuration from default location after server startup
 // return nil error if configuration file not exists
-func TryLoadFromDisk(name, path string) (*IpamConf, error) {
+func TryLoadIpamConfFromDisk(name, path string) (*IpamConf, error) {
 	viper.SetConfigName(name)
 	viper.SetConfigType("json")
 	viper.AddConfigPath("./")
@@ -80,4 +83,25 @@ func validateConf(conf *IpamConf) error {
 	}
 
 	return nil
+}
+
+type ClusterConfig struct {
+	Zone              string   `yaml:"zone"`
+	DefaultVxNetForLB string   `yaml:"defaultVxNetForLB,omitempty"`
+	ClusterID         string   `yaml:"clusterID"`
+	SecurityGroup     string   `yaml:"securityGroup"`
+	IsApp             bool     `yaml:"isApp,omitempty"`
+	TagIDs            []string `yaml:"tagIDs,omitempty"`
+	InstanceIDs       []string `yaml:"instanceIDs,omitempty"`
+}
+
+func TryLoadClusterConfFromDisk(file string) (*ClusterConfig, error) {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var conf ClusterConfig
+	err = yaml.Unmarshal(content, &conf)
+	return &conf, err
 }

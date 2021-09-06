@@ -63,7 +63,7 @@ func main() {
 	stopCh := signals.SetupSignalHandler()
 
 	// load ipam server config
-	conf, err := conf.TryLoadFromDisk(constants.DefaultConfigName, constants.DefaultConfigPath)
+	conf, err := conf.TryLoadIpamConfFromDisk(constants.DefaultConfigName, constants.DefaultConfigPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}

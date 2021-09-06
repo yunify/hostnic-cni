@@ -31,6 +31,11 @@ type QingCloudAPI interface {
 	DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error)
 	DeleteVIPs(vips []string) (string, error)
 
+	CreateSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (string, error)
+	GetSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (*rpc.SecurityGroupRule, error)
+	DeleteSecurityGroupRuleForVxNet(sgr string) error
+
+	DescribeClusterSecurityGroup(clusterID string) (string, error)
 	DescribeClusterNodes(clusterID string) ([]*rpc.Node, error)
 }
 

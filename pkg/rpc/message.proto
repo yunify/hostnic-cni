@@ -79,6 +79,17 @@ message VIP {
   string VxNetID = 4;
 }
 
+message SecurityGroupRule {
+  string ID = 1;
+  string Name = 2;
+  string SecurityGroupID = 3;
+  string Action = 4;
+  string Protocol = 7;
+  string Val3 = 8;
+  int32 Direction = 5;
+  int32 Priority = 6;
+}
+
 message Node {
   string InstanceID = 1;
   string NodeID = 2;

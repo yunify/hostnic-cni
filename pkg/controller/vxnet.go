@@ -39,6 +39,7 @@ import (
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
+	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
@@ -70,20 +71,24 @@ type VxNetPoolController struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
+	// qingcloud cluster config
+	conf *conf.ClusterConfig
 	// qingcloud info
 	rwLock sync.RWMutex
 	// vxnet cache data
 	vxNetCache map[string]*rpc.VxNet
 	// vip cache data
 	vipCache map[string][]*rpc.VIP
+	// securityGroup cache data
+	sgCache map[string]*rpc.SecurityGroupRule
 	// job info
-	// vips in vxnet -> jobID
 	jobs map[string]string
 
 	timer *timer.Timer
 }
 
 func NewVxNetPoolController(
+	conf *conf.ClusterConfig,
 	kubeclientset kubernetes.Interface,
 	clientset clientset.Interface,
 	ippoolInformer networkinformers.IPPoolInformer,
@@ -102,8 +107,10 @@ func NewVxNetPoolController(
 		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
 
 		// iaas
+		conf:       conf,
 		vxNetCache: make(map[string]*rpc.VxNet),
 		vipCache:   make(map[string][]*rpc.VIP),
+		sgCache:    make(map[string]*rpc.SecurityGroupRule),
 		jobs:       make(map[string]string),
 	}
 
@@ -217,7 +224,7 @@ func (c *VxNetPoolController) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
+		klog.V(4).Infof("Successfully synced '%s'", key)
 		return nil
 	}(obj)
 
@@ -234,7 +241,7 @@ func (c *VxNetPoolController) processNextWorkItem() bool {
 // with the current status of the resource.
 func (c *VxNetPoolController) syncHandler(name string) error {
 	if name != constants.IPAMVxnetPoolName {
-		klog.Infof("Don't care about %s", name)
+		klog.V(3).Infof("Don't care about %s", name)
 		return nil
 	}
 
@@ -248,7 +255,7 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 		return err
 	}
 	if pool.DeletionTimestamp != nil {
-		klog.Infof("Graceful delete vxnetpool %s", name)
+		klog.V(3).Infof("Graceful delete vxnetpool %s", name)
 		return nil
 	}
 
@@ -394,6 +401,14 @@ func (c *VxNetPoolController) createBlocksFromIPPool(ippool *networkv1alpha1.IPP
 	return c.ipamClient.AutoGenerateBlocksFromPool(ippool.Name)
 }
 
+func keyForVxNetVIP(vxnet string) string {
+	return "VIP|" + vxnet
+}
+
+func keyForVxNetSG(sg, vxnet string) string {
+	return "SG|" + sg + "/" + vxnet
+}
+
 func (c *VxNetPoolController) prepareQcloudResource(pool *networkv1alpha1.VxNetPool) (bool, error) {
 	// 1. check vxnet
 	for _, vxnet := range pool.Spec.Vxnets {
@@ -408,16 +423,39 @@ func (c *VxNetPoolController) prepareQcloudResource(pool *networkv1alpha1.VxNetP
 		if _, ok := c.getVxNetVIPInfo(vxnet.Name); !ok {
 			klog.Warningf("vips for vxnet %s not ready", vxnet.Name)
 			v, _ := c.getVxNetInfo(vxnet.Name)
-			if job, ok := c.getJob(v.ID); ok {
+			if job, ok := c.getJob(keyForVxNetVIP(v.ID)); ok {
 				klog.Warningf("vips for vxnet %s: wait job %s", vxnet.Name, job)
 				return false, nil
 			}
 			if job, err := qcclient.QClient.CreateVIPs(v); err != nil {
 				return false, err
 			} else {
-				c.setJob(v.ID, job)
+				c.setJob(keyForVxNetVIP(v.ID), job)
+				klog.V(3).Infof("CreateVIPs for vxnet %s: %s", vxnet.Name, job)
 			}
 			return false, nil
+		}
+	}
+
+	// 3. check and add security-group for vxnet
+	if sg := c.conf.SecurityGroup; sg != "" {
+		for _, vxnet := range pool.Spec.Vxnets {
+			id := keyForVxNetSG(sg, vxnet.Name)
+			if _, ok := c.getSecurityGroupRule(id); !ok {
+				klog.Warningf("SecurityGroupRule for vxnet %s not ready", vxnet.Name)
+				if job, ok := c.getJob(id); ok {
+					klog.Warningf("sg for vxnet %s: wait job %s", vxnet.Name, job)
+					return false, nil
+				}
+				v, _ := c.getVxNetInfo(vxnet.Name)
+				if job, err := qcclient.QClient.CreateSecurityGroupRuleForVxNet(sg, v); err != nil {
+					return false, err
+				} else {
+					c.setJob(id, job)
+					klog.V(3).Infof("CreateSecurityGroupRuleForVxNet for vxnet %s: %s", vxnet.Name, job)
+				}
+				return false, nil
+			}
 		}
 	}
 
@@ -460,11 +498,11 @@ func (c *VxNetPoolController) getVxNetInfo(vxnet string) (*rpc.VxNet, bool) {
 	return result, ok
 }
 
-func (c *VxNetPoolController) setVxNetInfo(k string, v *rpc.VxNet) {
+func (c *VxNetPoolController) setVxNetInfo(vxnet string, v *rpc.VxNet) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
-	c.vxNetCache[k] = v
+	c.vxNetCache[vxnet] = v
 	return
 }
 
@@ -476,49 +514,57 @@ func (c *VxNetPoolController) getVxNetVIPInfo(vxnet string) ([]*rpc.VIP, bool) {
 	return result, ok
 }
 
-func (c *VxNetPoolController) setVxNetVIPInfo(k string, v []*rpc.VIP) {
+func (c *VxNetPoolController) setVxNetVIPInfo(vxnet string, v []*rpc.VIP) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
-	c.vipCache[k] = v
+	c.vipCache[vxnet] = v
 	return
 }
 
-func (c *VxNetPoolController) deleteJobByVxNet(vxnet string) {
-	c.rwLock.Lock()
-	defer c.rwLock.Unlock()
-
-	delete(c.jobs, vxnet)
-}
-
-func (c *VxNetPoolController) deleteJobByJob(job string) {
-	c.rwLock.Lock()
-	defer c.rwLock.Unlock()
-
-	for k, v := range c.jobs {
-		if v == job {
-			delete(c.jobs, k)
-		}
-	}
-}
-
-func (c *VxNetPoolController) getJob(vxnet string) (string, bool) {
+func (c *VxNetPoolController) getSecurityGroupRule(id string) (*rpc.SecurityGroupRule, bool) {
 	c.rwLock.RLock()
 	defer c.rwLock.RUnlock()
 
-	job, ok := c.jobs[vxnet]
-	return job, ok
+	result, ok := c.sgCache[id]
+	return result, ok
 }
 
-func (c *VxNetPoolController) setJob(vips, job string) {
+func (c *VxNetPoolController) setSecurityGroupRule(id string, v *rpc.SecurityGroupRule) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
-	c.jobs[vips] = job
+	c.sgCache[id] = v
+	return
+}
+
+func (c *VxNetPoolController) deleteJob(id string) {
+	c.rwLock.Lock()
+	defer c.rwLock.Unlock()
+
+	delete(c.jobs, id)
+}
+
+func (c *VxNetPoolController) getJob(id string) (string, bool) {
+	c.rwLock.RLock()
+	defer c.rwLock.RUnlock()
+
+	job, ok := c.jobs[id]
+	return job, ok
+}
+
+func (c *VxNetPoolController) setJob(id, job string) {
+	c.rwLock.Lock()
+	defer c.rwLock.Unlock()
+
+	c.jobs[id] = job
 	return
 }
 
 func (c *VxNetPoolController) qingCloudSync() {
+	klog.V(4).Infof("qingCloudSync: start")
+	defer klog.V(4).Infof("qingCloudSync: end")
+
 	var change bool
 	pool, err := c.poolsLister.Get(constants.IPAMVxnetPoolName)
 	if err != nil {
@@ -526,7 +572,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 		return
 	}
 
-	// 1. get vxnets
+	// 1. update vxnets
 	var needUpdate []string
 	for _, vxnet := range pool.Spec.Vxnets {
 		if _, ok := c.getVxNetInfo(vxnet.Name); !ok {
@@ -540,7 +586,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 		} else {
 			for k, v := range result {
 				c.setVxNetInfo(k, v)
-				klog.Infof("Get vxnet %s from QingCloud: %v", k, v)
+				klog.V(4).Infof("Get vxnet %s from QingCloud: %v", k, v)
 			}
 			if len(result) == len(needUpdate) {
 				change = true
@@ -550,7 +596,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 		}
 	}
 
-	// 2. create vips
+	// 2. update vips
 	for _, vxnet := range c.vxNetCache {
 		if _, ok := c.getVxNetVIPInfo(vxnet.ID); !ok {
 			if result, err := qcclient.QClient.DescribeVIPs(vxnet); err != nil {
@@ -559,8 +605,8 @@ func (c *VxNetPoolController) qingCloudSync() {
 			} else {
 				if len(result) > 0 {
 					c.setVxNetVIPInfo(vxnet.ID, result)
-					c.deleteJobByVxNet(vxnet.ID)
-					klog.Infof("Get vips for vxnet %s from QingCloud: %v", vxnet.ID, result)
+					c.deleteJob(keyForVxNetVIP(vxnet.ID))
+					klog.V(4).Infof("Get vips for vxnet %s from QingCloud: %v", vxnet.ID, result)
 					change = true
 				} else {
 					klog.Warningf("Get vips for vxnet %s from QingCloud failed: not prepare", vxnet.ID)
@@ -569,7 +615,40 @@ func (c *VxNetPoolController) qingCloudSync() {
 		}
 	}
 
-	// 3. sync to controller
+	// 3. update securityGroup rule
+	klog.V(4).Infof("qingCloudSync: DescribeClusterSecurityGroup")
+	if result, err := qcclient.QClient.DescribeClusterSecurityGroup(c.conf.ClusterID); err != nil {
+		klog.Errorf("Get SecurityGroup for Cluster %s from QingCloud failed: %v", c.conf.ClusterID, err)
+		return
+	} else {
+		if result != c.conf.SecurityGroup {
+			change = true
+			klog.V(4).Infof("SecurityGroup for Cluster %s change from %s to %s", c.conf.ClusterID, c.conf.SecurityGroup, result)
+		}
+		c.conf.SecurityGroup = result
+	}
+	if c.conf.SecurityGroup != "" {
+		for _, vxnet := range c.vxNetCache {
+			id := keyForVxNetSG(c.conf.SecurityGroup, vxnet.ID)
+			if _, ok := c.getSecurityGroupRule(id); !ok {
+				if result, err := qcclient.QClient.GetSecurityGroupRuleForVxNet(c.conf.SecurityGroup, vxnet); err != nil {
+					klog.Errorf("Get SecurityGroupRule for vxnet %s in %s from QingCloud failed: %v", vxnet.ID, c.conf.SecurityGroup, err)
+					return
+				} else {
+					if result != nil {
+						c.setSecurityGroupRule(id, result)
+						c.deleteJob(id)
+						klog.V(4).Infof("Get SecurityGroupRule for vxnet %s in %s from QingCloud: %v", vxnet.ID, c.conf.SecurityGroup, result)
+						change = true
+					} else {
+						klog.Warningf("Get SecurityGroupRule for vxnet %s in %s from QingCloud failed: not prepare", vxnet.ID, c.conf.SecurityGroup)
+					}
+				}
+			}
+		}
+	}
+
+	// 4. sync to controller
 	if change {
 		c.enqueuePool(pool)
 	}

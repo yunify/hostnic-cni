@@ -603,6 +603,9 @@ spec:
               readOnly: true
             - mountPath: /var/run/hostnic
               name: hostnic-run
+            - mountPath: /etc/kubernetes
+              name: clusterconfig
+              readOnly: true
       serviceAccount: hostnic-node
       serviceAccountName: hostnic-node
       hostNetwork: true
@@ -619,4 +622,7 @@ spec:
         - hostPath:
             path: /var/run/hostnic
           name: hostnic-run
+        - configMap:
+            name: clusterconfig
+          name: clusterconfig
 

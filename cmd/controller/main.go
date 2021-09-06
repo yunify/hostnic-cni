@@ -32,6 +32,8 @@ import (
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
+	"github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/controller"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/signals"
@@ -54,6 +56,11 @@ func main() {
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
+	clusterConfig, err := conf.TryLoadClusterConfFromDisk(constants.DefaultClusterConfigPath)
+	if err != nil {
+		klog.Fatalf("Error building clusterConfig: %s", err.Error())
+	}
+
 	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
@@ -74,7 +81,7 @@ func main() {
 	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*30)
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
 
-	c1 := controller.NewVxNetPoolController(k8sClient, client,
+	c1 := controller.NewVxNetPoolController(clusterConfig, k8sClient, client,
 		informerFactory.Network().V1alpha1().IPPools(), informerFactory.Network().V1alpha1().VxNetPools())
 
 	c2 := controller.NewIPPoolController(k8sClient, client,

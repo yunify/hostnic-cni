@@ -33,6 +33,8 @@ const (
 	DefaultConfigPath     = "/etc/hostnic/"
 	DefaultConfigName     = "hostnic.json"
 
+	DefaultClusterConfigPath = "/etc/kubernetes/qingcloud.yaml"
+
 	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
 

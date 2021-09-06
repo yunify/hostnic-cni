@@ -40,6 +40,7 @@ type qingcloudAPIWrapper struct {
 	jobService      *service.JobService
 	tagService      *service.TagService
 	vipService      *service.VIPService
+	sgService       *service.SecurityGroupService
 	clusterService  *service.ClusterService
 
 	userID     string
@@ -99,6 +100,11 @@ func SetupQingCloudClient(opts Options) {
 		log.Fatalf("failed to init qingcloud sdk vip service: %v", err)
 	}
 
+	sgService, err := qcService.SecurityGroup(qsdkconfig.Zone)
+	if err != nil {
+		log.Fatalf("failed to init qingcloud sdk securityGroup service: %v", err)
+	}
+
 	clusterService, err := qcService.Cluster(qsdkconfig.Zone)
 	if err != nil {
 		log.Fatalf("failed to init qingcloud sdk cluster service: %v", err)
@@ -124,6 +130,7 @@ func SetupQingCloudClient(opts Options) {
 		jobService:      jobService,
 		tagService:      tagService,
 		vipService:      vipService,
+		sgService:       sgService,
 		clusterService:  clusterService,
 
 		userID:     userId,
@@ -598,6 +605,102 @@ func (q *qingcloudAPIWrapper) DeleteVIPs(vips []string) (string, error) {
 	}
 
 	return *output.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) CreateSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (string, error) {
+	input := &service.AddSecurityGroupRulesInput{
+		SecurityGroup: &sg,
+		Rules: []*service.SecurityGroupRule{
+			{
+				SecurityGroupRuleName: service.String(constants.NicPrefix + vxnet.ID),
+				Action:                service.String("accept"),
+				Direction:             service.Int(0),
+				Priority:              service.Int(0),
+				Protocol:              service.String("all"),
+				Val3:                  service.String(vxnet.Network),
+			},
+		},
+	}
+
+	output, err := q.sgService.AddSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to AddSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	o, err := q.sgService.ApplySecurityGroup(&service.ApplySecurityGroupInput{
+		SecurityGroup: service.String(sg),
+	})
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to ApplySecurityGroup: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	return *o.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) GetSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (*rpc.SecurityGroupRule, error) {
+	input := &service.DescribeSecurityGroupRulesInput{
+		SecurityGroup: service.String(sg),
+		Direction:     service.Int(0),
+	}
+
+	output, err := q.sgService.DescribeSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DescribeSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	for _, rule := range output.SecurityGroupRuleSet {
+		if *rule.Val3 == vxnet.Network && *rule.Action == "accept" && *rule.Protocol == "all" {
+			return &rpc.SecurityGroupRule{
+				ID:              *rule.SecurityGroupRuleID,
+				Name:            *rule.SecurityGroupRuleName,
+				SecurityGroupID: *rule.SecurityGroupID,
+				Action:          *rule.Action,
+				Protocol:        *rule.Protocol,
+				Val3:            *rule.Val3,
+				Direction:       int32(*rule.Direction),
+				Priority:        int32(*rule.Priority),
+			}, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (q *qingcloudAPIWrapper) DeleteSecurityGroupRuleForVxNet(sgr string) error {
+	input := &service.DeleteSecurityGroupRulesInput{
+		SecurityGroupRules: []*string{service.String(sgr)},
+	}
+
+	output, err := q.sgService.DeleteSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DeleteSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return err
+	}
+
+	return nil
+}
+
+func (q *qingcloudAPIWrapper) DescribeClusterSecurityGroup(clusterID string) (string, error) {
+	input := &service.DescribeClustersInput{
+		Clusters: []*string{service.String(clusterID)},
+	}
+
+	output, err := q.clusterService.DescribeClusters(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DescribeClusters: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	for _, cluster := range output.ClusterSet {
+		if *cluster.ClusterID == clusterID {
+			return *cluster.SecurityGroupID, nil
+		}
+	}
+
+	return "", nil
 }
 
 func (q *qingcloudAPIWrapper) DescribeClusterNodes(clusterID string) ([]*rpc.Node, error) {
