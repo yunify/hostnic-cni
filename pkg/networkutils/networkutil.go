@@ -16,6 +16,10 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
 
+const (
+	ebtablesLock = "/var/run/hostnic/hostnic.lock"
+)
+
 type NetworkUtils struct {
 }
 
@@ -294,8 +298,8 @@ func (n NetworkUtils) getLinksByMacAddr(macAddr string) (netlink.Link, netlink.L
 }
 
 func setArpReply(br string, ip string, macAddress string, action string) error {
-	rule := fmt.Sprintf("ebtables -t nat %s PREROUTING -p ARP --logical-in %s --arp-op Request --arp-ip-dst %s -j arpreply --arpreply-mac %s",
-		action, br, ip, macAddress)
+	rule := fmt.Sprintf("flock %s /sbin/ebtables -t nat %s PREROUTING -p ARP --logical-in %s --arp-op Request --arp-ip-dst %s -j arpreply --arpreply-mac %s",
+		ebtablesLock, action, br, ip, macAddress)
 
 	_, err := ExecuteCommand(rule)
 	return err
