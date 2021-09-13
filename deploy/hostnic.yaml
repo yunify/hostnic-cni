@@ -463,7 +463,6 @@ spec:
             - /app/hostnic-agent
             - --v=5
             - --metrics-port=9191
-            - --log_file=/var/run/hostnic/agent.log
           env:
             - name: MY_NODE_NAME
               valueFrom:
@@ -475,7 +474,7 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
-          image: qingcloud/hostnic-plus:v1.0.0
+          image: qingcloud/hostnic-plus:v1.0.2
           imagePullPolicy: IfNotPresent
           name: hostnic-node
           ports:
@@ -514,7 +513,7 @@ spec:
             - /app/install_hostnic.sh
           command:
             - /bin/sh
-          image: qingcloud/hostnic-plus:v1.0.0
+          image: qingcloud/hostnic-plus:v1.0.2
           imagePullPolicy: IfNotPresent
           name: hostnic-init
           resources: {}
@@ -589,11 +588,10 @@ spec:
     spec:
       containers:
         - name: hostnic-controller
-          image: qingcloud/hostnic-plus:v1.0.0
+          image: qingcloud/hostnic-plus:v1.0.2
           command:
             - /app/hostnic-controller
             - --v=5
-            - --log_file=/var/run/hostnic/controller.log
           volumeMounts:
             - mountPath: /root/.qingcloud/
               name: apiaccesskey

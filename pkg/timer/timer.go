@@ -44,5 +44,5 @@ Loop:
 		}
 	}
 
-	log.Info("%s stop", t.name)
+	log.Infof("%s stop", t.name)
 }

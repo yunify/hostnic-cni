@@ -623,7 +623,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 	} else {
 		if result != c.conf.SecurityGroup {
 			change = true
-			klog.V(4).Infof("SecurityGroup for Cluster %s change from %s to %s", c.conf.ClusterID, c.conf.SecurityGroup, result)
+			klog.V(3).Infof("SecurityGroup for Cluster %s change from %s to %s", c.conf.ClusterID, c.conf.SecurityGroup, result)
 		}
 		c.conf.SecurityGroup = result
 	}
