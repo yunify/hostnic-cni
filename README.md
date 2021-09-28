@@ -70,12 +70,30 @@
       namespace: kube-system
     EOF
 
-    ## 创建configmap
+    ## 创建configmap给hostnic-node使用
     kubectl apply -f hostnic-cm.yaml
+
+    cat >clusterconfig-cm.yaml <<EOF
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: clusterconfig
+      namespace: kube-system
+    data:
+      qingcloud.yaml: |
+        zone: pek3a
+        clusterID: cl-ns8bix0q
+        userID: usr-hRAmdSn6
+        securityGroup: sg-mcun6ybb
+    EOF
+
+    ## 创建configmap给hostnic-controller使用
+    ## 对于非QKE集群，须要去掉clusterID和securityGroup配置（它们用于QKE安全组对hostnic私有网络的放行）
+    kubectl apply -f clusterconfig-cm.yaml
     ```
 3. 安装yaml文件，等待所有节点的hostnic起来即可
     ```bash
-    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/deploy/hostnic.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cumirror/hostnic-cni/master/deploy/hostnic.yaml
     ```
 4. `hostnic`会使用 IaaS 的 vxnet 进行 IPAM ，所以需要创建 vxnetpool 资源
     ```bash
@@ -122,7 +140,7 @@
 6. (**可选**)启用Network Policy，建议安装
    hostnic支持network policy，如果需要，执行下面的命令即可
     ```bash
-    kubectl apply -f https://raw.githubusercontent.com/yunify/hostnic-cni/master/policy/calico.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cumirror/hostnic-cni/master/policy/calico.yaml
     ```
 ## 卸载说明
 由于hostnic使用leveldb保存ip地址信息， 如果集群重装那么你需要执行`rm -fr /var/lib/hostnic/*`删除数据库用于清除信息

@@ -617,15 +617,17 @@ func (c *VxNetPoolController) qingCloudSync() {
 
 	// 3. update securityGroup rule
 	klog.V(4).Infof("qingCloudSync: DescribeClusterSecurityGroup")
-	if result, err := qcclient.QClient.DescribeClusterSecurityGroup(c.conf.ClusterID); err != nil {
-		klog.Errorf("Get SecurityGroup for Cluster %s from QingCloud failed: %v", c.conf.ClusterID, err)
-		return
-	} else {
-		if result != c.conf.SecurityGroup {
-			change = true
-			klog.V(3).Infof("SecurityGroup for Cluster %s change from %s to %s", c.conf.ClusterID, c.conf.SecurityGroup, result)
+	if c.conf.ClusterID != "" {
+		if result, err := qcclient.QClient.DescribeClusterSecurityGroup(c.conf.ClusterID); err != nil {
+			klog.Errorf("Get SecurityGroup for Cluster %s from QingCloud failed: %v", c.conf.ClusterID, err)
+			return
+		} else {
+			if result != c.conf.SecurityGroup {
+				change = true
+				klog.V(3).Infof("SecurityGroup for Cluster %s change from %s to %s", c.conf.ClusterID, c.conf.SecurityGroup, result)
+			}
+			c.conf.SecurityGroup = result
 		}
-		c.conf.SecurityGroup = result
 	}
 	if c.conf.SecurityGroup != "" {
 		for _, vxnet := range c.vxNetCache {
