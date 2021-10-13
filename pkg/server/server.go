@@ -5,18 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 
-	"github.com/containernetworking/cni/pkg/types/current"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
-	"net/http"
 
+	"github.com/containernetworking/cni/pkg/types/current"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
@@ -105,6 +105,25 @@ func (s *IPAMServer) run(stopCh <-chan struct{}) {
 	log.Info("server grpc server stopped")
 }
 
+func (s *IPAMServer) getK8sPodInfo(podName, podNamespace string) (ipList []string, err error) {
+	pod, _ := s.kubeclient.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+	ipAddr, ok := pod.Annotations[constants.CalicoAnnotationIpAddr]
+	if ipAddr == "" || !ok {
+		return ipList, nil
+	}
+	err = json.Unmarshal([]byte(ipAddr), &ipList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse '%s' as JSON: %s", ipAddr, err)
+	}
+
+	for i := 0; i < len(ipList); i++ {
+		if net.ParseIP(ipList[i]) == nil {
+			return nil, fmt.Errorf("ip[%s] failed to parse err", ipList[i])
+		}
+	}
+	return
+}
+
 // AddNetwork handle add pod request
 func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*rpc.IPAMMessage, error) {
 	var (
@@ -121,8 +140,18 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	}()
 
 	handleID = podHandleKey(in.Args)
+	ipList, err := s.getK8sPodInfo(in.Args.Name, in.Args.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
-		if rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
+		if len(ipList) > 0 {
+			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, nil, blocks, &info)
+			if err != nil {
+				return nil, err
+			}
+		} else if rst, err = s.ipamclient.AutoAssignFromBlocks(ipam.AutoAssignArgs{
 			HandleID: handleID,
 			Blocks:   blocks,
 			Info:     &info,
@@ -132,7 +161,12 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			return nil, err
 		}
 	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
-		if rst, err = s.ipamclient.AutoAssignFromPools(ipam.AutoAssignArgs{
+		if len(ipList) > 0 {
+			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, pools, nil, &info)
+			if err != nil {
+				return nil, err
+			}
+		} else if rst, err = s.ipamclient.AutoAssignFromPools(ipam.AutoAssignArgs{
 			HandleID: handleID,
 			Pools:    pools,
 			Info:     &info,

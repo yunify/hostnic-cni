@@ -92,3 +92,10 @@ type PoolBlocksUtilization struct {
 	// This blocks' util which belong to pool.
 	Blocks []*BlockUtilization
 }
+
+// FixIpArgs assign from config annotation
+type FixIpArgs struct {
+	AutoAssignArgs
+	//annotation ips
+	TarGetIpList []string
+}

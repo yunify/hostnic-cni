@@ -71,6 +71,7 @@ const (
 
 	CalicoAnnotationPodIP  = "cni.projectcalico.org/podIP"
 	CalicoAnnotationPodIPs = "cni.projectcalico.org/podIPs"
+	CalicoAnnotationIpAddr = "cni.projectcalico.org/ipAddrs"
 
 	IPAMVxnetPoolName = "v-pool"
 

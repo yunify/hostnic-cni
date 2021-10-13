@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"reflect"
 
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -907,4 +908,167 @@ func IP2Resutl(ip *cnet.IPNet, pool *v1alpha1.IPPool) *current.Result {
 	}
 
 	return &result
+}
+
+// AssignFixIps fix ip form assign pool or block
+func (c IPAMClient) AssignFixIps(handleID string, ipList, pools, blocks []string, info *PoolInfo) (*current.Result, error) {
+	fixArgs := FixIpArgs{
+		AutoAssignArgs: AutoAssignArgs{
+			HandleID: handleID,
+			Pools:    pools,
+			Blocks:   blocks,
+			Info:     info,
+		},
+		TarGetIpList: ipList,
+	}
+	if len(fixArgs.Pools) > 0 {
+		return c.FixIpsFromPool(fixArgs)
+	} else if len(fixArgs.Blocks) > 0 {
+		return c.FixIpsFromBlock(fixArgs)
+	}
+	return nil, fmt.Errorf("pool or block not found")
+}
+
+// FixIpsFromPool fix ip from assign pool
+func (c IPAMClient) FixIpsFromPool(args FixIpArgs) (*current.Result, error) {
+	for i := 0; i < len(args.Pools); i++ {
+		args.Pool = args.Pools[i]
+		blocks, err := c.ListBlocks(args.Pool)
+		if err != nil {
+			return nil, fmt.Errorf("%s get listBlock err: %v", args.Pool, err)
+		}
+
+		for j := 0; j < len(blocks); j++ {
+			block := blocks[j]
+			if block.NumFreeAddresses() < 1 {
+				continue
+			}
+			args.Pool = block.Labels[networkv1alpha1.IPPoolNameLabel]
+			result, err := c.retryFixIP(&block, args)
+			if err == nil && result != nil {
+				args.Info.IPPool = args.Pool
+				args.Info.Block = block.Name
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("annotation ips: [%s] allocated failed", args.TarGetIpList)
+}
+
+// FixIpsFromBlock fix ip form assign block
+func (c IPAMClient) FixIpsFromBlock(args FixIpArgs) (*current.Result, error) {
+	var blocks []*v1alpha1.IPAMBlock
+	for _, block := range args.Blocks {
+		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, v1.GetOptions{}); err == nil {
+			blocks = append(blocks, b)
+		} else {
+			klog.Warningf("Get block %s failed: %v", block, err)
+		}
+	}
+
+	for i := 0; i < len(blocks); i++ {
+		block := blocks[i]
+		args.Pool = block.Labels[networkv1alpha1.IPPoolNameLabel]
+		if block.NumFreeAddresses() > 0 {
+			result, err := c.retryFixIP(block, args)
+			if err == nil && result != nil {
+				args.Info.IPPool = args.Pool
+				args.Info.Block = block.Name
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("annotation ips: [%s] allocated failed", args.TarGetIpList)
+}
+
+func (s IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args FixIpArgs) (*current.Result, error) {
+	var result *current.Result
+	for i := 0; i < datastoreRetries; i++ {
+		pool, err := s.client.NetworkV1alpha1().IPPools().Get(context.Background(), args.Pool, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("get pool err: %v", err)
+		}
+		if pool.Disabled() {
+			return nil, fmt.Errorf("get pool err: %v", ErrNoQualifiedPool)
+		}
+		if pool.TypeInvalid() {
+			return nil, fmt.Errorf("get pool err: %v", ErrUnknowIPPoolType)
+		}
+
+		ip, err := s.fixIP(requestBlock, args.HandleID, args.TarGetIpList, args.Attrs)
+		if err != nil {
+			if k8serrors.IsConflict(err) {
+				requestBlock, err = s.queryBlock(requestBlock.Name)
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
+			return nil, err
+		}
+
+		result = IP2Resutl(&cnet.IPNet{
+			IPNet: net.IPNet{IP: ip},
+		}, pool)
+		return result, nil
+	}
+	return nil, ErrMaxRetry
+}
+
+// fixIP check annotation ip is unallocated
+func (s IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []string, attrs map[string]string) (net.IP, error) {
+	_, cidr, err := cnet.ParseCIDR(block.Spec.CIDR)
+	if err != nil {
+		return nil, fmt.Errorf("parse cidr err: %v", err)
+	}
+
+	for _, tarIp := range ipList {
+		ip := cnet.ParseIP(tarIp)
+		if ip != nil && !cidr.Contains(ip.IP) {
+			continue
+		}
+		ordinal, err := block.IPToOrdinal(*ip)
+		if err != nil {
+			continue
+		}
+
+		for j, unUsedIp := range block.Spec.Unallocated {
+			if ordinal == unUsedIp {
+				block.Spec.Unallocated = append(block.Spec.Unallocated[:j], block.Spec.Unallocated[j+1:]...)
+				attribute := updateAttribute(block, handleID, attrs)
+				block.Spec.Allocations[ordinal] = &attribute
+
+				err = s.incrementHandle(handleID, block, 1)
+				if err != nil {
+					return nil, err
+				}
+				_, err = s.client.NetworkV1alpha1().IPAMBlocks().Update(context.Background(), block, metav1.UpdateOptions{})
+				if err != nil {
+					if err := s.decrementHandle(handleID, block, 1); err != nil {
+						klog.Errorf("Failed to decrement handle %s", handleID)
+					}
+					return nil, err
+				}
+
+				return ip.IP, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("not free ip in this block: %s", block.Name)
+}
+
+func updateAttribute(b *networkv1alpha1.IPAMBlock, handleID string, attrs map[string]string) int {
+	attr := networkv1alpha1.AllocationAttribute{AttrPrimary: handleID, AttrSecondary: attrs}
+	for idx, existing := range b.Spec.Attributes {
+		if reflect.DeepEqual(attr, existing) {
+			return idx
+		}
+	}
+
+	// Does not exist - add it.
+	attrIndex := len(b.Spec.Attributes)
+	b.Spec.Attributes = append(b.Spec.Attributes, attr)
+	return attrIndex
 }
