@@ -926,7 +926,7 @@ func (c IPAMClient) AssignFixIps(handleID string, ipList, pools, blocks []string
 	} else if len(fixArgs.Blocks) > 0 {
 		return c.FixIpsFromBlock(fixArgs)
 	}
-	return nil, fmt.Errorf("pool or block not found")
+	return nil, fmt.Errorf("no suitable pool and block")
 }
 
 // FixIpsFromPool fix ip from assign pool
@@ -944,16 +944,17 @@ func (c IPAMClient) FixIpsFromPool(args FixIpArgs) (*current.Result, error) {
 				continue
 			}
 			args.Pool = block.Labels[networkv1alpha1.IPPoolNameLabel]
-			result, err := c.retryFixIP(&block, args)
-			if err == nil && result != nil {
+			if result, err := c.retryFixIP(&block, args); err == nil {
 				args.Info.IPPool = args.Pool
 				args.Info.Block = block.Name
 				return result, nil
+			} else {
+				klog.Warningf("FixIpsFromPool for %s from %s failed: %v", args.TarGetIpList, block.Name, err)
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("annotation ips: [%s] allocated failed", args.TarGetIpList)
+	return nil, fmt.Errorf("fixIP for %s from pool %s failed", args.TarGetIpList, args.Pools)
 }
 
 // FixIpsFromBlock fix ip form assign block
@@ -971,22 +972,23 @@ func (c IPAMClient) FixIpsFromBlock(args FixIpArgs) (*current.Result, error) {
 		block := blocks[i]
 		args.Pool = block.Labels[networkv1alpha1.IPPoolNameLabel]
 		if block.NumFreeAddresses() > 0 {
-			result, err := c.retryFixIP(block, args)
-			if err == nil && result != nil {
+			if result, err := c.retryFixIP(block, args); err == nil {
 				args.Info.IPPool = args.Pool
 				args.Info.Block = block.Name
 				return result, nil
+			} else {
+				klog.Warningf("FixIpsFromBlock for %s from %s failed: %v", args.TarGetIpList, block.Name, err)
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("annotation ips: [%s] allocated failed", args.TarGetIpList)
+	return nil, fmt.Errorf("fixIP for %s from block %s failed", args.TarGetIpList, args.Blocks)
 }
 
-func (s IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args FixIpArgs) (*current.Result, error) {
+func (c IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args FixIpArgs) (*current.Result, error) {
 	var result *current.Result
 	for i := 0; i < datastoreRetries; i++ {
-		pool, err := s.client.NetworkV1alpha1().IPPools().Get(context.Background(), args.Pool, metav1.GetOptions{})
+		pool, err := c.client.NetworkV1alpha1().IPPools().Get(context.Background(), args.Pool, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("get pool err: %v", err)
 		}
@@ -997,10 +999,10 @@ func (s IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args Fix
 			return nil, fmt.Errorf("get pool err: %v", ErrUnknowIPPoolType)
 		}
 
-		ip, err := s.fixIP(requestBlock, args.HandleID, args.TarGetIpList, args.Attrs)
+		ip, err := c.fixIP(requestBlock, args.HandleID, args.TarGetIpList, args.Attrs)
 		if err != nil {
 			if k8serrors.IsConflict(err) {
-				requestBlock, err = s.queryBlock(requestBlock.Name)
+				requestBlock, err = c.queryBlock(requestBlock.Name)
 				if err != nil {
 					return nil, err
 				}
@@ -1018,7 +1020,7 @@ func (s IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args Fix
 }
 
 // fixIP check annotation ip is unallocated
-func (s IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []string, attrs map[string]string) (net.IP, error) {
+func (c IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []string, attrs map[string]string) (net.IP, error) {
 	_, cidr, err := cnet.ParseCIDR(block.Spec.CIDR)
 	if err != nil {
 		return nil, fmt.Errorf("parse cidr err: %v", err)
@@ -1040,13 +1042,13 @@ func (s IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []s
 				attribute := updateAttribute(block, handleID, attrs)
 				block.Spec.Allocations[ordinal] = &attribute
 
-				err = s.incrementHandle(handleID, block, 1)
+				err = c.incrementHandle(handleID, block, 1)
 				if err != nil {
 					return nil, err
 				}
-				_, err = s.client.NetworkV1alpha1().IPAMBlocks().Update(context.Background(), block, metav1.UpdateOptions{})
+				_, err = c.client.NetworkV1alpha1().IPAMBlocks().Update(context.Background(), block, metav1.UpdateOptions{})
 				if err != nil {
-					if err := s.decrementHandle(handleID, block, 1); err != nil {
+					if err := c.decrementHandle(handleID, block, 1); err != nil {
 						klog.Errorf("Failed to decrement handle %s", handleID)
 					}
 					return nil, err

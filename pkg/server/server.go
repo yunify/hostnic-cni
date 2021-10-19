@@ -8,15 +8,15 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/containernetworking/cni/pkg/types/current"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
-	"github.com/containernetworking/cni/pkg/types/current"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
@@ -157,7 +157,6 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Info:     &info,
 		}); err != nil {
 			(*s.oddPodCount).BlockFailedCount = (*s.oddPodCount).BlockFailedCount + 1
-			log.Errorf("AddNetwork request (%v) from blocks failed: %v", in.Args, err)
 			return nil, err
 		}
 	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
@@ -172,12 +171,10 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			Info:     &info,
 		}); err != nil {
 			(*s.oddPodCount).PoolFailedCount = (*s.oddPodCount).PoolFailedCount + 1
-			log.Errorf("AddNetwork request (%v) from pools failed: %v", in.Args, err)
 			return nil, err
 		}
 	} else {
 		(*s.oddPodCount).NotFoundCount = (*s.oddPodCount).NotFoundCount + 1
-		log.Errorf("AddNetwork request (%v): pool or block not found", in.Args)
 		return nil, fmt.Errorf("pool or block not found")
 	}
 
