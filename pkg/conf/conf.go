@@ -2,7 +2,11 @@ package conf
 
 import (
 	"fmt"
+	"io/ioutil"
+
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/util/yaml"
+
 	"github.com/yunify/hostnic-cni/pkg/constants"
 )
 
@@ -12,10 +16,6 @@ type IpamConf struct {
 }
 
 type PoolConf struct {
-	//per vxnet
-	PoolHigh int `json:"poolHigh,omitempty" yaml:"poolHigh,omitempty"`
-	PoolLow  int `json:"poolLow,omitempty" yaml:"poolLow,omitempty"`
-
 	//global
 	MaxNic         int      `json:"maxNic,omitempty" yaml:"maxNic,omitempty"`
 	Sync           int      `json:"sync,omitempty" yaml:"sync,omitempty"`
@@ -23,27 +23,35 @@ type PoolConf struct {
 	RouteTableBase int      `json:"routeTableBase,omitempty" yaml:"routeTableBase,omitempty"`
 	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`
 	VxNets         []string `json:"vxNets,omitempty" yaml:"vxNets,omitempty"`
+
+	//free hostnic opts
+	NodeThreshold  int `json:"nodeThreshold,omitempty" yaml:"nodeThreshold,omitempty"`
+	VxnetThreshold int `json:"vxnetThreshold,omitempty" yaml:"vxnetThreshold,omitempty"`
+	FreePeriod     int `json:"freePeriod,omitempty" yaml:"freePeriod,omitempty"`
 }
 
 type ServerConf struct {
-	ServerPath string `json:"serverPath,omitempty" yaml:"serverPath,omitempty"`
+	ServerPath    string `json:"serverPath,omitempty" yaml:"serverPath,omitempty"`
+	NetworkPolicy string `json:"networkPolicy,omitempty" yaml:"networkPolicy,omitempty"`
 }
 
 // TryLoadFromDisk loads configuration from default location after server startup
 // return nil error if configuration file not exists
-func TryLoadFromDisk(name, path string) (*IpamConf, error) {
+func TryLoadIpamConfFromDisk(name, path string) (*IpamConf, error) {
 	viper.SetConfigName(name)
-	viper.AddConfigPath(".")
+	viper.SetConfigType("json")
+	viper.AddConfigPath("./")
 	viper.AddConfigPath(path)
 
 	conf := &IpamConf{
 		Pool: PoolConf{
-			PoolHigh:       constants.DefaultHighPoolSize,
-			PoolLow:        constants.DefaultLowPoolSize,
 			MaxNic:         constants.NicNumLimit,
 			Sync:           constants.DefaultJobSyn,
 			RouteTableBase: constants.DefaultRouteTableBase,
 			NodeSync:       constants.DefaultNodeSync,
+			NodeThreshold:  constants.DefaultNodeThreshold,
+			VxnetThreshold: constants.DefaultVxnetThreshold,
+			FreePeriod:     constants.DefaultFreePeriod,
 		},
 		Server: ServerConf{
 			ServerPath: constants.DefaultSocketPath,
@@ -70,13 +78,30 @@ func TryLoadFromDisk(name, path string) (*IpamConf, error) {
 }
 
 func validateConf(conf *IpamConf) error {
-	if conf.Pool.PoolLow > conf.Pool.PoolHigh {
-		return fmt.Errorf("PoolLow should less than PoolHigh")
-	}
-
 	if conf.Pool.MaxNic > constants.NicNumLimit {
 		return fmt.Errorf("MaxNic should less than 63")
 	}
 
 	return nil
+}
+
+type ClusterConfig struct {
+	Zone              string   `yaml:"zone"`
+	DefaultVxNetForLB string   `yaml:"defaultVxNetForLB,omitempty"`
+	ClusterID         string   `yaml:"clusterID"`
+	SecurityGroup     string   `yaml:"securityGroup"`
+	IsApp             bool     `yaml:"isApp,omitempty"`
+	TagIDs            []string `yaml:"tagIDs,omitempty"`
+	InstanceIDs       []string `yaml:"instanceIDs,omitempty"`
+}
+
+func TryLoadClusterConfFromDisk(file string) (*ClusterConfig, error) {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var conf ClusterConfig
+	err = yaml.Unmarshal(content, &conf)
+	return &conf, err
 }

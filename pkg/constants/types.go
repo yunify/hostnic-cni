@@ -21,6 +21,8 @@ package constants
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
@@ -28,20 +30,27 @@ import (
 const (
 	DefaultSocketPath     = "/var/run/hostnic/hostnic.socket"
 	DefaultUnixSocketPath = "unix://" + DefaultSocketPath
-	DefaultConfigPath     = "/etc/hostnic"
-	DefaultConfigName     = "hostnic"
+	DefaultConfigPath     = "/etc/hostnic/"
+	DefaultConfigName     = "hostnic.json"
 
-	DefaultJobSyn   = 3
+	DefaultClusterConfigPath = "/etc/kubernetes/qingcloud.yaml"
+
+	DefaultJobSyn   = 20
 	DefaultNodeSync = 1 * 60
 
-	DefaultLowPoolSize  = 3
-	DefaultHighPoolSize = 5
+	DefaultNodeThreshold  = 32
+	DefaultVxnetThreshold = 128
+	// Minute
+	DefaultFreePeriod = 12 * 60
 
+	VIPNumLimit           = 253
 	NicNumLimit           = 63
 	VxnetNicNumLimit      = 252
 	DefaultRouteTableBase = 260
 
-	NicPrefix = "hostnic_"
+	NicPrefix    = "hostnic_"
+	VxNetPrefix  = "vxnet-"
+	BridgePrefix = "br_"
 
 	HostNicPassThrough = "passthrough"
 	HostNicVeth        = "veth"
@@ -55,12 +64,38 @@ const (
 	MangleOutputChain     = "HOSTNIC-OUTPUT"
 	MangleForward         = "HOSTNIC-FORWARD"
 
+	ResourceNotFound = "ResourceNotFound"
+
 	ToContainerRulePriority   = 1535
 	FromContainerRulePriority = 1536
+
+	CalicoAnnotationPodIP  = "cni.projectcalico.org/podIP"
+	CalicoAnnotationPodIPs = "cni.projectcalico.org/podIPs"
+	CalicoAnnotationIpAddr = "cni.projectcalico.org/ipAddrs"
+
+	IPAMVxnetPoolName = "v-pool"
+
+	IPAMConfigNamespace = "kube-system"
+	IPAMConfigName      = "hostnic-ipam-config"
+
+	// configmap's data field
+	IPAMAutoAssignForNamespace = "subnet-auto-assign"
+	IPAMConfigDate             = "ipam"
+	IPAMDefaultPoolKey         = "Default"
+
+	EventADD    = "add"
+	EventUpdate = "update"
+	EventDelete = "delete"
+
+	MetricsDummyNamespaceForSubnet = "Dummy-ns-for-unmapped-subnets"
 )
 
-func GetHostNicName(routeTableNum int) string {
-	return fmt.Sprintf("%s%d", NicPrefix, routeTableNum)
+func GetHostNicBridgeName(routeTableNum int) string {
+	return fmt.Sprintf("%s%d", BridgePrefix, routeTableNum)
+}
+
+func GetHostNicName(id string) string {
+	return fmt.Sprintf("%s%s", NicPrefix, strings.TrimPrefix(id, VxNetPrefix))
 }
 
 func PodInfoKey(info *rpc.PodInfo) string {

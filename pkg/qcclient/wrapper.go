@@ -3,12 +3,15 @@ package qcclient
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io/ioutil"
+	"math/big"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	log "github.com/sirupsen/logrus"
+	"github.com/pkg/errors"
+	cnet "github.com/projectcalico/libcalico-go/lib/net"
+	log "k8s.io/klog/v2"
+
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	rpc "github.com/yunify/hostnic-cni/pkg/rpc"
 	"github.com/yunify/qingcloud-sdk-go/client"
@@ -20,6 +23,8 @@ const (
 	instanceIDFile      = "/etc/qingcloud/instance-id"
 	defaultOpTimeout    = 180 * time.Second
 	defaultWaitInterval = 5 * time.Second
+
+	reservedVIPCount = 12
 )
 
 type Options struct {
@@ -34,6 +39,9 @@ type qingcloudAPIWrapper struct {
 	instanceService *service.InstanceService
 	jobService      *service.JobService
 	tagService      *service.TagService
+	vipService      *service.VIPService
+	sgService       *service.SecurityGroupService
+	clusterService  *service.ClusterService
 
 	userID     string
 	instanceID string
@@ -44,47 +52,62 @@ type qingcloudAPIWrapper struct {
 func SetupQingCloudClient(opts Options) {
 	instanceID, err := ioutil.ReadFile(instanceIDFile)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to load instance-id")
+		log.Fatalf("failed to load instance-id: %v", err)
 	}
 
 	qsdkconfig, err := config.NewDefault()
 	if err != nil {
-		log.WithError(err).Fatal("failed to new sdk default config")
+		log.Fatalf("failed to new sdk default config: %v", err)
 	}
 	if err = qsdkconfig.LoadUserConfig(); err != nil {
-		log.WithError(err).Fatal("failed to load user config")
+		log.Fatalf("failed to load user config: %v", err)
 	}
 
-	log.Infof("qsdkconfig inited %v", qsdkconfig)
+	log.Infof("qsdkconfig inited: %v", qsdkconfig)
 
 	qcService, err := service.Init(qsdkconfig)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk service")
+		log.Fatalf("failed to init qingcloud sdk service: %v", err)
 	}
 
 	nicService, err := qcService.Nic(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk nic service")
+		log.Fatalf("failed to init qingcloud sdk nic service: %v", err)
 	}
 
 	vxNetService, err := qcService.VxNet(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk vxnet service")
+		log.Fatalf("failed to init qingcloud sdk vxnet service: %v", err)
 	}
 
 	jobService, err := qcService.Job(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk job service")
+		log.Fatalf("failed to init qingcloud sdk job service: %v", err)
 	}
 
 	instanceService, err := qcService.Instance(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk instance service")
+		log.Fatalf("failed to init qingcloud sdk instance service: %v", err)
 	}
 
 	tagService, err := qcService.Tag(qsdkconfig.Zone)
 	if err != nil {
-		log.WithError(err).Fatal("failed to init qingcloud sdk tag service")
+		log.Fatalf("failed to init qingcloud sdk tag service: %v", err)
+	}
+
+	vipService, err := qcService.VIP(qsdkconfig.Zone)
+	if err != nil {
+		log.Fatalf("failed to init qingcloud sdk vip service: %v", err)
+	}
+
+	sgService, err := qcService.SecurityGroup(qsdkconfig.Zone)
+	if err != nil {
+		log.Fatalf("failed to init qingcloud sdk securityGroup service: %v", err)
+	}
+
+	clusterService, err := qcService.Cluster(qsdkconfig.Zone)
+	if err != nil {
+		log.Fatalf("failed to init qingcloud sdk cluster service: %v", err)
 	}
 
 	//useid
@@ -93,10 +116,10 @@ func SetupQingCloudClient(opts Options) {
 		AccessKeys: []*string{&qsdkconfig.AccessKeyID},
 	})
 	if err != nil {
-		log.WithError(err).Fatal("failed to DescribeAccessKeys")
+		log.Fatalf("failed to DescribeAccessKeys: %v", err)
 	}
 	if len(output.AccessKeySet) == 0 {
-		log.WithField("output", spew.Sdump(output)).Fatal("DescribeAccessKeys is empty")
+		log.Fatalf("DescribeAccessKeys is empty: %s", spew.Sdump(output))
 	}
 	userId := *output.AccessKeySet[0].Owner
 
@@ -106,6 +129,9 @@ func SetupQingCloudClient(opts Options) {
 		instanceService: instanceService,
 		jobService:      jobService,
 		tagService:      tagService,
+		vipService:      vipService,
+		sgService:       sgService,
+		clusterService:  clusterService,
 
 		userID:     userId,
 		instanceID: string(instanceID),
@@ -117,21 +143,54 @@ func (q *qingcloudAPIWrapper) GetInstanceID() string {
 	return q.instanceID
 }
 
-func (q *qingcloudAPIWrapper) GetCreatedNics(num, offset int) ([]*rpc.HostNic, error) {
+func (q *qingcloudAPIWrapper) GetCreatedNicsByName(name string) ([]*rpc.HostNic, error) {
 	input := &service.DescribeNicsInput{
-		Limit:   &num,
-		Offset:  &offset,
-		NICName: service.String(constants.NicPrefix + q.instanceID),
+		Limit:   service.Int(constants.NicNumLimit),
+		NICName: service.String(name),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetCreatedNics")
+		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	var (
+		nics   []*rpc.HostNic
+		netIDs []string
+	)
+	for _, nic := range output.NICSet {
+		if *nic.Role != 0 {
+			continue
+		}
+		nics = append(nics, constructHostnic(&rpc.VxNet{
+			ID: *nic.VxNetID,
+		}, nic))
+		netIDs = append(netIDs, *nic.VxNetID)
+	}
+
+	if len(netIDs) > 0 {
+		tmp := removeDupByMap(netIDs)
+		vxnets, err := q.GetVxNets(tmp)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, nic := range nics {
+			nic.VxNet = vxnets[nic.VxNet.ID]
+		}
+	}
+
+	return nics, nil
+}
+
+func (q *qingcloudAPIWrapper) GetCreatedNicsByVxNet(vxnet string) ([]*rpc.HostNic, error) {
+	input := &service.DescribeNicsInput{
+		Limit:  service.Int(constants.VxnetNicNumLimit),
+		VxNets: []*string{service.String(vxnet)},
+	}
+	output, err := q.nicService.DescribeNics(input)
+	if err != nil {
+		log.Errorf("failed to GetCreatedNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -170,16 +229,10 @@ func (q *qingcloudAPIWrapper) GetAttachedNics() ([]*rpc.HostNic, error) {
 		Status:    service.String("in-use"),
 		Limit:     service.Int(constants.NicNumLimit + 1),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetPrimaryNIC")
+		log.Errorf("failed to GetPrimaryNIC: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -197,16 +250,9 @@ func (q *qingcloudAPIWrapper) AttachNics(nicIDs []string) (string, error) {
 		Instance: &q.instanceID,
 	}
 
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
-
 	output, err := q.nicService.AttachNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to AttachNics")
+		log.Errorf("failed to AttachNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
@@ -222,10 +268,13 @@ func constructHostnic(vxnet *rpc.VxNet, nic *service.NIC) *rpc.HostNic {
 	}
 
 	hostnic := &rpc.HostNic{
-		ID:             *nic.NICID,
-		VxNet:          vxnet,
-		HardwareAddr:   *nic.NICID,
-		PrimaryAddress: *nic.PrivateIP,
+		ID:           *nic.NICID,
+		VxNet:        vxnet,
+		HardwareAddr: *nic.NICID,
+	}
+
+	if nic.PrivateIP != nil {
+		hostnic.PrimaryAddress = *nic.PrivateIP
 	}
 
 	if *nic.Role == 1 {
@@ -244,16 +293,10 @@ func (q *qingcloudAPIWrapper) GetNics(nics []string) (map[string]*rpc.HostNic, e
 		Nics:  service.StringSlice(nics),
 		Limit: service.Int(constants.NicNumLimit),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
 
 	output, err := q.nicService.DescribeNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetNics")
+		log.Errorf("failed to GetNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -265,27 +308,23 @@ func (q *qingcloudAPIWrapper) GetNics(nics []string) (map[string]*rpc.HostNic, e
 	return result, nil
 }
 
-func (q *qingcloudAPIWrapper) CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips []string) ([]*rpc.HostNic, string, error) {
+func (q *qingcloudAPIWrapper) CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips []string, disableIP int) ([]*rpc.HostNic, string, error) {
 	nicName := constants.NicPrefix + q.instanceID
 	input := &service.CreateNicsInput{
 		Count:      service.Int(num),
 		VxNet:      &vxnet.ID,
 		PrivateIPs: nil,
 		NICName:    service.String(nicName),
+		DisableIP:  &disableIP,
 	}
 	if ips != nil {
 		input.Count = service.Int(len(ips))
 		input.PrivateIPs = service.StringSlice(ips)
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.CreateNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to create nics")
+		log.Errorf("failed to create nics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, "", err
 	}
 
@@ -294,12 +333,15 @@ func (q *qingcloudAPIWrapper) CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips
 		nics   []string
 	)
 	for _, nic := range output.Nics {
-		result = append(result, &rpc.HostNic{
-			ID:             *nic.NICID,
-			VxNet:          vxnet,
-			HardwareAddr:   *nic.NICID,
-			PrimaryAddress: *nic.PrivateIP,
-		})
+		r := &rpc.HostNic{
+			ID:           *nic.NICID,
+			VxNet:        vxnet,
+			HardwareAddr: *nic.NICID,
+		}
+		if disableIP == 0 {
+			r.PrimaryAddress = *nic.PrivateIP
+		}
+		result = append(result, r)
 		nics = append(nics, *nic.NICID)
 	}
 
@@ -323,15 +365,10 @@ func (q *qingcloudAPIWrapper) DeattachNics(nicIDs []string, sync bool) (string, 
 	input := &service.DetachNicsInput{
 		Nics: service.StringSlice(nicIDs),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.DetachNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DeattachNics")
+		log.Errorf("failed to DeattachNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
 	}
 
@@ -352,15 +389,10 @@ func (q *qingcloudAPIWrapper) DeleteNics(nicIDs []string) error {
 	input := &service.DeleteNicsInput{
 		Nics: service.StringSlice(nicIDs),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.nicService.DeleteNics(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to DeleteNics")
+		log.Errorf("failed to DeleteNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return err
 	}
 
@@ -376,15 +408,10 @@ func (q *qingcloudAPIWrapper) DescribeNicJobs(ids []string) ([]string, map[strin
 		Jobs:  service.StringSlice(ids),
 		Limit: service.Int(constants.NicNumLimit),
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.jobService.DescribeJobs(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetJobs")
+		log.Errorf("failed to GetJobs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, nil, err
 	}
 
@@ -414,15 +441,10 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 	if public {
 		input.VxNetType = service.Int(2)
 	}
-	scopedLog := log.WithFields(log.Fields{
-		"input": spew.Sdump(input),
-	})
+
 	output, err := q.vxNetService.DescribeVxNets(input)
-	scopedLog = scopedLog.WithFields(log.Fields{
-		"output": spew.Sdump(output),
-	})
 	if err != nil {
-		scopedLog.WithError(err).Error("failed to GetVxNets")
+		log.Errorf("failed to GetVxNets: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return nil, err
 	}
 
@@ -433,8 +455,13 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 		}
 
 		if qcVxNet.Router != nil {
+			if *qcVxNet.Router.DYNIPStart == "" || *qcVxNet.Router.DYNIPEnd == "" {
+				return nil, fmt.Errorf("vxnet %s should open DHCP", *qcVxNet.VxNetID)
+			}
 			vxnetItem.Gateway = *qcVxNet.Router.ManagerIP
 			vxnetItem.Network = *qcVxNet.Router.IPNetwork
+			vxnetItem.IPStart = *qcVxNet.Router.DYNIPStart
+			vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount)
 		} else {
 			return nil, fmt.Errorf("vxnet %s should bind to vpc", *qcVxNet.VxNetID)
 		}
@@ -511,4 +538,208 @@ func (q *qingcloudAPIWrapper) attachNicTag(nics []string) {
 	}
 
 	return
+}
+
+func (q *qingcloudAPIWrapper) CreateVIPs(vxnet *rpc.VxNet) (string, error) {
+	vipName := constants.NicPrefix + vxnet.ID
+	vipRange := fmt.Sprintf("%s-%s", vxnet.IPStart, vxnet.IPEnd)
+	count := IPRangeCount(vxnet.IPStart, vxnet.IPEnd)
+	input := &service.CreateVIPsInput{
+		Count:    &count,
+		VIPName:  &vipName,
+		VxNetID:  &vxnet.ID,
+		VIPRange: &vipRange,
+	}
+
+	output, err := q.vipService.CreateVIPs(input)
+	if err != nil {
+		log.Errorf("failed to CreateVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	return *output.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) DescribeVIPs(vxnet *rpc.VxNet) ([]*rpc.VIP, error) {
+	vipName := constants.NicPrefix + vxnet.ID
+	input := &service.DescribeVxNetsVIPsInput{
+		VIPName: &vipName,
+		VxNets:  []*string{&vxnet.ID},
+		// TODO: Limit not work, max item is 100
+		Limit: service.Int(constants.VIPNumLimit),
+	}
+
+	output, err := q.vipService.DescribeVxNetsVIPs(input)
+	if err != nil {
+		log.Errorf("failed to DescribeVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	var vips []*rpc.VIP
+	for _, vip := range output.VIPSet {
+		vipItem := &rpc.VIP{
+			ID:      *vip.VIPID,
+			Name:    *vip.VIPName,
+			Addr:    *vip.VIPAddr,
+			VxNetID: *vip.VxNetID,
+		}
+		vips = append(vips, vipItem)
+	}
+
+	return vips, nil
+}
+
+func (q *qingcloudAPIWrapper) DeleteVIPs(vips []string) (string, error) {
+	if len(vips) <= 0 {
+		return "", nil
+	}
+
+	input := &service.DeleteVIPsInput{
+		VIPs: service.StringSlice(vips),
+	}
+
+	output, err := q.vipService.DeleteVIPs(input)
+	if err != nil {
+		log.Errorf("failed to DeleteVIPs: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	return *output.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) CreateSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (string, error) {
+	input := &service.AddSecurityGroupRulesInput{
+		SecurityGroup: &sg,
+		Rules: []*service.SecurityGroupRule{
+			{
+				SecurityGroupRuleName: service.String(constants.NicPrefix + vxnet.ID),
+				Action:                service.String("accept"),
+				Direction:             service.Int(0),
+				Priority:              service.Int(0),
+				Protocol:              service.String("all"),
+				Val3:                  service.String(vxnet.Network),
+			},
+		},
+	}
+
+	output, err := q.sgService.AddSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to AddSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	o, err := q.sgService.ApplySecurityGroup(&service.ApplySecurityGroupInput{
+		SecurityGroup: service.String(sg),
+	})
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to ApplySecurityGroup: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	return *o.JobID, nil
+}
+
+func (q *qingcloudAPIWrapper) GetSecurityGroupRuleForVxNet(sg string, vxnet *rpc.VxNet) (*rpc.SecurityGroupRule, error) {
+	input := &service.DescribeSecurityGroupRulesInput{
+		SecurityGroup: service.String(sg),
+		Direction:     service.Int(0),
+	}
+
+	output, err := q.sgService.DescribeSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DescribeSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	for _, rule := range output.SecurityGroupRuleSet {
+		if *rule.Val3 == vxnet.Network && *rule.Action == "accept" && *rule.Protocol == "all" {
+			return &rpc.SecurityGroupRule{
+				ID:              *rule.SecurityGroupRuleID,
+				Name:            *rule.SecurityGroupRuleName,
+				SecurityGroupID: *rule.SecurityGroupID,
+				Action:          *rule.Action,
+				Protocol:        *rule.Protocol,
+				Val3:            *rule.Val3,
+				Direction:       int32(*rule.Direction),
+				Priority:        int32(*rule.Priority),
+			}, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (q *qingcloudAPIWrapper) DeleteSecurityGroupRuleForVxNet(sgr string) error {
+	input := &service.DeleteSecurityGroupRulesInput{
+		SecurityGroupRules: []*string{service.String(sgr)},
+	}
+
+	output, err := q.sgService.DeleteSecurityGroupRules(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DeleteSecurityGroupRules: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return err
+	}
+
+	return nil
+}
+
+func (q *qingcloudAPIWrapper) DescribeClusterSecurityGroup(clusterID string) (string, error) {
+	input := &service.DescribeClustersInput{
+		Clusters: []*string{service.String(clusterID)},
+	}
+
+	output, err := q.clusterService.DescribeClusters(input)
+	if err != nil || *output.RetCode != 0 {
+		log.Errorf("failed to DescribeClusters: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return "", err
+	}
+
+	for _, cluster := range output.ClusterSet {
+		if *cluster.ClusterID == clusterID {
+			return *cluster.SecurityGroupID, nil
+		}
+	}
+
+	return "", nil
+}
+
+func (q *qingcloudAPIWrapper) DescribeClusterNodes(clusterID string) ([]*rpc.Node, error) {
+	input := &service.DescribeClusterNodesInput{
+		Cluster: service.String(clusterID),
+	}
+
+	output, err := q.clusterService.DescribeClusterNodes(input)
+	if err != nil {
+		log.Errorf("failed to DescribeClusterNodes: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
+		return nil, err
+	}
+
+	var nodes []*rpc.Node
+	for _, node := range output.NodeSet {
+		item := &rpc.Node{
+			InstanceID:  *node.InstanceID,
+			NodeID:      *node.NodeID,
+			HostMachine: *node.HostMachine,
+			PrivateIP:   *node.PrivateIP,
+			ClusterID:   *node.ClusterID,
+			Status:      *node.Status,
+		}
+		nodes = append(nodes, item)
+	}
+
+	return nodes, nil
+}
+
+func IPRangeCount(from, to string) int {
+	startIP := cnet.ParseIP(from)
+	endIP := cnet.ParseIP(to)
+	startInt := cnet.IPToBigInt(*startIP)
+	endInt := cnet.IPToBigInt(*endIP)
+	return int(big.NewInt(0).Sub(endInt, startInt).Int64() + 1)
+}
+
+func getIPEndAfterReserved(end string, reservedCount int64) string {
+	e := cnet.ParseIP(end)
+	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount))
+	return cnet.BigIntToIP(i).String()
 }

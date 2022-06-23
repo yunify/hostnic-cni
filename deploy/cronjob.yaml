@@ -1,0 +1,37 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: node-patch
+  namespace: kube-system
+spec:
+  schedule: "*/10 * * * *"
+  failedJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: node-patch
+              image: qingcloud/hostnic-plus:v1.0.0
+              command: ["sh", "-c", "/app/tools/patch-node --clusterID CLUSTERID"]
+              volumeMounts:
+                - mountPath: /root/.qingcloud/
+                  name: apiaccesskey
+                  readOnly: true
+                - mountPath: /etc/qingcloud/
+                  name: qingcloud-cfg
+                  readOnly: true
+          restartPolicy: OnFailure
+          serviceAccount: hostnic-node
+          serviceAccountName: hostnic-node
+          volumes:
+            - name: apiaccesskey
+              secret:
+                items:
+                  - key: config.yaml
+                    path: config.yaml
+                secretName: qcsecret
+            - hostPath:
+                path: /etc/qingcloud
+              name: qingcloud-cfg

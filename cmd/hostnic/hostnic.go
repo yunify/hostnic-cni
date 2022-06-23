@@ -24,6 +24,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"os"
+	"runtime"
+	"strings"
+	"syscall"
+
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -37,18 +43,13 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+
 	ipam2 "github.com/yunify/hostnic-cni/cmd/hostnic/ipam"
 	constants "github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/log"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 	"golang.org/x/sys/unix"
-	"net"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"syscall"
 )
 
 func init() {
@@ -166,67 +167,14 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 		LinkIndex: hostVeth.Attrs().Index,
 		Scope:     netlink.SCOPE_LINK,
 		Dst:       podIP,
-		Table:     conf.RT2Pod,
+		Table:     constants.MainTable,
 	}
 	err = netlink.RouteAdd(route)
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to add route %s to pod, err=%+v", spew.Sdump(route), err)
 	}
 
-	mark, _ := strconv.ParseInt(strings.Replace(conf.NatMark, "0x", "", -1), 16, 0)
-
-	var rules []*netlink.Rule
-	if conf.Type != constants.HostNicPassThrough {
-		priority := constants.FromContainerRulePriority
-
-		fromPodRule := netlink.NewRule()
-		fromPodRule.Priority = priority
-		fromPodRule.Table = int(msg.Nic.RouteTableNum)
-		fromPodRule.Src = podIP
-		if conf.Hairpin {
-			fromPodRule.IifName = vethName
-			natRule := netlink.NewRule()
-			natRule.Priority = priority
-			natRule.Table = constants.MainTable
-			natRule.Src = podIP
-			natRule.Mark = int(mark)
-			natRule.Mask = int(mark)
-			rules = append(rules, natRule)
-		}
-		rules = append(rules, fromPodRule)
-	}
-
-	toPodRule := netlink.NewRule()
-	toPodRule.Priority = constants.ToContainerRulePriority
-	toPodRule.Table = conf.RT2Pod
-	toPodRule.Dst = podIP
-	if conf.Hairpin {
-		toPodRule.IifName = constants.GetHostNicName(int(msg.Nic.RouteTableNum))
-		nodeToPodRule := netlink.NewRule()
-		nodeToPodRule.Priority = constants.ToContainerRulePriority
-		nodeToPodRule.Table = conf.RT2Pod
-		nodeToPodRule.Dst = podIP
-		nodeToPodRule.Mark = int(mark)
-		nodeToPodRule.Mask = int(mark)
-		rules = append(rules, nodeToPodRule)
-
-		loopToPodRule := netlink.NewRule()
-		loopToPodRule.Priority = constants.ToContainerRulePriority
-		loopToPodRule.Table = conf.RT2Pod
-		loopToPodRule.Dst = podIP
-		loopToPodRule.Src = podIP
-		rules = append(rules, loopToPodRule)
-	}
-	rules = append(rules, toPodRule)
-
-	for _, rule := range rules {
-		err = netlink.RuleAdd(rule)
-		if err != nil && !os.IsExist(err) {
-			return fmt.Errorf("failed to add rule %v : %v", rule, err)
-		}
-	}
-
-	return nil
+	return networkutils.NetworkHelper.SetupPodNetwork(msg.Nic, msg.IP)
 }
 
 func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
@@ -360,10 +308,6 @@ func checkConf(conf *constants.NetConf) error {
 		conf.NatMark = constants.DefaultNatMark
 	}
 
-	if conf.Hairpin && conf.Service == "" {
-		return fmt.Errorf("service cidr should be configed")
-	}
-
 	err := checkIptables(conf)
 	if err != nil {
 		return fmt.Errorf("failed to checkIptables, err=%v", err)
@@ -446,13 +390,18 @@ func checkIptables(conf *constants.NetConf) error {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
+	var err error
+
+	logrus.Infof("cmdAdd args %v", args)
+	defer func() {
+		logrus.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
+	}()
+
 	conf := constants.NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
+	if err = json.Unmarshal(args.StdinData, &conf); err != nil {
 		return fmt.Errorf("failed to load netconf %s: %v", spew.Sdump(args), err)
 	}
-
-	err := checkConf(&conf)
-	if err != nil {
+	if err = checkConf(&conf); err != nil {
 		return err
 	}
 
@@ -462,9 +411,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
 	podInfo := ipamMsg.Args
+	// podInfo.NicType is from annotation
 	conf.HostNicType = podInfo.NicType
 
-	if err := ip.EnableForward(result.IPs); err != nil {
+	if err = ip.EnableForward(result.IPs); err != nil {
 		return fmt.Errorf("could not enable IP forwarding: %v", err)
 	}
 
@@ -562,18 +512,20 @@ func cmdDelPassThrough(svcIfName, contIfName string, netns ns.NetNS) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
+	var err error
+
+	logrus.Infof("cmdDel args %v", args)
+	defer func() {
+		logrus.Infof("cmdDel for %s rst: %v", args.ContainerID, err)
+	}()
+
 	conf := constants.NetConf{}
-	err := json.Unmarshal(args.StdinData, &conf)
-	if err != nil {
+	if err = json.Unmarshal(args.StdinData, &conf); err != nil {
 		return fmt.Errorf("failed to load netconf: %v", err)
 	}
-
-	err = checkConf(&conf)
-	if err != nil {
+	if err = checkConf(&conf); err != nil {
 		return err
 	}
-
-	logrus.Infof("delete args %v", args)
 
 	ipamMsg, err := ipam2.AddrUnalloc(args, true)
 	if err != nil {

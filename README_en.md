@@ -20,13 +20,13 @@ English|[中文](README.md)
     zone: "pek3a"
     EOF
     ```
-    Make sure you have requested the API access_key/secret_access_key through QingCloud console.  
-    
+   Make sure you have requested the API access_key/secret_access_key through QingCloud console.
+
 1. Launch daemon process
 
-    Daemon process is used as a nic manager which allocates and destroys nics in the background. It serves requests from hostcni and maintain nic info and nic cache pool.
+   Daemon process is used as a nic manager which allocates and destroys nics in the background. It serves requests from hostcni and maintain nic info and nic cache pool.
 
-    it accepts a few params. As listed below.
+   it accepts a few params. As listed below.
 
     ```bash
     [root@i-zwa7jztl bin]# ./daemon start -h
@@ -52,9 +52,9 @@ English|[中文](README.md)
           --manageAddr string   addr of daemon monitor(e.g. socket port 127.0.0.1:31080 [fe80::1%lo0]:80 )  (default ":31081")
 
     ```
-    The parameter PoolSize is used to tell the daemon process how many nic should be created and put into pool beforehand, the default size is 3.  
+   The parameter PoolSize is used to tell the daemon process how many nic should be created and put into pool beforehand, the default size is 3.
 
-    e.g.
+   e.g.
 
     ```bash
     ./bin/daemon start --bindAddr :31080 --vxnets vxnet-xxxxxxx,vxnet-xxxxxxx --PoolSize 3 --loglevel debug
@@ -75,8 +75,8 @@ English|[中文](README.md)
     DEBU[0015] start to wait until channel is not full.   
     ```
 
-    The daemon process would fill nic pool with pre-allocated nics and wait until new request comes
-    
+   The daemon process would fill nic pool with pre-allocated nics and wait until new request comes
+
 1. Add cni config
 
     ```bash
@@ -103,12 +103,12 @@ English|[中文](README.md)
 
 ### CNI config Description
 
-* **ipam** add custom routing rules for nic, (optional)  
-* **bindaddr** server addr where daemon listens to  
-* **dst** destination subnet specified in CIDR notation  
-* **gw** IP of the gateway. If omitted, a default gateway is assumed (as determined by the CNI plugin).  
+* **ipam** add custom routing rules for nic, (optional)
+* **bindaddr** server addr where daemon listens to
+* **dst** destination subnet specified in CIDR notation
+* **gw** IP of the gateway. If omitted, a default gateway is assumed (as determined by the CNI plugin).
 
-For more information about CNI configuration and related parameters, please refer to [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md).  
+For more information about CNI configuration and related parameters, please refer to [cni specification](https://github.com/containernetworking/cni/blob/master/SPEC.md).
 
 ### Special notes for Kubernetes users
 

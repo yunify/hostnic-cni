@@ -1,12 +1,16 @@
 syntax = "proto3";
 
 package rpc;
-
+option go_package = "./pkg/rpc";
 // The service definition.
 service CNIBackend {
   rpc AddNetwork (IPAMMessage) returns (IPAMMessage) {
   }
   rpc DelNetwork (IPAMMessage) returns (IPAMMessage) {
+  }
+  rpc ShowNics (Nothing) returns (NicInfoList) {
+  }
+  rpc ClearNics (Nothing) returns (Nothing) {
   }
 }
 
@@ -15,6 +19,8 @@ message VxNet {
   string Gateway = 2;
   string Network = 3;
   string RouterID = 4;
+  string IPStart = 5;
+  string IPEnd = 6;
 }
 
 enum Status {
@@ -23,6 +29,14 @@ enum Status {
   DELETING = 2;
   ERROR = 3;
   DELETED = 4;
+}
+
+enum Phase {
+  Init = 0;
+  CreateAndAttach = 1;
+  JoinBridge = 2;
+  SetRouteTable = 3;
+  Succeeded = 4;
 }
 
 message HostNic {
@@ -35,6 +49,7 @@ message HostNic {
   bool Reserved = 7;
   int32 RouteTableNum = 8;
   Status Status = 9;
+  Phase Phase = 10;
 }
 
 message PodInfo {
@@ -54,4 +69,48 @@ message IPAMMessage {
   HostNic Nic = 2;
   bool Peek = 3;
   bool Delete = 4;
+  string IP = 5;
+}
+
+message VIP {
+  string ID = 1;
+  string Name = 2;
+  string Addr = 3;
+  string VxNetID = 4;
+}
+
+message SecurityGroupRule {
+  string ID = 1;
+  string Name = 2;
+  string SecurityGroupID = 3;
+  string Action = 4;
+  string Protocol = 7;
+  string Val3 = 8;
+  int32 Direction = 5;
+  int32 Priority = 6;
+}
+
+message Node {
+  string InstanceID = 1;
+  string NodeID = 2;
+  string HostMachine = 3;
+  string PrivateIP = 4;
+  string ClusterID = 5;
+  string Status = 6;
+}
+
+message NicInfo {
+    string Id = 1;
+    string Vxnet = 2;
+    string Phase = 3;
+    string Status = 4;
+    int32 Pods = 5;
+}
+
+message NicInfoList {
+    repeated NicInfo items = 1;
+}
+
+message Nothing {
+
 }

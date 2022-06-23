@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/yunify/hostnic-cni/pkg/constants"
-	"github.com/yunify/hostnic-cni/pkg/rpc"
 
-	"github.com/sirupsen/logrus"
 	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/yunify/hostnic-cni/pkg/log/logfields"
+	"k8s.io/klog/v2"
+
+	"github.com/yunify/hostnic-cni/pkg/constants"
 )
 
 const (
@@ -17,7 +16,6 @@ const (
 )
 
 var (
-	log     = logrus.WithField(logfields.LogSubsys, "leveldb")
 	LevelDB *leveldb.DB
 )
 
@@ -49,13 +47,13 @@ func SetupLevelDB(opt *LevelDBOptions) error {
 func CloseDB() {
 	err := LevelDB.Close()
 	if err != nil {
-		log.WithError(err).Error("failed to close leveldb")
+		klog.Error("failed to close leveldb: %v", err)
 	} else {
-		log.Info("leveldb closed")
+		klog.Info("leveldb closed")
 	}
 }
 
-func SetNetworkInfo(key string, info *rpc.IPAMMessage) error {
+func SetNetworkInfo(key string, info interface{}) error {
 	value, _ := json.Marshal(info)
 	return LevelDB.Put([]byte(key), value, nil)
 }
@@ -69,17 +67,12 @@ func DeleteNetworkInfo(key string) error {
 	return err
 }
 
-func Iterator(fn func(info *rpc.IPAMMessage) error) error {
+func Iterator(fn func(info interface{}) error) error {
 	iter := LevelDB.NewIterator(nil, nil)
 	for iter.Next() {
-		var (
-			value rpc.IPAMMessage
-		)
 		// Remember that the contents of the returned slice should not be modified, and
 		// only valid until the next call to Next.
-		json.Unmarshal(iter.Value(), &value)
-
-		fn(&value)
+		fn(iter.Value())
 	}
 	iter.Release()
 

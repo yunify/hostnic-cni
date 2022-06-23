@@ -1,218 +1,164 @@
 package allocator
 
 import (
+	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/yunify/hostnic-cni/pkg/conf"
-	"github.com/yunify/hostnic-cni/pkg/constants"
-	"github.com/yunify/hostnic-cni/pkg/db"
-	"github.com/yunify/hostnic-cni/pkg/k8s"
-	"github.com/yunify/hostnic-cni/pkg/networkutils"
-	"github.com/yunify/hostnic-cni/pkg/qcclient"
-	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	log "k8s.io/klog/v2"
+
+	"github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/constants"
+	"github.com/yunify/hostnic-cni/pkg/db"
+	"github.com/yunify/hostnic-cni/pkg/networkutils"
+	"github.com/yunify/hostnic-cni/pkg/qcclient"
+	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
 
 type nicStatus struct {
-	nic  *rpc.HostNic
-	info *rpc.PodInfo
+	Nic  *rpc.HostNic
+	Pods map[string]*rpc.PodInfo
 }
 
-func (n *nicStatus) setStatus(status rpc.Status) error {
-	save := n.nic.Status
-	n.nic.Status = status
-	if err := db.SetNetworkInfo(n.nic.ID, &rpc.IPAMMessage{
-		Args: n.info,
-		Nic:  n.nic,
-	}); err != nil {
-		n.nic.Status = save
+func (n *nicStatus) setNicPhase(pahse rpc.Phase) error {
+	save := n.Nic.Phase
+	n.Nic.Phase = pahse
+	if err := db.SetNetworkInfo(n.Nic.VxNet.ID, n); err != nil {
+		n.Nic.Phase = save
 		return err
 	}
 	return nil
 }
 
-func (n *nicStatus) isFree() bool {
-	return n.nic.Status == rpc.Status_FREE
+// always set status to Phase_Succeeded when add NicPod
+func (n *nicStatus) addNicPod(pod *rpc.PodInfo) error {
+	savePod := n.Pods[getContainterKey(pod)]
+	saveStatus := n.Nic.Phase
+	n.Pods[getContainterKey(pod)] = pod
+	n.Nic.Phase = rpc.Phase_Succeeded
+	if err := db.SetNetworkInfo(n.Nic.VxNet.ID, n); err != nil {
+		if savePod == nil {
+			delete(n.Pods, getContainterKey(pod))
+			n.Nic.Phase = saveStatus
+		} else {
+			n.Pods[getContainterKey(pod)] = savePod
+			n.Nic.Phase = saveStatus
+		}
+		return err
+	}
+	return nil
 }
 
-func (n *nicStatus) isUsing() bool {
-	return n.nic.Status == rpc.Status_USING
+func (n *nicStatus) delNicPod(pod *rpc.PodInfo) error {
+	save := n.Pods[getContainterKey(pod)]
+	delete(n.Pods, getContainterKey(pod))
+	if err := db.SetNetworkInfo(n.Nic.VxNet.ID, n); err != nil {
+		n.Pods[getContainterKey(pod)] = save
+		return err
+	}
+	return nil
+}
+
+func (n *nicStatus) isOK() bool {
+	return n.Nic.Phase == rpc.Phase_Succeeded
+}
+
+func (n *nicStatus) getPhase() string {
+	return n.Nic.Phase.String()
 }
 
 type Allocator struct {
-	lock      sync.RWMutex
-	jobs      []string
-	nics      map[string]*nicStatus
-	conf      conf.PoolConf
-	cachedNet *rpc.VxNet
+	lock sync.RWMutex
+	nics map[string]*nicStatus
+	conf conf.PoolConf
 }
 
-func (a *Allocator) SetCachedVxnet(vxnet string) error {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	if a.cachedNet != nil && a.cachedNet.ID == vxnet {
-		return nil
-	}
-
-	var toFree []string
-	for _, nic := range a.nics {
-		if nic.isFree() && nic.nic.VxNet.ID != vxnet {
-			err := nic.setStatus(rpc.Status_DELETING)
-			if err != nil {
-				return err
-			}
-			toFree = append(toFree, nic.nic.ID)
+func (a *Allocator) setNicStatus(nic *rpc.HostNic, pahse rpc.Phase) error {
+	log.Infof("setNicStatus: %s %s", getNicKey(nic), pahse.String())
+	if status, ok := a.nics[nic.VxNet.ID]; ok {
+		if err := status.setNicPhase(pahse); err != nil {
+			return err
 		}
-	}
-	if len(toFree) > 0 {
-		jobID, err := qcclient.QClient.DeattachNics(toFree, false)
-		if err == nil {
-			a.jobs = append(a.jobs, jobID)
-			log.Infof("deattach nics %v", toFree)
+	} else {
+		nicStatus := nicStatus{
+			Nic:  nic,
+			Pods: make(map[string]*rpc.PodInfo),
+		}
+		if err := nicStatus.setNicPhase(pahse); err != nil {
+			return err
 		} else {
-			log.WithError(err).Errorf("failed to deattach nics %v", toFree)
+			a.nics[nic.VxNet.ID] = &nicStatus
 		}
 	}
-
-	vxnets, err := qcclient.QClient.GetVxNets([]string{vxnet})
-	if err != nil {
-		return err
-	}
-	a.cachedNet = vxnets[vxnet]
-	log.Infof("set cache vxnet to %s", vxnet)
-	a.cacheHostNic()
 
 	return nil
 }
 
-func (a *Allocator) addNicStatus(nic *rpc.HostNic, info *rpc.PodInfo) error {
-	if info != nil {
-		nic.Status = rpc.Status_USING
+func (a *Allocator) addNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
+	log.Infof("addNicPod: %s %s", getNicKey(nic), getPodKey(info))
+	if status, ok := a.nics[nic.VxNet.ID]; ok {
+		if err := status.addNicPod(info); err != nil {
+			return err
+		}
+	} else {
+		nicStatus := nicStatus{
+			Nic:  nic,
+			Pods: make(map[string]*rpc.PodInfo),
+		}
+		if err := nicStatus.addNicPod(info); err != nil {
+			return err
+		} else {
+			a.nics[nic.VxNet.ID] = &nicStatus
+		}
 	}
+
+	return nil
+}
+
+func (a *Allocator) delNicPod(nic *rpc.HostNic, info *rpc.PodInfo) error {
+	log.Infof("delNicPod: %s %s", getNicKey(nic), getPodKey(info))
+	if status, ok := a.nics[nic.VxNet.ID]; ok {
+		if err := status.delNicPod(info); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (a *Allocator) delNic(vxnet string) error {
+	log.Infof("delNic: %s", vxnet)
+	if err := db.DeleteNetworkInfo(vxnet); err != nil {
+		return err
+	}
+	delete(a.nics, vxnet)
+
+	return nil
+}
+
+func (a *Allocator) getNicRouteTableNum(nic *rpc.HostNic) int32 {
 	if nic.RouteTableNum <= 0 {
 		exists := make(map[int]bool)
 		for _, nic := range a.nics {
-			exists[int(nic.nic.RouteTableNum)] = true
+			exists[int(nic.Nic.RouteTableNum)] = true
 		}
 		for start := a.conf.RouteTableBase; ; start++ {
 			if !exists[start] {
-				nic.RouteTableNum = int32(start)
-				break
+				log.Infof("Assign nic %s routetable num %d", getNicKey(nic), start)
+				return int32(start)
 			}
 		}
-		log.Infof("assign nic %s routetable num %d", nic.ID, nic.RouteTableNum)
+	} else {
+		return nic.RouteTableNum
 	}
-	status := &nicStatus{
-		nic:  nic,
-		info: info,
-	}
-
-	err := db.SetNetworkInfo(status.nic.ID, &rpc.IPAMMessage{
-		Args: status.info,
-		Nic:  status.nic,
-	})
-	if err != nil {
-		return err
-	}
-	a.nics[status.nic.ID] = status
-	return nil
-}
-
-func (a *Allocator) removeNicStatus(status *nicStatus) error {
-	err := db.DeleteNetworkInfo(status.nic.ID)
-	if err != nil {
-		return err
-	}
-	delete(a.nics, status.nic.ID)
-	return nil
-}
-
-func (a *Allocator) cacheHostNic() {
-	if a.cachedNet == nil {
-		return
-	}
-
-	nowAllocated := len(a.nics)
-
-	nowFree := 0
-	var toFree []string
-	for _, nic := range a.nics {
-		if nic.isFree() && nic.nic.VxNet.ID == a.cachedNet.ID {
-			nowFree++
-			if nowFree > a.conf.PoolHigh {
-				if err := nic.setStatus(rpc.Status_DELETING); err != nil {
-					log.WithError(err).Errorf("failed to set nic %s to deleting", nic.nic.ID)
-				} else {
-					log.Infof("free cached nic %s", nic.nic.ID)
-					toFree = append(toFree, nic.nic.ID)
-				}
-			}
-		}
-	}
-	if len(toFree) > 0 {
-		jobID, err := qcclient.QClient.DeattachNics(toFree, false)
-		if err == nil {
-			a.jobs = append(a.jobs, jobID)
-			log.Infof("deattach nics %v", toFree)
-		} else {
-			log.WithError(err).Errorf("failed to deattach nics %v", toFree)
-		}
-	}
-
-	if nowFree < a.conf.PoolLow {
-		if a.canAlloc() <= 0 {
-			return
-		}
-
-		canAllocNum := a.conf.PoolLow - nowFree
-		if canAllocNum > a.conf.MaxNic-nowAllocated {
-			canAllocNum = a.conf.MaxNic - nowAllocated
-		}
-
-		nics, jobID, err := qcclient.QClient.CreateNicsAndAttach(a.cachedNet, canAllocNum, nil)
-		if err != nil {
-			log.WithError(err).Errorf("failed to create %d cached nics", canAllocNum)
-			return
-		}
-		a.jobs = append(a.jobs, jobID)
-
-		for _, nic := range nics {
-			if err := a.addNicStatus(nic, nil); err != nil {
-				log.WithError(err).Errorf("faid to cache nic %s", nic.ID)
-			} else {
-				log.Infof("cached nic %s", nic.ID)
-			}
-		}
-	}
-}
-
-func (a *Allocator) allocHostNic(args *rpc.PodInfo) *rpc.HostNic {
-	var result *rpc.HostNic
-	for _, nic := range a.nics {
-		if nic.isFree() {
-			err := a.addNicStatus(nic.nic, args)
-			if err == nil {
-				result = nic.nic
-				break
-			}
-		}
-	}
-
-	return result
-}
-
-func (a *Allocator) canAlloc() int {
-	return a.conf.MaxNic - len(a.nics)
 }
 
 func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 	for _, nic := range a.nics {
-		if nic.nic.VxNet.ID == vxnet {
-			return nic.nic.VxNet, nil
+		if nic.Nic.VxNet.ID == vxnet {
+			return nic.Nic.VxNet, nil
 		}
 	}
 
@@ -220,247 +166,221 @@ func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("get vxnet %s", vxnet)
-	return result[vxnet], nil
+
+	if v, ok := result[vxnet]; !ok {
+		return nil, fmt.Errorf("Get vxnet %s from qingcloud: not found", vxnet)
+	} else {
+		return v, nil
+	}
 }
 
-func getKey(info *rpc.PodInfo) string {
-	return info.Containter
+func (a *Allocator) canAlloc() int {
+	return a.conf.MaxNic - len(a.nics)
 }
 
 func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	var result *nicStatus
-	for _, nic := range a.nics {
-		if nic.isUsing() && getKey(nic.info) == getKey(args) {
-			result = nic
+	vxnetName := args.VxNet
+	if nic, ok := a.nics[vxnetName]; ok {
+		log.Infof("Find hostNic %s: %s", getNicKey(nic.Nic), nic.getPhase())
+		if nic.isOK() {
+			// just update Nic's pods
+			if err := a.addNicPod(nic.Nic, args); err != nil {
+				log.Errorf("addNicPod failed: %s %s %v", getNicKey(nic.Nic), getPodKey(args), err)
+			}
+			return nic.Nic, nil
+		} else {
+			// create bridge and rule here
+			phase, err := networkutils.NetworkHelper.SetupNetwork(nic.Nic)
+			if err != nil {
+				if err := a.setNicStatus(nic.Nic, phase); err != nil {
+					log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nic.Nic), phase.String(), err)
+				}
+				return nil, err
+			}
+			if err := a.addNicPod(nic.Nic, args); err != nil {
+				log.Errorf("addNicPod failed: %s %s %v", getNicKey(nic.Nic), getPodKey(args), err)
+			}
+			return nic.Nic, nil
 		}
 	}
-	if result != nil {
-		return result.nic, nil
-	}
 
-	if args.VxNet == "" {
-		result := a.allocHostNic(args)
-		if result != nil {
-			return result, nil
-		}
-
-		a.cacheHostNic()
-
-		result = a.allocHostNic(args)
-		if result != nil {
-			return result, nil
-		}
-
+	if a.canAlloc() <= 0 {
 		return nil, constants.ErrNoAvailableNIC
-	} else {
-		if a.canAlloc() <= 0 {
-			return nil, constants.ErrNoAvailableNIC
-		}
-
-		var ips []string
-		if args.PodIP != "" {
-			ips = append(ips, args.PodIP)
-		}
-		vxnet, err := a.getVxnets(args.VxNet)
-		if err != nil {
-			return nil, err
-		}
-		nics, jobID, err := qcclient.QClient.CreateNicsAndAttach(vxnet, 1, ips)
-		if err != nil {
-			return nil, err
-		}
-		log.Infof("create and attach nic %v", nics)
-		a.jobs = append(a.jobs, jobID)
-		nics[0].Reserved = true
-		err = a.addNicStatus(nics[0], args)
-		if err != nil {
-			return nil, err
-		}
-		return nics[0], nil
-	}
-}
-
-func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, error) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	var result *nicStatus
-	for _, nic := range a.nics {
-		if nic.isUsing() && getKey(nic.info) == getKey(args) {
-			result = nic
-		}
-	}
-	if result == nil {
-		return nil, nil
 	}
 
-	if !peek {
-		status := rpc.Status_FREE
-		if result.nic.Reserved || (a.cachedNet != nil && result.nic.VxNet.ID != a.cachedNet.ID) {
-			status = rpc.Status_DELETING
-		}
-		err := result.setStatus(status)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set nic %s to %d", result.nic.ID, status)
-		}
-		a.cacheHostNic()
-		if status == rpc.Status_DELETING {
-			jobId, err := qcclient.QClient.DeattachNics([]string{result.nic.ID}, false)
-			if err == nil {
-				a.jobs = append(a.jobs, jobId)
-				log.WithError(err).Infof("deattach nic %s", result.nic.ID)
-			} else {
-				log.WithError(err).Infof("failed to deattach nic %s", result.nic.ID)
-			}
-		}
-	}
-
-	args.NicType = result.info.NicType
-	args.Netns = result.info.Netns
-	args.Containter = result.info.Containter
-	args.IfName = result.info.IfName
-	return result.nic, nil
-}
-
-func (a *Allocator) SyncHostNic(node bool) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	if !node {
-		if len(a.jobs) <= 0 {
-			return
-		}
-	}
-
-	var (
-		all      []string
-		using    []string
-		deleting []string
-		toAttach []string
-		toDetach []string
-		toDelete []string
-		working  = make(map[string]bool)
-		left     []string
-	)
-
-	for _, nic := range a.nics {
-		all = append(all, nic.nic.ID)
-		if nic.isFree() || nic.isUsing() {
-			using = append(using, nic.nic.ID)
-		} else {
-			deleting = append(deleting, nic.nic.ID)
-		}
-	}
-
-	nics, err := qcclient.QClient.GetNics(all)
+	vxnet, err := a.getVxnets(vxnetName)
 	if err != nil {
-		return
+		return nil, err
+	}
+	nics, _, err := qcclient.QClient.CreateNicsAndAttach(vxnet, 1, nil, 1)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("create and attach nic %s", getNicKey(nics[0]))
+
+	//wait for nic attach
+	for {
+		link, err := networkutils.NetworkHelper.LinkByMacAddr(nics[0].HardwareAddr)
+		if err != nil && err != constants.ErrNicNotFound {
+			return nil, err
+		}
+		if link != nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
 	}
 
-	if len(a.jobs) >= 0 {
-		left, working, err = qcclient.QClient.DescribeNicJobs(a.jobs)
-		if err != nil {
-			return
+	log.Infof("attach nic %s success", getNicKey(nics[0]))
+
+	nics[0].Reserved = true
+	nics[0].RouteTableNum = a.getNicRouteTableNum(nics[0])
+
+	// create bridge and rule here
+	phase, err := networkutils.NetworkHelper.SetupNetwork(nics[0])
+	if err != nil {
+		if err := a.setNicStatus(nics[0], phase); err != nil {
+			log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nics[0]), phase.String(), err)
 		}
-		a.jobs = left
+		return nil, err
 	}
 
-	for _, id := range using {
-		if nics[id] == nil {
-			log.Infof("nic missing in get , remove  using nic %s", id)
-			a.removeNicStatus(a.nics[id])
-			continue
-		}
-
-		if working[id] {
-			continue
-		}
-
-		if !nics[id].Using {
-			toAttach = append(toAttach, id)
-		}
+	if err := a.addNicPod(nics[0], args); err != nil {
+		log.Errorf("addNicPod failed: %s %s %v", getNicKey(nics[0]), getPodKey(args), err)
 	}
 
-	for _, id := range deleting {
-		if nics[id] == nil {
-			log.Infof("nic missing in get, remove deleting nic %s", id)
-			a.removeNicStatus(a.nics[id])
-			continue
-		}
+	return nics[0], nil
+}
 
-		if working[id] {
-			continue
-		}
+func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, string, error) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
 
-		if nics[id].Using {
-			toDetach = append(toDetach, id)
-		} else {
-			toDelete = append(toDelete, id)
-		}
-	}
-
-	if len(toAttach) > 0 {
-		jobID, err := qcclient.QClient.AttachNics(toAttach)
-		if err == nil {
-			log.Infof("try to attachnic %v", toAttach)
-			a.jobs = append(a.jobs, jobID)
-		} else {
-			log.WithError(err).Errorf("failed to attachnics %v", toAttach)
-		}
-	}
-
-	if len(toDelete) > 0 {
-		err = qcclient.QClient.DeleteNics(toDelete)
-		if err == nil {
-			log.Infof("try to delete nic %v", toDelete)
-			for _, id := range toDelete {
-				log.Infof("nic %s deleeted, remove from status", id)
-				a.removeNicStatus(a.nics[id])
+	for _, status := range a.nics {
+		if pod, ok := status.Pods[getContainterKey(args)]; ok {
+			if err := a.delNicPod(status.Nic, pod); err != nil {
+				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err)
 			}
-		} else {
-			log.WithError(err).Errorf("failed to deletenics %v", toDelete)
+			return status.Nic, pod.PodIP, nil
 		}
 	}
 
-	if len(toDetach) > 0 {
-		jobID, err := qcclient.QClient.DeattachNics(toDetach, false)
+	/*
+		_, err := qcclient.QClient.DeattachNics([]string{result.Nic.ID}, false)
 		if err == nil {
-			log.Infof("try to deattach nic %v", toDetach)
-			a.jobs = append(a.jobs, jobID)
+			log.WithError(err).Infof("deattach nic %s", result.Nic.ID)
 		} else {
-			log.WithError(err).Errorf("failed to deattach nics %v", toDetach)
+			log.WithError(err).Infof("failed to deattach nic %s", result.Nic.ID)
+		}
+		return result.Nic, nil
+	*/
+
+	return nil, "", nil
+}
+
+func (a *Allocator) HostNicCheck() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for _, nic := range a.nics {
+		if !nic.isOK() {
+			phase, err := networkutils.NetworkHelper.CheckAndRepairNetwork(nic.Nic)
+			if err := a.setNicStatus(nic.Nic, phase); err != nil {
+				log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nic.Nic), phase.String(), err)
+			}
+			log.Infof("Repair hostNic %s: %s %v", getNicKey(nic.Nic), nic.getPhase(), err)
 		}
 	}
 }
 
 func (a *Allocator) Start(stopCh <-chan struct{}) error {
-	// choose vxnet for node
-	err := k8s.K8sHelper.ChooseVxnetForNode(a.conf.VxNets, a.conf.MaxNic)
-	if err != nil {
-		log.WithError(err).Fatalf("failed to choose vxnet for node")
-	}
-
 	go a.run(stopCh)
 	return nil
 }
 
+func (a *Allocator) GetNics() map[string]*nicStatus {
+	return a.nics
+}
+
+func (a *Allocator) freeHostnic(nic *rpc.HostNic) error {
+	if err := networkutils.NetworkHelper.CleanupNetwork(nic); err != nil {
+		log.Errorf("CleanupNetwork for vxnet %s failed: nic %s %v", nic.VxNet.ID, nic.ID, err)
+		return err
+	}
+
+	if _, err := qcclient.QClient.DeattachNics([]string{nic.ID}, true); err != nil {
+		log.Errorf("DeattachNics for vxnet %s failed: nic %s failed: %v", nic.VxNet.ID, nic.ID, err)
+		return err
+	}
+
+	if err := qcclient.QClient.DeleteNics([]string{nic.ID}); err != nil && !strings.Contains(err.Error(), constants.ResourceNotFound) {
+		log.Errorf("DeleteNics for vxnet %s failed: nic %s failed: %v", nic.VxNet.ID, nic.ID, err)
+		// nic has deattached, so return nil to skip repair
+	}
+
+	return nil
+}
+
+func (a *Allocator) ClearFreeHostnic(force bool) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	maxVxnetNicsCount := a.getVxnetMaxNicNum()
+	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !force {
+		log.Infof("no hostnic to free: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+		return nil
+	}
+
+	log.Infof("freeHostnic: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+	for vxnet, status := range a.nics {
+		if len(status.Pods) == 0 {
+			if err := a.freeHostnic(status.Nic); err != nil {
+				log.Errorf("freeHostnic for vxnet %s failed: nic %s %v", vxnet, status.Nic.ID, err)
+				// set status to init to repair nics which free failed
+				if err := a.setNicStatus(status.Nic, rpc.Phase_Init); err != nil {
+					log.Errorf("setNicStatus failed: %s %s %v", getNicKey(status.Nic), rpc.Phase_Init.String(), err)
+				}
+			} else {
+				if err := a.delNic(vxnet); err != nil {
+					log.Errorf("delNic failed: %s %v", getNicKey(status.Nic), err)
+				}
+				log.Infof("freeHostnic for vxnet %s success: nic %s", vxnet, status.Nic.ID)
+			}
+		}
+	}
+	return nil
+}
+
+func (a *Allocator) getVxnetMaxNicNum() int {
+	maxNicsCount := 0
+	for vxnet := range a.nics {
+		if nics, err := qcclient.QClient.GetCreatedNicsByVxNet(vxnet); err != nil {
+			return 0
+		} else {
+			if maxNicsCount < len(nics) {
+				maxNicsCount = len(nics)
+			}
+		}
+	}
+	return maxNicsCount
+}
+
 func (a *Allocator) run(stopCh <-chan struct{}) {
-	nodeTimer := time.NewTicker(time.Duration(a.conf.NodeSync) * time.Second).C
 	jobTimer := time.NewTicker(time.Duration(a.conf.Sync) * time.Second).C
+	freeTimer := time.NewTicker(time.Duration(a.conf.FreePeriod) * time.Minute).C
 	for {
 		select {
 		case <-stopCh:
 			log.Info("stoped allocator")
 			return
 		case <-jobTimer:
-			a.SyncHostNic(false)
-		case <-nodeTimer:
-			log.Infof("period node sync")
-			a.SyncHostNic(true)
+			log.Infof("period job sync")
+			a.HostNicCheck()
+		case <-freeTimer:
+			log.Infof("period free sync")
+			a.ClearFreeHostnic(false)
 		}
 	}
 }
@@ -475,63 +395,47 @@ func SetupAllocator(conf conf.PoolConf) {
 		conf: conf,
 	}
 
-	err := db.Iterator(func(info *rpc.IPAMMessage) error {
-		if info.Nic.Status == rpc.Status_USING {
-			log.Infof("restore pod %v to nic %s", info.Args, info.Nic.ID)
-		} else {
-			log.Infof("restore nic %s status %d", info.Nic.ID, info.Nic.Status)
-		}
-
-		Alloc.nics[info.Nic.ID] = &nicStatus{
-			nic:  info.Nic,
-			info: info.Args,
-		}
-
+	err := db.Iterator(func(value interface{}) error {
+		var nic nicStatus
+		json.Unmarshal(value.([]byte), &nic)
+		Alloc.nics[nic.Nic.VxNet.ID] = &nic
 		return nil
 	})
 	if err != nil {
-		log.WithError(err).Fatalf("failed restore allocator from leveldb")
+		log.Fatalf("Failed to restore allocator from leveldb: %v", err)
 	}
 
-	//
 	// restore create nics
-	//
-	nics, err := qcclient.QClient.GetCreatedNics(constants.NicNumLimit, 0)
+	nics, err := qcclient.QClient.GetCreatedNicsByName(constants.NicPrefix + qcclient.QClient.GetInstanceID())
 	if err != nil {
-		log.WithError(err).Fatalf("failed to get created nics")
+		log.Fatalf("Failed to get created nics from qingcloud: %v", err)
 	}
-	var left []*rpc.HostNic
+
 	for _, nic := range nics {
-		if Alloc.nics[nic.ID] == nil {
-			link, err := networkutils.NetworkHelper.LinkByMacAddr(nic.HardwareAddr)
-			if err != nil && err != constants.ErrNicNotFound {
-				log.WithError(err).Fatalf("failed to index link by mac %s", nic.HardwareAddr)
-			}
-			if link != nil {
-				routeTableNum := 0
-				name := ""
-				if strings.HasPrefix(link.Attrs().Name, constants.NicPrefix) {
-					name = link.Attrs().Name
-				} else {
-					name = link.Attrs().Alias
-				}
-				routeTableNum, err = strconv.Atoi(strings.TrimPrefix(name, constants.NicPrefix))
-				if err != nil {
-					left = append(left, nic)
-					continue
-				}
-				nic.RouteTableNum = int32(routeTableNum)
-				log.Infof("restore create nic %s routetable num %d", nic.ID, nic.RouteTableNum)
-				Alloc.addNicStatus(nic, nil)
-			} else {
-				left = append(left, nic)
-			}
+		if status, ok := Alloc.nics[nic.VxNet.ID]; !ok {
+			// nic not attached at this node
+		} else {
+			Alloc.setNicStatus(status.Nic, rpc.Phase_Init)
+			log.Infof("Restore create nic %s %s routetable num %d", nic.ID, getNicKey(status.Nic), status.Nic.RouteTableNum)
 		}
 	}
-	for _, nic := range left {
-		Alloc.addNicStatus(nic, nil)
-		log.Infof("restore create nic %s routetable num %d", nic.ID, nic.RouteTableNum)
-	}
+}
 
-	Alloc.SyncHostNic(true)
+func getContainterKey(info *rpc.PodInfo) string {
+	return info.Containter
+}
+
+func getPodKey(info *rpc.PodInfo) string {
+	return info.Namespace + "/" + info.Name + "/" + info.Containter
+}
+
+func getNicKey(nic *rpc.HostNic) string {
+	return nic.VxNet.ID + "/" + nic.ID
+}
+
+func GetNicKey(nic *rpc.HostNic) string {
+	if nic == nil || nic.VxNet == nil {
+		return ""
+	}
+	return getNicKey(nic)
 }

@@ -29,11 +29,13 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
+
 	. "github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/networkutils"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
 )
 
 func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
@@ -83,58 +85,19 @@ func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	err = networkutils.NetworkHelper.SetupNicNetwork(nic)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var result *current.Result
-	vxnet := nic.VxNet
-	_, hostnicNet, _ := net.ParseCIDR(vxnet.Network)
 	index := 0
-	if r.Args.NicType == HostNicPassThrough {
-		result = &current.Result{
-			IPs: []*current.IPConfig{
-				{
-					Version: "4",
-					Address: net.IPNet{
-						IP:   net.ParseIP(nic.PrimaryAddress),
-						Mask: hostnicNet.Mask,
-					},
-					Interface: &index,
-					Gateway:   net.ParseIP(vxnet.Gateway),
+	result := &current.Result{
+		IPs: []*current.IPConfig{
+			{
+				Version: "4",
+				Address: net.IPNet{
+					IP:   net.ParseIP(r.IP),
+					Mask: net.CIDRMask(32, 32),
 				},
+				Interface: &index,
+				Gateway:   net.ParseIP("169.254.1.1"),
 			},
-			Interfaces: []*current.Interface{
-				{
-					Name: args.IfName,
-					Mac:  nic.HardwareAddr,
-				},
-			},
-			Routes: []*types.Route{
-				{
-					Dst: net.IPNet{
-						IP:   net.IPv4zero,
-						Mask: net.CIDRMask(0, 32),
-					},
-					GW: net.ParseIP(vxnet.Gateway),
-				},
-			},
-		}
-	} else {
-		result = &current.Result{
-			IPs: []*current.IPConfig{
-				{
-					Version: "4",
-					Address: net.IPNet{
-						IP:   net.ParseIP(nic.PrimaryAddress),
-						Mask: net.CIDRMask(32, 32),
-					},
-					Interface: &index,
-					Gateway:   net.ParseIP("169.254.1.1"),
-				},
-			},
-		}
+		},
 	}
 
 	return r, result, nil
@@ -180,12 +143,9 @@ func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.IPAMMessage, error) {
 	}
 	if reply.Nic == nil || reply.Args.Containter != args.ContainerID {
 		return nil, ErrNicNotFound
-	}
-
-	if !peek {
-		err = networkutils.NetworkHelper.CleanupNicNetwork(reply.Nic)
-		if err != nil {
-			return nil, fmt.Errorf("failed to cleanup nic network: %v", err)
+	} else {
+		if err := networkutils.NetworkHelper.CleanupPodNetwork(reply.Nic, reply.IP); err != nil {
+			logrus.Errorf("clean %v %s network failed: %v", reply.Nic, reply.IP, err)
 		}
 	}
 
