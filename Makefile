@@ -1,10 +1,11 @@
-ARCH ?= amd64
+ARCH ?= $(shell uname -m)
 pgks ?= $(shell go list  ./pkg/... | grep -v rpc)
 #Debug level: 0, 1, 2 (1 true, 2 use bash)
 DEBUG?= 0
-TAG?= latest
-TARGET?= default
-DEPLOY?= deploy/hostnic.yaml
+TAG ?= $(shell git describe --tags)
+IMG ?= qingcloud/hostnic-plus:$(TAG)
+TARGET ?= default
+DEPLOY ?= deploy/hostnic.yml
 
 ifneq ($(DEBUG), 0)
 	TARGET = dev
