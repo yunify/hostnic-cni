@@ -120,6 +120,9 @@ func NewVxNetPoolController(
 	poolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueuePool,
 		UpdateFunc: func(old, new interface{}) {
+			oldVxnetPool := old.(*networkv1alpha1.VxNetPool)
+			newVxnetPool := new.(*networkv1alpha1.VxNetPool)
+			controller.clearVxnet(oldVxnetPool, newVxnetPool)
 			controller.enqueuePool(new)
 		},
 	})
@@ -330,6 +333,50 @@ func (c *VxNetPoolController) enqueuePool(obj interface{}) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+// clearVxnet try to clear the related resources with the vxnet deleted from vxnetpool named v-pool
+// clear related resources if this vxnet was not being used by pod (ippool.status.allocations == 0)
+// 1. release vip
+// 2. delete ippool
+func (c *VxNetPoolController) clearVxnet(old, new *networkv1alpha1.VxNetPool) {
+	if new.Name != constants.IPAMVxnetPoolName {
+		klog.V(3).Infof("Don't care about %s", new.Name)
+		return
+	}
+
+	newVxnetsMap := make(map[string]bool)
+	for _, newVxnet := range new.Spec.Vxnets {
+		newVxnetsMap[newVxnet.Name] = true
+	}
+
+	for _, oldVxnet := range old.Spec.Vxnets {
+		if !newVxnetsMap[oldVxnet.Name] {
+			ippool, err := c.ippoolsLister.Get(oldVxnet.Name)
+			if err != nil {
+				klog.Errorf("get ippool %s error: %v", oldVxnet.Name, err)
+				continue
+			}
+
+			if ippool.Status.Allocations > 0 {
+				klog.Infof("vxnet %s was being deleted from vxnetpool, but this vxnet was already used by some pods, skip clear vip and ippool!", oldVxnet.Name)
+				continue
+			}
+
+			klog.Infof("vxnet %s was being deleted from vxnetpool and not being used by pod, going to clear vip and ippool", oldVxnet.Name)
+
+			// release vip
+			go c.deleteVIPsByVxnetID(oldVxnet.Name)
+
+			// delete ippool
+			err = c.clientset.NetworkV1alpha1().IPPools().Delete(context.TODO(), ippool.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("delete ippool %s error: %v", ippool.Name, err)
+			} else {
+				klog.Infof("delete ippool %s success", ippool.Name)
+			}
+		}
+	}
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
@@ -559,6 +606,46 @@ func (c *VxNetPoolController) setJob(id, job string) {
 
 	c.jobs[id] = job
 	return
+}
+
+func (c *VxNetPoolController) deleteVIPsByVxnetID(vxnetID string) {
+	vxnets, err := qcclient.QClient.GetVxNets([]string{vxnetID})
+	if err != nil {
+		klog.Errorf("Get info for vxnet %s failed: %v\n", vxnetID, err)
+		return
+	}
+	if len(vxnets) == 0 {
+		klog.Infof("VxNet %s: not found, skip delete vip", vxnetID)
+		return
+	}
+
+	vxnet := vxnets[vxnetID]
+
+	for {
+		if vips, err := qcclient.QClient.DescribeVIPs(vxnet); err != nil {
+			klog.Errorf("Get vips for vxnet %s failed: %v\n", vxnet.ID, err)
+			return
+		} else {
+			if len(vips) == 0 {
+				break
+			}
+			var vipsToDel []string
+			for _, vip := range vips {
+				vipsToDel = append(vipsToDel, vip.ID)
+			}
+			if job, err := qcclient.QClient.DeleteVIPs(vipsToDel); err != nil {
+				klog.Errorf("Clear vips for VxNet %s failed: %v, will retry", vxnet.ID, err)
+			} else {
+				klog.Infof("Clear vips for VxNet %s: count %d, job id %s", vxnet.ID, len(vips), job)
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	// delete vxnet cache
+	delete(c.vxNetCache, vxnetID)
+	// delete vip cache
+	delete(c.vipCache, vxnetID)
+	klog.Infof("Clear vips for VxNet %s success\n", vxnet.ID)
 }
 
 func (c *VxNetPoolController) qingCloudSync() {

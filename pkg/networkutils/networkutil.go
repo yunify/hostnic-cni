@@ -42,7 +42,7 @@ func (n NetworkUtils) SetupPodNetwork(nic *rpc.HostNic, ip string) error {
 	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), ip, nic.HardwareAddr, "-I")
 }
 
-//After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
+// After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
 func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
 	ip := net.ParseIP(podIP)
 	dstRules, err := getRuleListByDst(ip)
@@ -60,7 +60,7 @@ func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
 	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), podIP, nic.HardwareAddr, "-D")
 }
 
-//Note: setup NetworkManager to disable dhcp on nic
+// Note: setup NetworkManager to disable dhcp on nic
 // SetupNicNetwork adds default route to route table (nic-<nic_table>)
 func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 	devName := constants.GetHostNicName(nic.VxNet.ID)
@@ -123,7 +123,7 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 	return rpc.Phase_Succeeded, nil
 }
 
-//After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
+// After the Response is uninstalled, the relevant routes are cleared, so you only need to delete the rule.
 func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
 	if err := n.clearRouteTable(nic); err != nil {
 		return err
@@ -131,7 +131,7 @@ func (n NetworkUtils) CleanupNetwork(nic *rpc.HostNic) error {
 	return n.clearBridgeNetwork(nic)
 }
 
-//Note: setup NetworkManager to disable dhcp on nic
+// Note: setup NetworkManager to disable dhcp on nic
 // SetupNicNetwork adds default route to route table (nic-<nic_table>)
 func (n NetworkUtils) setupNicNetwork(name string, link netlink.Link) error {
 	var err error
@@ -165,7 +165,7 @@ func (n NetworkUtils) setupNicNetwork(name string, link netlink.Link) error {
 	return nil
 }
 
-//create br and add hostnic to br
+// create br and add hostnic to br
 func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error {
 	la := netlink.NewLinkAttrs()
 	la.Name = brName
