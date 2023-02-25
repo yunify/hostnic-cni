@@ -24,7 +24,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d
-	golang.org/x/sys v0.0.0-20210603081109-ebe580a85c40
+	golang.org/x/sys v0.1.0
 	google.golang.org/grpc v1.27.1
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
