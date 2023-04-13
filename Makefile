@@ -6,6 +6,7 @@ TAG ?= $(shell git describe --tags)
 IMG ?= qingcloud/hostnic-plus:$(TAG)
 TARGET ?= default
 DEPLOY ?= deploy/hostnic.yml
+REPO=qingcloud
 
 ifneq ($(DEBUG), 0)
 	TARGET = dev
@@ -77,3 +78,7 @@ generate-prototype:
 	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto
 
 .PHONY: deploy
+
+push:
+	docker buildx build --build-arg CORE_BIN_DIR=${CORE_BIN_DIR} --build-arg TOOLS_BIN_DIR=${TOOLS_BIN_DIR} -t ${REPO}/hostnic-plus:${TAG} --platform=linux/amd64,linux/arm64 -f build/hostnic/DockerfileWithBuilder . --push
+	docker buildx build --build-arg WEBHOOK_BIN_DIR=${WEBHOOK_BIN_DIR} -t ${REPO}/hostnic-webhook:${TAG} --platform=linux/amd64,linux/arm64 -f build/webhook/DockerfileWithBuilder . --push

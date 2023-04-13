@@ -319,7 +319,7 @@ func checkConf(conf *constants.NetConf) error {
 func checkIptables(conf *constants.NetConf) error {
 	link, err := netlink.LinkByName(conf.Interface)
 	if err != nil {
-		return err
+		return fmt.Errorf("LinkByName %s error: %v", conf.Interface, err)
 	}
 	addrs, err := netlink.AddrList(link, unix.AF_INET)
 	if err != nil {
