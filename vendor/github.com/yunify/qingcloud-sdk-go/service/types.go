@@ -597,7 +597,7 @@ type ClusterNode struct {
 	RootUserID                 *string     `json:"root_user_id" name:"root_user_id"`
 	ScaleInService             interface{} `json:"scale_in_service" name:"scale_in_service"`
 	ScaleOutService            interface{} `json:"scale_out_service" name:"scale_out_service"`
-	SecurityGroup              *string     `json:"security_group" name:"security_group"`
+	SecurityGroup              interface{} `json:"security_group" name:"security_group"`
 	ServerID                   *int        `json:"server_id" name:"server_id"`
 	ServerIDUpperBound         *int        `json:"server_id_upper_bound" name:"server_id_upper_bound"`
 	SingleNodeRepl             *string     `json:"single_node_repl" name:"single_node_repl"`
@@ -3159,9 +3159,8 @@ type Volume struct {
 	TransitionStatus *string `json:"transition_status" name:"transition_status"`
 	VolumeID         *string `json:"volume_id" name:"volume_id"`
 	VolumeName       *string `json:"volume_name" name:"volume_name"`
-	// VolumeType's available values: 0, 1, 2, 3
-	VolumeType *int    `json:"volume_type" name:"volume_type"`
-	ZoneID     *string `json:"zone_id" name:"zone_id"`
+	VolumeType       *int    `json:"volume_type" name:"volume_type"`
+	ZoneID           *string `json:"zone_id" name:"zone_id"`
 }
 
 func (v *Volume) Validate() error {
@@ -3229,11 +3228,9 @@ func (v *Volume) Validate() error {
 	}
 
 	if v.VolumeType != nil {
-		volumeTypeValidValues := []string{"0", "1", "2", "3"}
-		volumeTypeParameterValue := fmt.Sprint(*v.VolumeType)
-
 		volumeTypeIsValid := false
-		for _, value := range volumeTypeValidValues {
+		volumeTypeParameterValue := fmt.Sprint(*v.VolumeType)
+		for _, value := range _volumeTypeValidValues {
 			if value == volumeTypeParameterValue {
 				volumeTypeIsValid = true
 			}
@@ -3243,7 +3240,7 @@ func (v *Volume) Validate() error {
 			return errors.ParameterValueNotAllowedError{
 				ParameterName:  "VolumeType",
 				ParameterValue: volumeTypeParameterValue,
-				AllowedValues:  volumeTypeValidValues,
+				AllowedValues:  _volumeTypeValidValues,
 			}
 		}
 	}

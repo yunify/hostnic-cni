@@ -527,7 +527,7 @@ func (q *qingcloudAPIWrapper) attachNicTag(nics []string) {
 	for _, nic := range nics {
 		input := &service.AttachTagsInput{
 			ResourceTagPairs: []*service.ResourceTagPair{
-				&service.ResourceTagPair{
+				{
 					ResourceID:   &nic,
 					ResourceType: service.String(string(constants.ResourceTypeNic)),
 					TagID:        service.String(tagID),
@@ -536,8 +536,6 @@ func (q *qingcloudAPIWrapper) attachNicTag(nics []string) {
 		}
 		_, _ = q.tagService.AttachTags(input)
 	}
-
-	return
 }
 
 func (q *qingcloudAPIWrapper) CreateVIPs(vxnet *rpc.VxNet) (string, error) {
