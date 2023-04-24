@@ -865,7 +865,10 @@ func EndReservedAddressed(cidr cnet.IPNet, r string) int {
 	ipAsInt := cnet.IPToBigInt(ip)
 	baseInt := cnet.IPToBigInt(cnet.IP{IP: cidr.IP})
 	ord := big.NewInt(0).Sub(ipAsInt, baseInt).Int64()
-	if ord < 0 || ord >= int64(total) {
+	if ord < 0 {
+		return total
+	}
+	if ord >= int64(total) {
 		// TODO: handle error
 		return 0
 	}
