@@ -37,7 +37,7 @@ import (
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
-	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/constants"
@@ -63,6 +63,9 @@ type VxNetPoolController struct {
 
 	poolsLister networklisters.VxNetPoolLister
 	poolsSynced cache.InformerSynced
+
+	ipamblocksLister networklisters.IPAMBlockLister
+	ipamblocksSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -91,20 +94,28 @@ func NewVxNetPoolController(
 	conf *conf.ClusterConfig,
 	kubeclientset kubernetes.Interface,
 	clientset clientset.Interface,
-	ippoolInformer networkinformers.IPPoolInformer,
-	poolInformer networkinformers.VxNetPoolInformer) *VxNetPoolController {
+	informers informers.SharedInformerFactory,
+	// ippoolInformer networkinformers.IPPoolInformer,
+	// poolInformer networkinformers.VxNetPoolInformer,
+) *VxNetPoolController {
 
 	utilruntime.Must(poolscheme.AddToScheme(scheme.Scheme))
 
+	ipamblocskInformer := informers.Network().V1alpha1().IPAMBlocks()
+	ippoolInformer := informers.Network().V1alpha1().IPPools()
+	vxnetpoolInformer := informers.Network().V1alpha1().VxNetPools()
+
 	controller := &VxNetPoolController{
-		kubeclientset: kubeclientset,
-		clientset:     clientset,
-		ipamClient:    ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
-		ippoolsLister: ippoolInformer.Lister(),
-		ippoolsSynced: ippoolInformer.Informer().HasSynced,
-		poolsLister:   poolInformer.Lister(),
-		poolsSynced:   poolInformer.Informer().HasSynced,
-		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
+		kubeclientset:    kubeclientset,
+		clientset:        clientset,
+		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
+		ippoolsLister:    ippoolInformer.Lister(),
+		ippoolsSynced:    ippoolInformer.Informer().HasSynced,
+		poolsLister:      vxnetpoolInformer.Lister(),
+		poolsSynced:      vxnetpoolInformer.Informer().HasSynced,
+		ipamblocksLister: ipamblocskInformer.Lister(),
+		ipamblocksSynced: ipamblocskInformer.Informer().HasSynced,
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
 
 		// iaas
 		conf:       conf,
@@ -117,7 +128,7 @@ func NewVxNetPoolController(
 	controller.timer = timer.NewTimer(controllerAgentName, 10, controller.qingCloudSync)
 
 	klog.Info("Setting up event handlers")
-	poolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vxnetpoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueuePool,
 		UpdateFunc: func(old, new interface{}) {
 			oldVxnetPool := old.(*networkv1alpha1.VxNetPool)
@@ -160,7 +171,7 @@ func (c *VxNetPoolController) Run(threadiness int, stopCh <-chan struct{}) error
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.poolsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.poolsSynced, c.ipamblocksSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -287,15 +298,18 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]networkv1alpha1.PoolInfo, error) {
 	var pools []networkv1alpha1.PoolInfo
 	for _, vxnet := range pool.Spec.Vxnets {
-		if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
-			LabelSelector: labels.SelectorFromSet(labels.Set{
+		// if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
+		if blocks, err := c.ipamblocksLister.List(
+			labels.SelectorFromSet(labels.Set{
 				networkv1alpha1.IPPoolNameLabel: vxnet.Name,
-			}).String()}); err != nil {
+			})); err != nil {
 			return nil, err
 		} else {
 			var subnets []string
-			for _, item := range blocks.Items {
-				subnets = append(subnets, item.Name)
+			for _, item := range blocks {
+				if item != nil {
+					subnets = append(subnets, item.Name)
+				}
 			}
 			pools = append(pools, networkv1alpha1.PoolInfo{
 				Name:    vxnet.Name,

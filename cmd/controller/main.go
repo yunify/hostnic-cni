@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
@@ -81,8 +82,7 @@ func main() {
 	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*30)
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
 
-	c1 := controller.NewVxNetPoolController(clusterConfig, k8sClient, client,
-		informerFactory.Network().V1alpha1().IPPools(), informerFactory.Network().V1alpha1().VxNetPools())
+	c1 := controller.NewVxNetPoolController(clusterConfig, k8sClient, client, informerFactory)
 
 	c2 := controller.NewIPPoolController(k8sClient, client,
 		k8sInformerFactory, informerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal))
