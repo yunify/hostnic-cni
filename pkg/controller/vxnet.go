@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -108,7 +109,7 @@ func NewVxNetPoolController(
 	controller := &VxNetPoolController{
 		kubeclientset:    kubeclientset,
 		clientset:        clientset,
-		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
+		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers),
 		ippoolsLister:    ippoolInformer.Lister(),
 		ippoolsSynced:    ippoolInformer.Informer().HasSynced,
 		poolsLister:      vxnetpoolInformer.Lister(),
@@ -299,10 +300,13 @@ func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]netwo
 	var pools []networkv1alpha1.PoolInfo
 	for _, vxnet := range pool.Spec.Vxnets {
 		// if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
-		if blocks, err := c.ipamblocksLister.List(
-			labels.SelectorFromSet(labels.Set{
-				networkv1alpha1.IPPoolNameLabel: vxnet.Name,
-			})); err != nil {
+		req, err := labels.NewRequirement(networkv1alpha1.IPPoolNameLabel, selection.In, []string{vxnet.Name})
+		if err != nil {
+			klog.Errorf("new requirement for vxnet %s error: %v", vxnet.Name, err)
+			continue
+		}
+		blocks, err := c.ipamblocksLister.List(labels.NewSelector().Add(*req))
+		if err != nil {
 			return nil, err
 		} else {
 			var subnets []string
@@ -564,7 +568,6 @@ func (c *VxNetPoolController) setVxNetInfo(vxnet string, v *rpc.VxNet) {
 	defer c.rwLock.Unlock()
 
 	c.vxNetCache[vxnet] = v
-	return
 }
 
 func (c *VxNetPoolController) getVxNetVIPInfo(vxnet string) ([]*rpc.VIP, bool) {
@@ -580,7 +583,6 @@ func (c *VxNetPoolController) setVxNetVIPInfo(vxnet string, v []*rpc.VIP) {
 	defer c.rwLock.Unlock()
 
 	c.vipCache[vxnet] = v
-	return
 }
 
 func (c *VxNetPoolController) getSecurityGroupRule(id string) (*rpc.SecurityGroupRule, bool) {
@@ -596,7 +598,6 @@ func (c *VxNetPoolController) setSecurityGroupRule(id string, v *rpc.SecurityGro
 	defer c.rwLock.Unlock()
 
 	c.sgCache[id] = v
-	return
 }
 
 func (c *VxNetPoolController) deleteJob(id string) {
@@ -619,7 +620,6 @@ func (c *VxNetPoolController) setJob(id, job string) {
 	defer c.rwLock.Unlock()
 
 	c.jobs[id] = job
-	return
 }
 
 func (c *VxNetPoolController) deleteVIPsByVxnetID(vxnetID string) {

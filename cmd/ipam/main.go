@@ -30,6 +30,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/allocator"
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/config"
 	"github.com/yunify/hostnic-cni/pkg/constants"
@@ -86,22 +87,34 @@ func main() {
 		log.Fatalf("Error building kubernetes clientset: %v", err)
 	}
 
-	ipamclient, err := clientset.NewForConfig(cfg)
+	client, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		log.Fatalf("Error building example clientset: %v", err)
 	}
 
 	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*30)
+	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
+
 	clusterConfig := config.NewClusterConfig(k8sInformerFactory.Core().V1().ConfigMaps())
+	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
+
 	k8sInformerFactory.Start(stopCh)
-	clusterConfig.Sync(stopCh)
+	informerFactory.Start(stopCh)
+
+	if err = clusterConfig.Sync(stopCh); err != nil {
+		log.Fatalf("clusterConfig sync error: %v", err)
+	}
+
+	if err = ipamClient.Sync(stopCh); err != nil {
+		log.Fatalf("ipamclient sync error: %v", err)
+	}
 
 	networkutils.SetupNetworkHelper()
 	allocator.SetupAllocator(conf.Pool)
 
 	log.Info("all setup done, startup daemon")
 	allocator.Alloc.Start(stopCh)
-	server.NewIPAMServer(conf.Server, clusterConfig, k8sClient, ipam.NewIPAMClient(ipamclient, networkv1alpha1.IPPoolTypeLocal), metricsPort).Start(stopCh)
+	server.NewIPAMServer(conf.Server, clusterConfig, k8sClient, ipamClient, metricsPort).Start(stopCh)
 
 	<-stopCh
 	log.Info("daemon exited")

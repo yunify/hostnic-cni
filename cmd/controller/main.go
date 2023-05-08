@@ -85,7 +85,7 @@ func main() {
 	c1 := controller.NewVxNetPoolController(clusterConfig, k8sClient, client, informerFactory)
 
 	c2 := controller.NewIPPoolController(k8sClient, client,
-		k8sInformerFactory, informerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal))
+		k8sInformerFactory, informerFactory, ippool.NewProvider(client, networkv1alpha1.IPPoolTypeLocal, informerFactory))
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
