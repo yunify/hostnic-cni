@@ -296,7 +296,7 @@ func (c *HostnicMetricsManager) GenerateMetrics() HostnicMetrics {
 			}
 		}
 	}
-	for k, _ := range allocMap {
+	for k := range allocMap {
 		hostnicIpamNamespaceAllocators = append(hostnicIpamNamespaceAllocators, allocMap[k])
 		hostnicIpamNamespaceUnallocators = append(hostnicIpamNamespaceUnallocators, unallocMap[k])
 		hostnicIpamNamespaceTotals = append(hostnicIpamNamespaceTotals, totalMap[k])

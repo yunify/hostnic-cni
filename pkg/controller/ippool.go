@@ -164,7 +164,7 @@ func (c *IPPoolController) validateDefaultIPPool(p *networkv1alpha1.IPPool) erro
 		return nil
 	}
 
-	return fmt.Errorf("Must ensure that there is at least one default ippool")
+	return fmt.Errorf("must ensure that there is at least one default ippool")
 }
 
 func (c *IPPoolController) ValidateUpdate(old runtime.Object, new runtime.Object) error {

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -37,7 +38,7 @@ import (
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	poolscheme "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
-	networkinformers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions/network/v1alpha1"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/conf"
 	"github.com/yunify/hostnic-cni/pkg/constants"
@@ -63,6 +64,9 @@ type VxNetPoolController struct {
 
 	poolsLister networklisters.VxNetPoolLister
 	poolsSynced cache.InformerSynced
+
+	ipamblocksLister networklisters.IPAMBlockLister
+	ipamblocksSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -91,20 +95,28 @@ func NewVxNetPoolController(
 	conf *conf.ClusterConfig,
 	kubeclientset kubernetes.Interface,
 	clientset clientset.Interface,
-	ippoolInformer networkinformers.IPPoolInformer,
-	poolInformer networkinformers.VxNetPoolInformer) *VxNetPoolController {
+	informers informers.SharedInformerFactory,
+	// ippoolInformer networkinformers.IPPoolInformer,
+	// poolInformer networkinformers.VxNetPoolInformer,
+) *VxNetPoolController {
 
 	utilruntime.Must(poolscheme.AddToScheme(scheme.Scheme))
 
+	ipamblocskInformer := informers.Network().V1alpha1().IPAMBlocks()
+	ippoolInformer := informers.Network().V1alpha1().IPPools()
+	vxnetpoolInformer := informers.Network().V1alpha1().VxNetPools()
+
 	controller := &VxNetPoolController{
-		kubeclientset: kubeclientset,
-		clientset:     clientset,
-		ipamClient:    ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
-		ippoolsLister: ippoolInformer.Lister(),
-		ippoolsSynced: ippoolInformer.Informer().HasSynced,
-		poolsLister:   poolInformer.Lister(),
-		poolsSynced:   poolInformer.Informer().HasSynced,
-		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
+		kubeclientset:    kubeclientset,
+		clientset:        clientset,
+		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers),
+		ippoolsLister:    ippoolInformer.Lister(),
+		ippoolsSynced:    ippoolInformer.Informer().HasSynced,
+		poolsLister:      vxnetpoolInformer.Lister(),
+		poolsSynced:      vxnetpoolInformer.Informer().HasSynced,
+		ipamblocksLister: ipamblocskInformer.Lister(),
+		ipamblocksSynced: ipamblocskInformer.Informer().HasSynced,
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
 
 		// iaas
 		conf:       conf,
@@ -117,9 +129,12 @@ func NewVxNetPoolController(
 	controller.timer = timer.NewTimer(controllerAgentName, 10, controller.qingCloudSync)
 
 	klog.Info("Setting up event handlers")
-	poolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vxnetpoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueuePool,
 		UpdateFunc: func(old, new interface{}) {
+			oldVxnetPool := old.(*networkv1alpha1.VxNetPool)
+			newVxnetPool := new.(*networkv1alpha1.VxNetPool)
+			controller.clearVxnet(oldVxnetPool, newVxnetPool)
 			controller.enqueuePool(new)
 		},
 	})
@@ -157,7 +172,7 @@ func (c *VxNetPoolController) Run(threadiness int, stopCh <-chan struct{}) error
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.poolsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.poolsSynced, c.ipamblocksSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -284,15 +299,21 @@ func (c *VxNetPoolController) syncHandler(name string) error {
 func (c *VxNetPoolController) getPools(pool *networkv1alpha1.VxNetPool) ([]networkv1alpha1.PoolInfo, error) {
 	var pools []networkv1alpha1.PoolInfo
 	for _, vxnet := range pool.Spec.Vxnets {
-		if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
-			LabelSelector: labels.SelectorFromSet(labels.Set{
-				networkv1alpha1.IPPoolNameLabel: vxnet.Name,
-			}).String()}); err != nil {
+		// if blocks, err := c.clientset.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
+		req, err := labels.NewRequirement(networkv1alpha1.IPPoolNameLabel, selection.In, []string{vxnet.Name})
+		if err != nil {
+			klog.Errorf("new requirement for vxnet %s error: %v", vxnet.Name, err)
+			continue
+		}
+		blocks, err := c.ipamblocksLister.List(labels.NewSelector().Add(*req))
+		if err != nil {
 			return nil, err
 		} else {
 			var subnets []string
-			for _, item := range blocks.Items {
-				subnets = append(subnets, item.Name)
+			for _, item := range blocks {
+				if item != nil {
+					subnets = append(subnets, item.Name)
+				}
 			}
 			pools = append(pools, networkv1alpha1.PoolInfo{
 				Name:    vxnet.Name,
@@ -330,6 +351,50 @@ func (c *VxNetPoolController) enqueuePool(obj interface{}) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+// clearVxnet try to clear the related resources with the vxnet deleted from vxnetpool named v-pool
+// clear related resources if this vxnet was not being used by pod (ippool.status.allocations == 0)
+// 1. release vip
+// 2. delete ippool
+func (c *VxNetPoolController) clearVxnet(old, new *networkv1alpha1.VxNetPool) {
+	if new.Name != constants.IPAMVxnetPoolName {
+		klog.V(3).Infof("Don't care about %s", new.Name)
+		return
+	}
+
+	newVxnetsMap := make(map[string]bool)
+	for _, newVxnet := range new.Spec.Vxnets {
+		newVxnetsMap[newVxnet.Name] = true
+	}
+
+	for _, oldVxnet := range old.Spec.Vxnets {
+		if !newVxnetsMap[oldVxnet.Name] {
+			ippool, err := c.ippoolsLister.Get(oldVxnet.Name)
+			if err != nil {
+				klog.Errorf("get ippool %s error: %v", oldVxnet.Name, err)
+				continue
+			}
+
+			if ippool.Status.Allocations > 0 {
+				klog.Infof("vxnet %s was being deleted from vxnetpool, but this vxnet was already used by some pods, skip clear vip and ippool!", oldVxnet.Name)
+				continue
+			}
+
+			klog.Infof("vxnet %s was being deleted from vxnetpool and not being used by pod, going to clear vip and ippool", oldVxnet.Name)
+
+			// release vip
+			go c.deleteVIPsByVxnetID(oldVxnet.Name)
+
+			// delete ippool
+			err = c.clientset.NetworkV1alpha1().IPPools().Delete(context.TODO(), ippool.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("delete ippool %s error: %v", ippool.Name, err)
+			} else {
+				klog.Infof("delete ippool %s success", ippool.Name)
+			}
+		}
+	}
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
@@ -503,7 +568,6 @@ func (c *VxNetPoolController) setVxNetInfo(vxnet string, v *rpc.VxNet) {
 	defer c.rwLock.Unlock()
 
 	c.vxNetCache[vxnet] = v
-	return
 }
 
 func (c *VxNetPoolController) getVxNetVIPInfo(vxnet string) ([]*rpc.VIP, bool) {
@@ -519,7 +583,6 @@ func (c *VxNetPoolController) setVxNetVIPInfo(vxnet string, v []*rpc.VIP) {
 	defer c.rwLock.Unlock()
 
 	c.vipCache[vxnet] = v
-	return
 }
 
 func (c *VxNetPoolController) getSecurityGroupRule(id string) (*rpc.SecurityGroupRule, bool) {
@@ -535,7 +598,6 @@ func (c *VxNetPoolController) setSecurityGroupRule(id string, v *rpc.SecurityGro
 	defer c.rwLock.Unlock()
 
 	c.sgCache[id] = v
-	return
 }
 
 func (c *VxNetPoolController) deleteJob(id string) {
@@ -558,7 +620,46 @@ func (c *VxNetPoolController) setJob(id, job string) {
 	defer c.rwLock.Unlock()
 
 	c.jobs[id] = job
-	return
+}
+
+func (c *VxNetPoolController) deleteVIPsByVxnetID(vxnetID string) {
+	vxnets, err := qcclient.QClient.GetVxNets([]string{vxnetID})
+	if err != nil {
+		klog.Errorf("Get info for vxnet %s failed: %v\n", vxnetID, err)
+		return
+	}
+	if len(vxnets) == 0 {
+		klog.Infof("VxNet %s: not found, skip delete vip", vxnetID)
+		return
+	}
+
+	vxnet := vxnets[vxnetID]
+
+	for {
+		if vips, err := qcclient.QClient.DescribeVIPs(vxnet); err != nil {
+			klog.Errorf("Get vips for vxnet %s failed: %v\n", vxnet.ID, err)
+			return
+		} else {
+			if len(vips) == 0 {
+				break
+			}
+			var vipsToDel []string
+			for _, vip := range vips {
+				vipsToDel = append(vipsToDel, vip.ID)
+			}
+			if job, err := qcclient.QClient.DeleteVIPs(vipsToDel); err != nil {
+				klog.Errorf("Clear vips for VxNet %s failed: %v, will retry", vxnet.ID, err)
+			} else {
+				klog.Infof("Clear vips for VxNet %s: count %d, job id %s", vxnet.ID, len(vips), job)
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	// delete vxnet cache
+	delete(c.vxNetCache, vxnetID)
+	// delete vip cache
+	delete(c.vipCache, vxnetID)
+	klog.Infof("Clear vips for VxNet %s success\n", vxnet.ID)
 }
 
 func (c *VxNetPoolController) qingCloudSync() {

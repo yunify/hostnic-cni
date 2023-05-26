@@ -23,6 +23,7 @@ import (
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	versioned "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
 
@@ -106,21 +107,14 @@ func (p provider) GetIPPoolStats(pool *networkv1alpha1.IPPool) (*networkv1alpha1
 	return clone, nil
 }
 
-func newProvider(clientset versioned.Interface) provider {
-	return provider{
-		client:     clientset,
-		ipamclient: ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
-	}
-}
-
-func NewProvider(clientset versioned.Interface, pt string) Provider {
+func NewProvider(clientset versioned.Interface, pt string, informers informers.SharedInformerFactory) Provider {
 	var p Provider
 
 	switch pt {
 	case networkv1alpha1.IPPoolTypeLocal:
 		p = provider{
 			client:     clientset,
-			ipamclient: ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal),
+			ipamclient: ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers),
 		}
 	}
 

@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"time"
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
+	"github.com/yunify/hostnic-cni/pkg/signals"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/ippool/ipam"
 )
@@ -24,6 +27,9 @@ func main() {
 	flag.StringVar(&handleID, "handleID", "", "handleID")
 	flag.StringVar(&pool, "pool", "", "pool name")
 	flag.Parse()
+
+	// set up signals so we handle the first shutdown signals gracefully
+	stopCh := signals.SetupSignalHandler()
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
@@ -43,7 +49,17 @@ func main() {
 		return
 	}
 
-	c := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal)
+	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
+	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
+
+	informerFactory.Start(stopCh)
+
+	if err = ipamClient.Sync(stopCh); err != nil {
+		fmt.Printf("ipamclient sync error: %v", err)
+		return
+	}
+
+	c := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
 
 	if handleID != "" {
 		if err := c.ReleaseByHandle(handleID); err != nil {

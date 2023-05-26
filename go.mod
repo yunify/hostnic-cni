@@ -23,7 +23,7 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/vishvananda/netlink v1.1.0
-	github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d
+	github.com/yunify/qingcloud-sdk-go v0.0.0-20230417021433-95aa9c6441aa
 	golang.org/x/sys v0.0.0-20210603081109-ebe580a85c40
 	google.golang.org/grpc v1.27.1
 	google.golang.org/protobuf v1.27.1 // indirect
@@ -40,7 +40,6 @@ require (
 
 replace (
 	github.com/DATA-DOG/godog v0.10.0 => github.com/cucumber/godog v0.7.9
-	github.com/yunify/qingcloud-sdk-go => ./../qingcloud-sdk-go
 	k8s.io/klog/v2 => k8s.io/klog/v2 v2.9.0
 	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.4.1
 )

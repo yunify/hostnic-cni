@@ -33,6 +33,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -40,6 +42,8 @@ import (
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	"github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
+	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
+	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/utils"
 )
 
@@ -56,24 +60,40 @@ var (
 )
 
 func (c IPAMClient) getAllPools() ([]v1alpha1.IPPool, error) {
-	pools, err := c.client.NetworkV1alpha1().IPPools().List(context.Background(), metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			v1alpha1.IPPoolTypeLabel: c.typeStr,
-		}).String(),
-	})
-
+	req, err := labels.NewRequirement(v1alpha1.IPPoolTypeLabel, selection.In, []string{c.typeStr})
+	if err != nil {
+		err = fmt.Errorf("new requirement for list ippool error: %v", err)
+		return nil, err
+	}
+	pools, err := c.ippoolsLister.List(labels.NewSelector().Add(*req))
 	if err != nil {
 		return nil, err
 	}
 
-	return pools.Items, nil
+	var result []v1alpha1.IPPool
+	for _, pool := range pools {
+		if pool != nil {
+			result = append(result, *pool)
+		}
+	}
+
+	return result, nil
 }
 
 // NewIPAMClient returns a new IPAMClient, which implements Interface.
-func NewIPAMClient(client versioned.Interface, typeStr string) IPAMClient {
+func NewIPAMClient(client versioned.Interface, typeStr string, informers informers.SharedInformerFactory) IPAMClient {
+	ippoolInformer := informers.Network().V1alpha1().IPPools()
+	ipamblocksInformer := informers.Network().V1alpha1().IPAMBlocks()
+	ipamhandleInformer := informers.Network().V1alpha1().IPAMHandles()
 	return IPAMClient{
-		typeStr: typeStr,
-		client:  client,
+		typeStr:          typeStr,
+		client:           client,
+		ippoolsLister:    ippoolInformer.Lister(),
+		ippoolsSynced:    ippoolInformer.Informer().HasSynced,
+		ipamblocksLister: ipamblocksInformer.Lister(),
+		ipamblocksSynced: ipamblocksInformer.Informer().HasSynced,
+		ipamhandleLister: ipamhandleInformer.Lister(),
+		ipamhandleSynced: ipamhandleInformer.Informer().HasSynced,
 	}
 }
 
@@ -81,6 +101,23 @@ func NewIPAMClient(client versioned.Interface, typeStr string) IPAMClient {
 type IPAMClient struct {
 	typeStr string
 	client  versioned.Interface
+
+	ippoolsLister networklisters.IPPoolLister
+	ippoolsSynced cache.InformerSynced
+
+	ipamblocksLister networklisters.IPAMBlockLister
+	ipamblocksSynced cache.InformerSynced
+
+	ipamhandleLister networklisters.IPAMHandleLister
+	ipamhandleSynced cache.InformerSynced
+}
+
+func (c IPAMClient) Sync(stopCh <-chan struct{}) error {
+	klog.Info("Waiting for ippools and ipamblocks caches to sync")
+	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.ipamblocksSynced, c.ipamhandleSynced); !ok {
+		return fmt.Errorf("failed to wait for ippools and ipamblocks caches to sync")
+	}
+	return nil
 }
 
 // AutoAssign automatically assigns one or more IP addresses as specified by the
@@ -98,7 +135,7 @@ func (c IPAMClient) AutoAssign(args AutoAssignArgs) (*current.Result, error) {
 	)
 
 	for i := 0; i < datastoreRetries; i++ {
-		pool, err = c.client.NetworkV1alpha1().IPPools().Get(context.Background(), args.Pool, metav1.GetOptions{})
+		pool, err = c.ippoolsLister.Get(args.Pool)
 		if err != nil {
 			return nil, ErrNoQualifiedPool
 		}
@@ -164,7 +201,7 @@ func (c IPAMClient) AutoAssign(args AutoAssignArgs) (*current.Result, error) {
 	return &result, nil
 }
 
-//findOrClaimBlock find an address block with free space, and if it doesn't exist, create it.
+// findOrClaimBlock find an address block with free space, and if it doesn't exist, create it.
 func (c IPAMClient) findOrClaimBlock(pool *v1alpha1.IPPool, minFreeIps int) (*v1alpha1.IPAMBlock, error) {
 	remainingBlocks, err := c.ListBlocks(pool.Name)
 	if err != nil {
@@ -285,7 +322,7 @@ func (c IPAMClient) ReleaseByHandle(handleID string) error {
 		return err
 	}
 
-	for blockStr, _ := range handle.Spec.Block {
+	for blockStr := range handle.Spec.Block {
 		blockName := v1alpha1.ConvertToBlockName(blockStr)
 		if err := c.releaseByHandle(handleID, blockName); err != nil {
 			return err
@@ -629,16 +666,24 @@ func (c IPAMClient) findUnclaimedBlock(pool *v1alpha1.IPPool) (*v1alpha1.IPAMBlo
 }
 
 func (c IPAMClient) ListBlocks(pool string) ([]v1alpha1.IPAMBlock, error) {
-	blocks, err := c.client.NetworkV1alpha1().IPAMBlocks().List(context.Background(), metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			v1alpha1.IPPoolNameLabel: pool,
-		}).String(),
-	})
+	req, err := labels.NewRequirement(v1alpha1.IPPoolNameLabel, selection.In, []string{pool})
+	if err != nil {
+		err = fmt.Errorf("new requirement for list ipamblocks error: %v", err)
+		return nil, err
+	}
+	blocks, err := c.ipamblocksLister.List(labels.NewSelector().Add(*req))
 	if err != nil {
 		return nil, err
 	}
 
-	return blocks.Items, nil
+	var result []v1alpha1.IPAMBlock
+	for _, block := range blocks {
+		if block != nil {
+			result = append(result, *block)
+		}
+	}
+
+	return result, nil
 }
 
 // DeleteBlock deletes the given block.
@@ -654,7 +699,7 @@ func (c IPAMClient) DeleteBlock(b *v1alpha1.IPAMBlock) error {
 }
 
 func (c IPAMClient) queryBlock(blockName string) (*v1alpha1.IPAMBlock, error) {
-	block, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), blockName, metav1.GetOptions{})
+	block, err := c.ipamblocksLister.Get(blockName)
 	if err != nil {
 		return nil, err
 	}
@@ -673,7 +718,7 @@ func (c IPAMClient) queryBlock(blockName string) (*v1alpha1.IPAMBlock, error) {
 
 // queryHandle gets a handle for the given handleID key.
 func (c IPAMClient) queryHandle(handleID string) (*v1alpha1.IPAMHandle, error) {
-	handle, err := c.client.NetworkV1alpha1().IPAMHandles().Get(context.Background(), handleID, metav1.GetOptions{})
+	handle, err := c.ipamhandleLister.Get(handleID)
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +771,7 @@ func (c IPAMClient) AutoAssignFromPools(args AutoAssignArgs) (*current.Result, e
 func (c IPAMClient) AutoAssignFromBlocks(args AutoAssignArgs) (*current.Result, error) {
 	var blocks []*v1alpha1.IPAMBlock
 	for _, block := range args.Blocks {
-		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, v1.GetOptions{}); err == nil {
+		if b, err := c.ipamblocksLister.Get(block); err == nil {
 			blocks = append(blocks, b)
 		} else {
 			klog.Warningf("Get block %s failed: %v", block, err)
@@ -737,7 +782,7 @@ func (c IPAMClient) AutoAssignFromBlocks(args AutoAssignArgs) (*current.Result, 
 		if block.NumFreeAddresses() >= 1 {
 			if ip, err := c.autoAssignFromBlock(args.HandleID, args.Attrs, block); err == nil {
 				poolName := block.Labels[networkv1alpha1.IPPoolNameLabel]
-				if pool, err := c.client.NetworkV1alpha1().IPPools().Get(context.Background(), poolName, v1.GetOptions{}); err == nil {
+				if pool, err := c.ippoolsLister.Get(poolName); err == nil {
 					args.Info.IPPool = poolName
 					args.Info.Block = block.Name
 					return IP2Resutl(ip, pool), nil
@@ -756,7 +801,7 @@ func (c IPAMClient) AutoAssignFromBlocks(args AutoAssignArgs) (*current.Result, 
 }
 
 func (c IPAMClient) AutoGenerateBlocksFromPool(poolName string) error {
-	pool, err := c.client.NetworkV1alpha1().IPPools().Get(context.Background(), poolName, metav1.GetOptions{})
+	pool, err := c.ippoolsLister.Get(poolName)
 	if err != nil {
 		return ErrNoQualifiedPool
 	}
@@ -865,7 +910,10 @@ func EndReservedAddressed(cidr cnet.IPNet, r string) int {
 	ipAsInt := cnet.IPToBigInt(ip)
 	baseInt := cnet.IPToBigInt(cnet.IP{IP: cidr.IP})
 	ord := big.NewInt(0).Sub(ipAsInt, baseInt).Int64()
-	if ord < 0 || ord >= int64(total) {
+	if ord < 0 {
+		return total
+	}
+	if ord >= int64(total) {
 		// TODO: handle error
 		return 0
 	}
@@ -961,7 +1009,7 @@ func (c IPAMClient) FixIpsFromPool(args FixIpArgs) (*current.Result, error) {
 func (c IPAMClient) FixIpsFromBlock(args FixIpArgs) (*current.Result, error) {
 	var blocks []*v1alpha1.IPAMBlock
 	for _, block := range args.Blocks {
-		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, v1.GetOptions{}); err == nil {
+		if b, err := c.ipamblocksLister.Get(block); err == nil {
 			blocks = append(blocks, b)
 		} else {
 			klog.Warningf("Get block %s failed: %v", block, err)
@@ -988,7 +1036,7 @@ func (c IPAMClient) FixIpsFromBlock(args FixIpArgs) (*current.Result, error) {
 func (c IPAMClient) retryFixIP(requestBlock *networkv1alpha1.IPAMBlock, args FixIpArgs) (*current.Result, error) {
 	var result *current.Result
 	for i := 0; i < datastoreRetries; i++ {
-		pool, err := c.client.NetworkV1alpha1().IPPools().Get(context.Background(), args.Pool, metav1.GetOptions{})
+		pool, err := c.ippoolsLister.Get(args.Pool)
 		if err != nil {
 			return nil, fmt.Errorf("get pool err: %v", err)
 		}

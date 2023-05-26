@@ -192,7 +192,7 @@ github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
 github.com/vishvananda/netns
-# github.com/yunify/qingcloud-sdk-go v0.0.0-20201229081442-29b014374d9d => ./../qingcloud-sdk-go
+# github.com/yunify/qingcloud-sdk-go v0.0.0-20230417021433-95aa9c6441aa
 ## explicit
 github.com/yunify/qingcloud-sdk-go/client
 github.com/yunify/qingcloud-sdk-go/config
@@ -733,6 +733,5 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
 # github.com/DATA-DOG/godog v0.10.0 => github.com/cucumber/godog v0.7.9
-# github.com/yunify/qingcloud-sdk-go => ./../qingcloud-sdk-go
 # k8s.io/klog/v2 => k8s.io/klog/v2 v2.9.0
 # sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.4.1
