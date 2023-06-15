@@ -175,7 +175,7 @@ func (b *IPAMBlock) containsOnlyReservedIPs() bool {
 func (b *IPAMBlock) NumReservedAddresses() int {
 	sum := 0
 	for _, attrIdx := range b.Spec.Allocations {
-		if attrIdx == nil {
+		if attrIdx == nil || *attrIdx > len(b.Spec.Attributes)-1 {
 			continue
 		}
 		attrs := b.Spec.Attributes[*attrIdx]
@@ -214,7 +214,7 @@ func (b *IPAMBlock) deleteAttributes(delIndexes, ordinals []int) {
 
 	// Update attribute indexes for all allocations in this block.
 	for i := 0; i < b.NumAddresses(); i++ {
-		if b.Spec.Allocations[i] != nil {
+		if b.Spec.Allocations[i] != nil && *b.Spec.Allocations[i] < len(newIndexes) {
 			// Get the new index that corresponds to the old index
 			// and update the allocation.
 			newIndex := newIndexes[*b.Spec.Allocations[i]]

@@ -21,6 +21,7 @@ message VxNet {
   string RouterID = 4;
   string IPStart = 5;
   string IPEnd = 6;
+  string TunnelType = 7;
 }
 
 enum Status {

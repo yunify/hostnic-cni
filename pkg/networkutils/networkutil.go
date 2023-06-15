@@ -9,10 +9,13 @@ import (
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	"github.com/insomniacslk/dhcp/dhcpv4/client4"
+	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"github.com/yunify/hostnic-cni/pkg/constants"
+	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
 
@@ -75,7 +78,7 @@ func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 		if err := n.setupNicNetwork(devName, master); err != nil {
 			return rpc.Phase_CreateAndAttach, err
 		}
-		if err := n.setupBridgeNetwork(master, brName); err != nil {
+		if err := n.setupBridgeNetwork(master, brName, nic.VxNet.TunnelType); err != nil {
 			return rpc.Phase_JoinBridge, err
 		}
 		if err := n.setupRouteTable(nic); err != nil {
@@ -101,7 +104,7 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 		if err := n.setupNicNetwork(devName, master); err != nil {
 			return rpc.Phase_CreateAndAttach, err
 		}
-		if err := n.setupBridgeNetwork(master, brName); err != nil {
+		if err := n.setupBridgeNetwork(master, brName, nic.VxNet.TunnelType); err != nil {
 			return rpc.Phase_JoinBridge, err
 		}
 		if err := n.setupRouteTable(nic); err != nil {
@@ -112,7 +115,7 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 		if err := n.setupNicNetwork(devName, slave); err != nil {
 			return rpc.Phase_CreateAndAttach, err
 		}
-		if err := n.setupBridgeNetwork(slave, brName); err != nil {
+		if err := n.setupBridgeNetwork(slave, brName, nic.VxNet.TunnelType); err != nil {
 			return rpc.Phase_JoinBridge, err
 		}
 		if err := n.setupRouteTable(nic); err != nil {
@@ -166,21 +169,35 @@ func (n NetworkUtils) setupNicNetwork(name string, link netlink.Link) error {
 }
 
 // create br and add hostnic to br
-func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName string) error {
+func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName, tunnelType string) error {
 	la := netlink.NewLinkAttrs()
 	la.Name = brName
 	br := &netlink.Bridge{LinkAttrs: la}
 	err := netlink.LinkAdd(br)
 	if err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed to add %s to %s: %v\n", link.Attrs().Name, la.Name, err)
+		return fmt.Errorf("failed to add %s to %s: %v", link.Attrs().Name, la.Name, err)
 	}
 	err = netlink.LinkSetMaster(link, br)
 	if err != nil {
-		return fmt.Errorf("faild to set link %s: %v\n", la.Name, err)
+		return fmt.Errorf("faild to set link %s: %v", la.Name, err)
 	}
 	err = netlink.LinkSetUp(br)
 	if err != nil {
 		return fmt.Errorf("failed to set link %s up: %v", la.Name, err)
+	}
+	if tunnelType == qcclient.TunnelTypeVlan {
+		// get an ip addr and add to br
+		// 1.get an ip addr from dhcp server
+		bootConf, err := getIPAddrFromDHCPServer(brName)
+		if err != nil {
+			return fmt.Errorf("failed to get ip address for link %s: %v", brName, err)
+		}
+
+		// 2. replace addr to br
+		err = replaceLinkIPAddr(br, bootConf.Addresses)
+		if err != nil {
+			return fmt.Errorf("failed to replace ip address for link %s: %v", brName, err)
+		}
 	}
 
 	return nil
@@ -350,4 +367,57 @@ func ExecuteCommand(command string) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+func getIPAddrFromDHCPServer(ifname string) (*netboot.BootConf, error) {
+	client := client4.NewClient()
+	conv, err := client.Exchange(ifname)
+	if err != nil {
+		return nil, fmt.Errorf("dhcp client exchange error: %v", err)
+	}
+	// extract the network configuration
+	netconf, err := netboot.ConversationToNetconfv4(conv)
+	if err != nil {
+		return nil, fmt.Errorf("dhcp client ConversationToNetconfv4 error: %v", err)
+	}
+	return netconf, nil
+}
+
+func replaceLinkIPAddr(link netlink.Link, addres []netboot.AddrConf) error {
+	ifName := link.Attrs().Name
+	if len(addres) < 1 {
+		return fmt.Errorf("there is no avaliable addr for link %s", ifName)
+	}
+	for _, addrConf := range addres {
+		addr := &netlink.Addr{
+			IPNet:       &addrConf.IPNet,
+			ValidLft:    int(addrConf.ValidLifetime.Seconds()),
+			PreferedLft: int(addrConf.ValidLifetime.Seconds()),
+		}
+		err := netlink.AddrReplace(link, addr)
+		if err != nil {
+			return fmt.Errorf("replace addr %+v to link %s error: %v", addr, ifName, err)
+		}
+		return nil
+	}
+	return nil
+}
+
+func UpdateLinkIPAddrAndLease(nic *rpc.HostNic) error {
+	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
+	la := netlink.NewLinkAttrs()
+	la.Name = brName
+	br := &netlink.Bridge{LinkAttrs: la}
+
+	bootConf, err := getIPAddrFromDHCPServer(brName)
+	if err != nil {
+		return fmt.Errorf("failed to get ip address for link %s: %v", brName, err)
+	}
+
+	// 2. replace addr to br
+	err = replaceLinkIPAddr(br, bootConf.Addresses)
+	if err != nil {
+		return fmt.Errorf("failed to replace ip address for link %s: %v", brName, err)
+	}
+	return nil
 }
