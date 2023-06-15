@@ -3,8 +3,8 @@ package qcclient
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -24,7 +24,10 @@ const (
 	defaultOpTimeout    = 180 * time.Second
 	defaultWaitInterval = 5 * time.Second
 
-	reservedVIPCount = 12
+	reservedVIPCount              = 12
+	reservedVIPCountForVlan int64 = 7
+
+	TunnelTypeVlan = "vlan"
 )
 
 type Options struct {
@@ -50,7 +53,7 @@ type qingcloudAPIWrapper struct {
 
 // NewQingCloudClient create a qingcloud client to manipulate cloud resources
 func SetupQingCloudClient(opts Options) {
-	instanceID, err := ioutil.ReadFile(instanceIDFile)
+	instanceID, err := os.ReadFile(instanceIDFile)
 	if err != nil {
 		log.Fatalf("failed to load instance-id: %v", err)
 	}
@@ -461,7 +464,14 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 			vxnetItem.Gateway = *qcVxNet.Router.ManagerIP
 			vxnetItem.Network = *qcVxNet.Router.IPNetwork
 			vxnetItem.IPStart = *qcVxNet.Router.DYNIPStart
-			vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount)
+			if qcVxNet.TunnelType != nil {
+				vxnetItem.TunnelType = *qcVxNet.TunnelType
+			}
+			if vxnetItem.TunnelType == TunnelTypeVlan {
+				vxnetItem.IPEnd = getIPEndAfterReservedForVlan(*qcVxNet.Router.DYNIPStart, *qcVxNet.Router.DYNIPEnd, reservedVIPCountForVlan)
+			} else {
+				vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount)
+			}
 		} else {
 			return nil, fmt.Errorf("vxnet %s should bind to vpc", *qcVxNet.VxNetID)
 		}
@@ -739,5 +749,12 @@ func IPRangeCount(from, to string) int {
 func getIPEndAfterReserved(end string, reservedCount int64) string {
 	e := cnet.ParseIP(end)
 	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount))
+	return cnet.BigIntToIP(i).String()
+}
+
+func getIPEndAfterReservedForVlan(start, end string, reservedCount int64) string {
+	s := cnet.ParseIP(start)
+	e := cnet.ParseIP(end)
+	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt((cnet.IPToBigInt(*e).Int64()-cnet.IPToBigInt(*s).Int64()+1)/reservedCount))
 	return cnet.BigIntToIP(i).String()
 }

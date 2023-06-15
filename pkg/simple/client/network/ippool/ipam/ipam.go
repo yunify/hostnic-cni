@@ -699,7 +699,7 @@ func (c IPAMClient) DeleteBlock(b *v1alpha1.IPAMBlock) error {
 }
 
 func (c IPAMClient) queryBlock(blockName string) (*v1alpha1.IPAMBlock, error) {
-	block, err := c.ipamblocksLister.Get(blockName)
+	block, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), blockName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -718,7 +718,7 @@ func (c IPAMClient) queryBlock(blockName string) (*v1alpha1.IPAMBlock, error) {
 
 // queryHandle gets a handle for the given handleID key.
 func (c IPAMClient) queryHandle(handleID string) (*v1alpha1.IPAMHandle, error) {
-	handle, err := c.ipamhandleLister.Get(handleID)
+	handle, err := c.client.NetworkV1alpha1().IPAMHandles().Get(context.Background(), handleID, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +771,7 @@ func (c IPAMClient) AutoAssignFromPools(args AutoAssignArgs) (*current.Result, e
 func (c IPAMClient) AutoAssignFromBlocks(args AutoAssignArgs) (*current.Result, error) {
 	var blocks []*v1alpha1.IPAMBlock
 	for _, block := range args.Blocks {
-		if b, err := c.ipamblocksLister.Get(block); err == nil {
+		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, v1.GetOptions{}); err == nil {
 			blocks = append(blocks, b)
 		} else {
 			klog.Warningf("Get block %s failed: %v", block, err)

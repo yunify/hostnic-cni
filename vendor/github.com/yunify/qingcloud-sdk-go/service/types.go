@@ -3260,8 +3260,9 @@ type VxNet struct {
 	VxNetID          *string    `json:"vxnet_id" name:"vxnet_id"`
 	VxNetName        *string    `json:"vxnet_name" name:"vxnet_name"`
 	// VxNetType's available values: 0, 1, 2
-	VxNetType *int    `json:"vxnet_type" name:"vxnet_type"`
-	ZoneID    *string `json:"zone_id" name:"zone_id"`
+	VxNetType  *int    `json:"vxnet_type" name:"vxnet_type"`
+	ZoneID     *string `json:"zone_id" name:"zone_id"`
+	TunnelType *string `json:"tunnel_type" name:"tunnel_type"`
 }
 
 func (v *VxNet) Validate() error {

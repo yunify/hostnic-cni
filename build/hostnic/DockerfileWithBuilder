@@ -9,7 +9,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${CORE_BIN_DIR}/hostnic-c
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/ipam-client ./cmd/tools/ipam-client/client.go \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/hostnic-client ./cmd/tools/hostnic-client/client.go \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/vxnet-client ./cmd/tools/vxnet-client/client.go \
-    && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/patch-node ./cmd/tools/node-patch/patch.go
+    && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/patch-node ./cmd/tools/node-patch/patch.go \
+    && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/dhcp-client ./cmd/tools/dhcp-client/client.go
 
 
 FROM alpine
