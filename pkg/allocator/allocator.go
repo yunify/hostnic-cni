@@ -168,7 +168,7 @@ func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 	}
 
 	if v, ok := result[vxnet]; !ok {
-		return nil, fmt.Errorf("Get vxnet %s from qingcloud: not found", vxnet)
+		return nil, fmt.Errorf("get vxnet %s from qingcloud: not found", vxnet)
 	} else {
 		return v, nil
 	}
@@ -285,12 +285,30 @@ func (a *Allocator) HostNicCheck() {
 	defer a.lock.Unlock()
 
 	for _, nic := range a.nics {
+		nicKey := getNicKey(nic.Nic)
 		if !nic.isOK() {
 			phase, err := networkutils.NetworkHelper.CheckAndRepairNetwork(nic.Nic)
 			if err := a.setNicStatus(nic.Nic, phase); err != nil {
-				log.Errorf("setNicStatus failed: %s %s %v", getNicKey(nic.Nic), phase.String(), err)
+				log.Errorf("setNicStatus failed: %s %s %v", nicKey, phase.String(), err)
 			}
-			log.Infof("Repair hostNic %s: %s %v", getNicKey(nic.Nic), nic.getPhase(), err)
+			log.Infof("Repair hostNic %s: %s %v", nicKey, nic.getPhase(), err)
+		}
+	}
+}
+
+func (a *Allocator) IPAddrReNew() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for _, nic := range a.nics {
+		nicKey := getNicKey(nic.Nic)
+		if nic.isOK() && nic.Nic.VxNet.TunnelType == qcclient.TunnelTypeVlan {
+			// renew ip lease
+			err := networkutils.UpdateLinkIPAddrAndLease(nic.Nic)
+			if err != nil {
+				log.Errorf("update hostNic %s ip addr lease error: %v", nicKey, err)
+			}
+			log.Infof("update hostNic %s ip addr lease success!", nicKey)
 		}
 	}
 }
@@ -370,6 +388,7 @@ func (a *Allocator) getVxnetMaxNicNum() int {
 func (a *Allocator) run(stopCh <-chan struct{}) {
 	jobTimer := time.NewTicker(time.Duration(a.conf.Sync) * time.Second).C
 	freeTimer := time.NewTicker(time.Duration(a.conf.FreePeriod) * time.Minute).C
+	ipAddrReNewTimer := time.NewTicker(time.Duration(1) * time.Hour).C
 	for {
 		select {
 		case <-stopCh:
@@ -381,6 +400,9 @@ func (a *Allocator) run(stopCh <-chan struct{}) {
 		case <-freeTimer:
 			log.Infof("period free sync")
 			a.ClearFreeHostnic(false)
+		case <-ipAddrReNewTimer:
+			log.Infof("ip addr renew sync")
+			a.IPAddrReNew()
 		}
 	}
 }

@@ -43,6 +43,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	klog "k8s.io/klog/v2"
 
 	ipam2 "github.com/yunify/hostnic-cni/cmd/hostnic/ipam"
 	constants "github.com/yunify/hostnic-cni/pkg/constants"
@@ -180,6 +181,7 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	link, err := netlink.LinkByName(hostIfName)
 	if link != nil {
+		klog.Infof("LinkByName result => link: %s, err: %v ", hostIfName, err)
 		return nil
 	}
 
@@ -214,7 +216,7 @@ func moveLinkIn(hostDev netlink.Link, containerNs ns.NetNS, ifName string, pr *c
 		if err := netlink.LinkSetAlias(contDev, contDev.Attrs().Name); err != nil {
 			return fmt.Errorf("failed to set alias to %q: %v", contDev.Attrs().Name, err)
 		}
-		logrus.Infof("set nic %s alias to %s", contDev.Attrs().Name, contDev.Attrs().Alias)
+		klog.Infof("set nic %s alias to %s", contDev.Attrs().Name, contDev.Attrs().Alias)
 
 		// Rename container device to respect args.IfName
 		if err := netlink.LinkSetName(contDev, ifName); err != nil {
@@ -392,9 +394,9 @@ func checkIptables(conf *constants.NetConf) error {
 func cmdAdd(args *skel.CmdArgs) error {
 	var err error
 
-	logrus.Infof("cmdAdd args %v", args)
+	klog.Infof("cmdAdd args %v", args)
 	defer func() {
-		logrus.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
+		klog.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
 	}()
 
 	conf := constants.NetConf{}
@@ -514,9 +516,9 @@ func cmdDelPassThrough(svcIfName, contIfName string, netns ns.NetNS) error {
 func cmdDel(args *skel.CmdArgs) error {
 	var err error
 
-	logrus.Infof("cmdDel args %v", args)
+	klog.Infof("cmdDel args %v", args)
 	defer func() {
-		logrus.Infof("cmdDel for %s rst: %v", args.ContainerID, err)
+		klog.Infof("cmdDel for %s rst: %v", args.ContainerID, err)
 	}()
 
 	conf := constants.NetConf{}

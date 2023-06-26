@@ -66,6 +66,7 @@ tools: vet fmt
 	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/hostnic-client cmd/tools/hostnic-client/client.go
 	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/vxnet-client cmd/tools/vxnet-client/client.go
 	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/patch-node cmd/tools/node-patch/patch.go
+	$(BUILD_ENV) go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/dhcp-client cmd/tools/dhcp-client/client.go
 
 deploy:
 	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' config/${TARGET}/manager_image_patch.yaml
@@ -75,7 +76,8 @@ publish: build tools
 	hack/docker_build.sh ${TAG}
 
 generate-prototype: 
-	protoc --gofast_out=plugins=grpc:. pkg/rpc/message.proto
+	protoc --go_out=. pkg/rpc/message.proto
+	protoc --go-grpc_out=require_unimplemented_servers=false:. pkg/rpc/message.proto
 
 .PHONY: deploy
 
