@@ -75,6 +75,7 @@ func setupContainerVeth(netns ns.NetNS, hostIfName, contIfName string, conf cons
 	err = netns.Do(func(hostNS ns.NetNS) error {
 		hostVeth, contVeth, err := ip.SetupVethWithName(contIfName, hostIfName, conf.MTU, hostNS)
 		if err != nil {
+			logrus.Errorf("SetupVethWithName(contIfName:%s,hostIfName:%s) error:%v", contIfName, hostIfName, err)
 			return err
 		}
 
@@ -86,10 +87,12 @@ func setupContainerVeth(netns ns.NetNS, hostIfName, contIfName string, conf cons
 		containerInterface.Name = contVeth.Name
 		containerInterface.Mac = contVeth.HardwareAddr.String()
 		containerInterface.Sandbox = netns.Path()
+		logrus.Infof("containerInterface info:%s", spew.Sdump(containerInterface))
 
 		if conf.HostNicType != constants.HostNicPassThrough {
 			pr.Interfaces = []*current.Interface{containerInterface, hostInterface}
 			if err = ipam.ConfigureIface(contIfName, pr); err != nil {
+				logrus.Errorf("ConfigureIface %s error:%v", contIfName, err)
 				return err
 			}
 		}
@@ -103,6 +106,7 @@ func setupContainerVeth(netns ns.NetNS, hostIfName, contIfName string, conf cons
 		}
 		err = netlink.NeighAdd(neigh)
 		if err != nil && !os.IsExist(err) {
+			logrus.Errorf("failed to add permanent arp for container veth [%s : %v]", spew.Sdump(neigh), err)
 			return fmt.Errorf("failed to add permanent arp for container veth [%s : %v]", spew.Sdump(neigh), err)
 		}
 
@@ -140,6 +144,7 @@ func setupContainerVeth(netns ns.NetNS, hostIfName, contIfName string, conf cons
 		}
 		for _, r := range routes {
 			if err := netlink.RouteAdd(&r); err != nil && !os.IsExist(err) {
+				logrus.Errorf("failed to add route %s, err=%v", spew.Sdump(r), err)
 				return fmt.Errorf("failed to add route %s, err=%v", spew.Sdump(r), err)
 			}
 		}
@@ -154,6 +159,7 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 	// hostVeth moved namespaces and may have a new ifindex
 	hostVeth, err := netlink.LinkByName(vethName)
 	if err != nil {
+		logrus.Errorf("failed to lookup link by name %q: %v", vethName, err)
 		return fmt.Errorf("failed to lookup link by name %q: %v", vethName, err)
 	}
 
@@ -171,6 +177,7 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 	}
 	err = netlink.RouteAdd(route)
 	if err != nil && !os.IsExist(err) {
+		logrus.Errorf("failed to add route %s to pod, err=%+v", spew.Sdump(route), err)
 		return fmt.Errorf("failed to add route %s to pod, err=%+v", spew.Sdump(route), err)
 	}
 
@@ -180,17 +187,22 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	link, err := netlink.LinkByName(hostIfName)
 	if link != nil {
+		logrus.Infof("cmdAddVeth LinkByName found intf %s, link type=%s, link attr=%s,err=%v", hostIfName, link.Type(), spew.Sdump(link.Attrs()), err)
 		return nil
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, hostIfName, contIfName, conf, result)
 	if err != nil {
+		logrus.Errorf("setupContainerVeth(hostIfName:%s,contIfName:%s) error:%v", hostIfName, contIfName, err)
 		return err
 	}
+	logrus.Infof("setupContainerVeth(hostIfName:%s,contIfName:%s) success, hostInterface=%s", hostIfName, contIfName, spew.Sdump(hostInterface))
 
 	if err = setupHostVeth(conf, hostInterface.Name, msg, result); err != nil {
+		logrus.Errorf("setupHostVeth %s error:%v", hostInterface.Name, err)
 		return err
 	}
+	logrus.Infof("setupHostVeth %ss success!", hostInterface.Name)
 
 	return err
 }
@@ -247,30 +259,43 @@ func moveLinkIn(hostDev netlink.Link, containerNs ns.NetNS, ifName string, pr *c
 
 func cmdAddPassThrough(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	if len(result.Interfaces) == 0 {
+		logrus.Errorf("IPAM plugin returned missing Interface config")
 		return errors.New("IPAM plugin returned missing Interface config")
 	}
 
 	if conf.Service == "" {
+		logrus.Errorf("Netconf should config service_cidr")
 		return fmt.Errorf("Netconf should config service_cidr")
 	}
 
 	if result.Interfaces[0].Mac == "" {
+		logrus.Infof("mac is empty, return nil")
 		return nil
 	}
 	hostDev, err := networkutils.NetworkHelper.LinkByMacAddr(result.Interfaces[0].Mac)
 	if err != nil {
+		logrus.Errorf("failed to find host device: %v", err)
 		return fmt.Errorf("failed to find host device: %v", err)
 	}
 
 	_, err = moveLinkIn(hostDev, netns, contIfName, result)
 	if err != nil {
+		logrus.Errorf("failed to move link %v", err)
 		return fmt.Errorf("failed to move link %v", err)
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, hostIfName, defaultIfName, conf, result)
-	if err = setupHostVeth(conf, hostInterface.Name, msg, result); err != nil {
+	if err != nil {
+		logrus.Errorf("setupContainerVeth(hostIfName:%s,defaultIfName:%s) error:%v", hostIfName, defaultIfName, err)
 		return err
 	}
+	logrus.Infof("setupContainerVeth(hostIfName:%s,defaultIfName:%s) success, hostInterface=%s", hostIfName, defaultIfName, spew.Sdump(hostInterface))
+
+	if err = setupHostVeth(conf, hostInterface.Name, msg, result); err != nil {
+		logrus.Errorf("setupHostVeth %s error:%v", hostInterface.Name, err)
+		return err
+	}
+	logrus.Infof("setupHostVeth %ss success!", hostInterface.Name)
 
 	return err
 }
@@ -392,7 +417,7 @@ func checkIptables(conf *constants.NetConf) error {
 func cmdAdd(args *skel.CmdArgs) error {
 	var err error
 
-	logrus.Infof("cmdAdd args %v", args)
+	logrus.Infof("cmdAdd args %+v", args)
 	defer func() {
 		logrus.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
 	}()
@@ -402,14 +427,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf %s: %v", spew.Sdump(args), err)
 	}
 	if err = checkConf(&conf); err != nil {
-		return err
+		return fmt.Errorf("failed to checkConf: %v", err)
 	}
+	logrus.Infof("cmdAdd for %s load and check netconf success, conf=%+v", args.ContainerID, conf)
 
 	// run the IPAM plugin and get back the config to apply
 	ipamMsg, result, err := ipam2.AddrAlloc(args)
 	if err != nil {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
+	logrus.Infof("cmdAdd for %s AddrAlloc success, ipamMsg=%s,result=%s", args.ContainerID, spew.Sdump(ipamMsg), spew.Sdump(result))
+
 	podInfo := ipamMsg.Args
 	// podInfo.NicType is from annotation
 	conf.HostNicType = podInfo.NicType
@@ -426,15 +454,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	hostIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)
 	contIfName := args.IfName
+	logrus.Infof("HostNicType=%s,hostIfName=%s,contIfName=%s", conf.HostNicType, hostIfName, contIfName)
 
 	switch conf.HostNicType {
 	case constants.HostNicPassThrough:
+		logrus.Infof("go to excute cmdAddPassThrough")
 		err = cmdAddPassThrough(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	default:
+		logrus.Infof("go to excute cmdAddVeth")
 		err = cmdAddVeth(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	}
 
 	if err != nil {
+		logrus.Errorf("add veth error:%v", err)
 		return err
 	} else {
 		return types.PrintResult(result, conf.CNIVersion)
