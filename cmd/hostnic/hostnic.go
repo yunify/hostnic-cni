@@ -188,8 +188,19 @@ func setupHostVeth(conf constants.NetConf, vethName string, msg *rpc.IPAMMessage
 func cmdAddVeth(conf constants.NetConf, hostIfName, contIfName string, msg *rpc.IPAMMessage, result *current.Result, netns ns.NetNS) error {
 	link, err := netlink.LinkByName(hostIfName)
 	if link != nil {
-		logrus.Infof("cmdAddVeth LinkByName found intf %s, link type=%s, link attr=%s,err=%v", hostIfName, link.Type(), spew.Sdump(link.Attrs()), err)
-		return nil
+		logrus.Infof("cmdAddVeth LinkByName found link %s, link type=%s, link attr=%s,err=%v; going to delete this link", hostIfName, link.Type(), spew.Sdump(link.Attrs()), err)
+		veth := &netlink.Veth{
+			LinkAttrs: netlink.LinkAttrs{
+				Name:  hostIfName,
+				Flags: net.FlagUp,
+			},
+		}
+		err = netlink.LinkDel(veth)
+		if err != nil {
+			logrus.Errorf("delete link %s error: %v", hostIfName, err)
+			return err
+		}
+		logrus.Infof("delete link %s success!", hostIfName)
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, hostIfName, contIfName, conf, result)
