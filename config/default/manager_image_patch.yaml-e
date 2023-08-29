@@ -6,11 +6,11 @@ spec:
   template:
     spec:
       initContainers:
-        - image: qingcloud/hostnic-plus:v1.0.3
+        - image: qingcloud/hostnic-plus:v1.0.7
           name: hostnic-init
           imagePullPolicy: IfNotPresent
       containers:
         # Change the value of image field below to your controller image URL
-        - image: qingcloud/hostnic-plus:v1.0.3
+        - image: qingcloud/hostnic-plus:v1.0.7
           name: hostnic-node
           imagePullPolicy: IfNotPresent

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,6 +11,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"github.com/yunify/hostnic-cni/pkg/conf"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
@@ -60,9 +63,11 @@ func handleNode(clusterID string, k8sClient *kubernetes.Clientset) error {
 		if host := getHostForNode(node.Status.Addresses, qcNodes); host != "" {
 			if err := patchNode(k8sClient, host, node); err != nil {
 				klog.Errorf("patch %s failed: %v", topoKey, err)
+			} else {
+				klog.Infof("patch node %s with hostmachine %s success", node.Name, host)
 			}
 		} else {
-			klog.Errorf("get host for %s failed", node.Name)
+			klog.Errorf("get host for node %s failed", node.Name)
 		}
 	}
 	return nil
@@ -76,9 +81,17 @@ func main() {
 	flag.StringVar(&clusterID, "clusterID", "", "clusterID")
 	flag.Parse()
 
-	if clusterID == "" {
-		klog.Info("Plesse input clusterID: ./patch-node --clusterID cl-xxxxxxxx")
-		return
+	if !strings.HasPrefix(clusterID, "cl-") {
+		// use clusterid read from /etc/kubernetes/qingcloud.yaml
+		klog.Infof("invalid clusterID %s, try to get clusterID from volumed cluterConfig %s", clusterID, constants.DefaultClusterConfigPath)
+
+		clusterConfig, err := conf.TryLoadClusterConfFromDisk(constants.DefaultClusterConfigPath)
+		if err != nil || clusterConfig == nil {
+			klog.Fatalf("Error building clusterConfig: %s", err.Error())
+		}
+		clusterID = clusterConfig.ClusterID
+		klog.Infof("get clusterID success: %s", clusterID)
+
 	}
 
 	// setup qcclient, k8s
