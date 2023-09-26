@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	"github.com/yunify/hostnic-cni/pkg/signals"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
+	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
 	clientset "github.com/yunify/hostnic-cni/pkg/client/clientset/versioned"
 	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	"github.com/yunify/hostnic-cni/pkg/constants"
@@ -49,9 +50,12 @@ func main() {
 		return
 	}
 
+	k8sInformerFactory := k8sinformers.NewSharedInformerFactory(k8sClient, time.Second*10)
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
-	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
 
+	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory, k8sInformerFactory)
+
+	k8sInformerFactory.Start(stopCh)
 	informerFactory.Start(stopCh)
 
 	if err = ipamClient.Sync(stopCh); err != nil {
@@ -59,10 +63,10 @@ func main() {
 		return
 	}
 
-	c := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
+	// c := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
 
 	if handleID != "" {
-		if err := c.ReleaseByHandle(handleID); err != nil {
+		if err := ipamClient.ReleaseByHandle(handleID); err != nil {
 			fmt.Printf("Release %s failed: %v\n", handleID, err)
 		} else {
 			fmt.Printf("Release %s OK\n", handleID)
@@ -73,7 +77,7 @@ func main() {
 	if pool != "" {
 		args.Pools = []string{pool}
 	}
-	utils, err := c.GetPoolBlocksUtilization(args)
+	utils, err := ipamClient.GetPoolBlocksUtilization(args)
 	if err != nil {
 		fmt.Printf("GetUtilization failed: %v\n", err)
 		return

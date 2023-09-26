@@ -19,6 +19,7 @@ package ippool
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/util/workqueue"
 
 	networkv1alpha1 "github.com/yunify/hostnic-cni/pkg/apis/network/v1alpha1"
@@ -107,14 +108,14 @@ func (p provider) GetIPPoolStats(pool *networkv1alpha1.IPPool) (*networkv1alpha1
 	return clone, nil
 }
 
-func NewProvider(clientset versioned.Interface, pt string, informers informers.SharedInformerFactory) Provider {
+func NewProvider(clientset versioned.Interface, pt string, informers informers.SharedInformerFactory, k8sInformers k8sinformers.SharedInformerFactory) Provider {
 	var p Provider
 
 	switch pt {
 	case networkv1alpha1.IPPoolTypeLocal:
 		p = provider{
 			client:     clientset,
-			ipamclient: ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers),
+			ipamclient: ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers, k8sInformers),
 		}
 	}
 

@@ -18,11 +18,13 @@ package ipam
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"net"
 	"reflect"
+	"strings"
 
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
@@ -31,9 +33,10 @@ import (
 	"github.com/projectcalico/libcalico-go/lib/set"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	k8sinformers "k8s.io/client-go/informers"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -44,6 +47,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/client/clientset/versioned/scheme"
 	informers "github.com/yunify/hostnic-cni/pkg/client/informers/externalversions"
 	networklisters "github.com/yunify/hostnic-cni/pkg/client/listers/network/v1alpha1"
+	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/simple/client/network/utils"
 )
 
@@ -81,10 +85,12 @@ func (c IPAMClient) getAllPools() ([]v1alpha1.IPPool, error) {
 }
 
 // NewIPAMClient returns a new IPAMClient, which implements Interface.
-func NewIPAMClient(client versioned.Interface, typeStr string, informers informers.SharedInformerFactory) IPAMClient {
+func NewIPAMClient(client versioned.Interface, typeStr string, informers informers.SharedInformerFactory, k8sInformers k8sinformers.SharedInformerFactory) IPAMClient {
 	ippoolInformer := informers.Network().V1alpha1().IPPools()
 	ipamblocksInformer := informers.Network().V1alpha1().IPAMBlocks()
 	ipamhandleInformer := informers.Network().V1alpha1().IPAMHandles()
+	configMapInformer := k8sInformers.Core().V1().ConfigMaps()
+	podInformer := k8sInformers.Core().V1().Pods()
 	return IPAMClient{
 		typeStr:          typeStr,
 		client:           client,
@@ -94,6 +100,10 @@ func NewIPAMClient(client versioned.Interface, typeStr string, informers informe
 		ipamblocksSynced: ipamblocksInformer.Informer().HasSynced,
 		ipamhandleLister: ipamhandleInformer.Lister(),
 		ipamhandleSynced: ipamhandleInformer.Informer().HasSynced,
+		configMapLister:  configMapInformer.Lister(),
+		configMapSynced:  configMapInformer.Informer().HasSynced,
+		podLister:        podInformer.Lister(),
+		podSynced:        podInformer.Informer().HasSynced,
 	}
 }
 
@@ -110,11 +120,17 @@ type IPAMClient struct {
 
 	ipamhandleLister networklisters.IPAMHandleLister
 	ipamhandleSynced cache.InformerSynced
+
+	configMapLister corelisters.ConfigMapLister
+	configMapSynced cache.InformerSynced
+
+	podLister corelisters.PodLister
+	podSynced cache.InformerSynced
 }
 
 func (c IPAMClient) Sync(stopCh <-chan struct{}) error {
 	klog.Info("Waiting for ippools and ipamblocks caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.ipamblocksSynced, c.ipamhandleSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.ipamblocksSynced, c.ipamhandleSynced, c.configMapSynced, c.podSynced); !ok {
 		return fmt.Errorf("failed to wait for ippools and ipamblocks caches to sync")
 	}
 	return nil
@@ -407,7 +423,7 @@ func (c IPAMClient) incrementHandle(handleID string, block *v1alpha1.IPAMBlock, 
 			if k8serrors.IsNotFound(err) {
 				// Handle doesn't exist - create it.
 				handle = &v1alpha1.IPAMHandle{
-					ObjectMeta: v1.ObjectMeta{
+					ObjectMeta: metav1.ObjectMeta{
 						Name: handleID,
 					},
 					Spec: v1alpha1.IPAMHandleSpec{
@@ -771,7 +787,7 @@ func (c IPAMClient) AutoAssignFromPools(args AutoAssignArgs) (*current.Result, e
 func (c IPAMClient) AutoAssignFromBlocks(args AutoAssignArgs) (*current.Result, error) {
 	var blocks []*v1alpha1.IPAMBlock
 	for _, block := range args.Blocks {
-		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, v1.GetOptions{}); err == nil {
+		if b, err := c.client.NetworkV1alpha1().IPAMBlocks().Get(context.Background(), block, metav1.GetOptions{}); err == nil {
 			blocks = append(blocks, b)
 		} else {
 			klog.Warningf("Get block %s failed: %v", block, err)
@@ -832,6 +848,10 @@ func (c IPAMClient) AutoGenerateBlocksFromPool(poolName string) error {
 			block := v1alpha1.NewBlock(pool, *subnet, reservedAttr)
 			blockName := block.BlockName()
 			controllerutil.SetControllerReference(pool, block, scheme.Scheme)
+			err = c.setBlockAttributes(blockName, block)
+			if err != nil {
+				return err
+			}
 			block, err = c.client.NetworkV1alpha1().IPAMBlocks().Create(context.Background(), block, metav1.CreateOptions{})
 			if err != nil {
 				if k8serrors.IsAlreadyExists(err) {
@@ -1121,4 +1141,94 @@ func updateAttribute(b *networkv1alpha1.IPAMBlock, handleID string, attrs map[st
 	attrIndex := len(b.Spec.Attributes)
 	b.Spec.Attributes = append(b.Spec.Attributes, attr)
 	return attrIndex
+}
+
+// setBlockAttributes set attributes for already used ip in the block
+func (c IPAMClient) setBlockAttributes(blockName string, block *networkv1alpha1.IPAMBlock) error {
+	// 1. get ns for this ipamblock from configmap
+	// 2. get ip being used in the ns, also get handle_id(pause container id for this pod) for this ip
+	// 3. update block  attributes
+
+	// 1. get configmap to get ns
+	cm, err := c.configMapLister.ConfigMaps(constants.IPAMConfigNamespace).Get(constants.IPAMConfigName)
+	if err != nil {
+		klog.Errorf("Get configmap %s/%s failed: %v, skip set block %s attribute", constants.IPAMConfigNamespace, constants.IPAMConfigName, err, blockName)
+		return err
+	}
+	var apps map[string][]string
+	err = json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &apps)
+	if err != nil {
+		klog.Errorf("unmarshal configmap %s/%s data failed: %v, skip set block %s attribute", constants.IPAMConfigNamespace, constants.IPAMConfigName, err, blockName)
+		return nil
+	}
+	// 2. get pod in ns
+	var blockNs string
+	for ns, blocks := range apps {
+		if utils.SliceContains(blocks, blockName) {
+			blockNs = ns
+			break
+		}
+	}
+	if blockNs == "" {
+		return nil
+	}
+
+	// 3. update block
+	pods, err := c.podLister.Pods(blockNs).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("get pod for ns %s err: %v, skip set block %s attribute", blockNs, err, blockName)
+		return nil
+	}
+
+	ipamHandles, err := c.ipamhandleLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list ipam handle error: %v,  skip set block %s attribute", err, blockName)
+		return nil
+	}
+
+	// 4. check if pods ip belong to block
+	_, cidrNet, err := cnet.ParseCIDR(block.Spec.CIDR)
+	if err != nil {
+		klog.Errorf("parse block %s cidr err: %v, skip set block %s attribute", blockName, err, blockName)
+		return nil
+	}
+
+	for _, pod := range pods {
+		if pod != nil && pod.Status.PodIP != "" {
+			podIP := cnet.ParseIP(pod.Status.PodIP)
+			if cidrNet.Contains(podIP.IP) {
+				// get handle id,allocations index ,delete from unallocated slice
+				// handle id for ipamhandle
+				var handleID string
+				for _, ipamHandle := range ipamHandles {
+					if strings.Contains(ipamHandle.Name, pod.Namespace+"-"+pod.Name) {
+						handleID = ipamHandle.Name
+					}
+				}
+				if handleID == "" {
+					klog.Infof("ip %s of pod %s/%s belong to block %s, but can not found handle id, skip!", &pod.Status.PodIP, pod.Namespace, pod.Name, blockName)
+					continue
+				}
+
+				// get index
+				ordinal, err := block.IPToOrdinal(*podIP)
+				if err != nil {
+					klog.Errorf("get pod ip %s index err: %v, skip!", pod.Status.PodIP, err)
+					continue
+				}
+
+				// attr
+				for index, unUsedOrdinal := range block.Spec.Unallocated {
+					if ordinal == unUsedOrdinal {
+						block.Spec.Unallocated = append(block.Spec.Unallocated[:index], block.Spec.Unallocated[index+1:]...)
+						attribute := updateAttribute(block, handleID, nil)
+						block.Spec.Allocations[ordinal] = &attribute
+					}
+				}
+
+			}
+		}
+	}
+
+	return nil
 }

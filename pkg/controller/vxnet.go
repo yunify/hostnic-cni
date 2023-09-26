@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -96,8 +97,7 @@ func NewVxNetPoolController(
 	kubeclientset kubernetes.Interface,
 	clientset clientset.Interface,
 	informers informers.SharedInformerFactory,
-	// ippoolInformer networkinformers.IPPoolInformer,
-	// poolInformer networkinformers.VxNetPoolInformer,
+	k8sInformers k8sinformers.SharedInformerFactory,
 ) *VxNetPoolController {
 
 	utilruntime.Must(poolscheme.AddToScheme(scheme.Scheme))
@@ -109,7 +109,7 @@ func NewVxNetPoolController(
 	controller := &VxNetPoolController{
 		kubeclientset:    kubeclientset,
 		clientset:        clientset,
-		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers),
+		ipamClient:       ipam.NewIPAMClient(clientset, networkv1alpha1.IPPoolTypeLocal, informers, k8sInformers),
 		ippoolsLister:    ippoolInformer.Lister(),
 		ippoolsSynced:    ippoolInformer.Informer().HasSynced,
 		poolsLister:      vxnetpoolInformer.Lister(),
