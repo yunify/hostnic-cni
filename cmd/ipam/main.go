@@ -96,7 +96,7 @@ func main() {
 	informerFactory := informers.NewSharedInformerFactory(client, time.Second*30)
 
 	clusterConfig := config.NewClusterConfig(k8sInformerFactory.Core().V1().ConfigMaps())
-	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory)
+	ipamClient := ipam.NewIPAMClient(client, networkv1alpha1.IPPoolTypeLocal, informerFactory, k8sInformerFactory)
 
 	k8sInformerFactory.Start(stopCh)
 	informerFactory.Start(stopCh)

@@ -13,14 +13,17 @@ spec:
         spec:
           containers:
             - name: node-patch
-              image: qingcloud/hostnic-plus:v1.0.0
-              command: ["sh", "-c", "/app/tools/patch-node --clusterID CLUSTERID"]
+              image: qingcloud/hostnic-plus:v1.0.7
+              command: ["sh", "-c", "/app/tools/patch-node"]
               volumeMounts:
                 - mountPath: /root/.qingcloud/
                   name: apiaccesskey
                   readOnly: true
                 - mountPath: /etc/qingcloud/
                   name: qingcloud-cfg
+                  readOnly: true
+                - mountPath: /etc/kubernetes
+                  name: clusterconfig
                   readOnly: true
           restartPolicy: OnFailure
           serviceAccount: hostnic-node
@@ -35,3 +38,6 @@ spec:
             - hostPath:
                 path: /etc/qingcloud
               name: qingcloud-cfg
+            - configMap:
+                name: clusterconfig
+              name: clusterconfig

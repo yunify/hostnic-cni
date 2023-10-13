@@ -2,7 +2,7 @@ package conf
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -96,7 +96,7 @@ type ClusterConfig struct {
 }
 
 func TryLoadClusterConfFromDisk(file string) (*ClusterConfig, error) {
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
