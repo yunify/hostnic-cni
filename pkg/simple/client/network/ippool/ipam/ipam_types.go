@@ -42,6 +42,7 @@ type GetUtilizationArgs struct {
 	// If specified, the pools whose utilization should be reported.  Each string here
 	// can be a pool name or CIDR.  If not specified, this defaults to all pools.
 	Pools []string
+	// NSAndBlocks map[string][]string //ns and it's ipamblocks
 }
 
 // PoolUtilization reports IP utilization for a single IP pool.
@@ -91,6 +92,20 @@ type PoolBlocksUtilization struct {
 
 	// This blocks' util which belong to pool.
 	Blocks []*BlockUtilization
+
+	// This blocks' util which belong to pool.
+	BrokenBlocks          []*BrokenBlockUtilization
+	BrokenBlockNames      []string
+	BrokenBlockFixSucceed []string
+}
+
+type BrokenBlockUtilization struct {
+	// This block's name.
+	Name string
+
+	IpToPods                map[string][]string
+	IpWithoutRecord         map[string][]string // maybe allocated to more than one pod
+	IpToPodsWithWrongRecord map[string][]string
 }
 
 // FixIpArgs assign from config annotation
