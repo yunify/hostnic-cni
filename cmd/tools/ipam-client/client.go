@@ -21,12 +21,16 @@ import (
 )
 
 var handleID, pool, masterURL, kubeconfig string
+var listBrokenBlocks, fixBrokenBlocks, debug bool
 
 func main() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&handleID, "handleID", "", "handleID")
 	flag.StringVar(&pool, "pool", "", "pool name")
+	flag.BoolVar(&listBrokenBlocks, "lb", false, "whether to list broken ipamblocks")
+	flag.BoolVar(&fixBrokenBlocks, "fb", false, "whether to fix broken ipamblocks")
+	flag.BoolVar(&debug, "d", false, "show debug info for broken ipamblocks")
 	flag.Parse()
 
 	// set up signals so we handle the first shutdown signals gracefully
@@ -73,11 +77,15 @@ func main() {
 		}
 	}
 
+	// Get all ippool and ipamblocks
+	// Get and fix broken ipamblock here
 	var args ipam.GetUtilizationArgs
+	var utils []*ipam.PoolBlocksUtilization
+
 	if pool != "" {
 		args.Pools = []string{pool}
 	}
-	utils, err := ipamClient.GetPoolBlocksUtilization(args)
+	utils, err = ipamClient.GetPoolBlocksUtilization(args)
 	if err != nil {
 		fmt.Printf("GetUtilization failed: %v\n", err)
 		return
@@ -93,7 +101,7 @@ func main() {
 		}
 	}
 
-	// GetSubnets
+	// Get configmap
 	cm, err := k8sClient.CoreV1().ConfigMaps(constants.IPAMConfigNamespace).Get(context.TODO(), constants.IPAMConfigName, metav1.GetOptions{})
 	if err != nil {
 		fmt.Printf("GetSubnets failed: %v\n", err)
@@ -106,11 +114,11 @@ func main() {
 		return
 	}
 
+	// GetSubnets
 	autoSign := "off"
 	if cm.Data[constants.IPAMAutoAssignForNamespace] == "on" {
 		autoSign = "on"
 	}
-
 	fmt.Printf("GetSubnets: autoSign[%s]\n", autoSign)
 	for ns, subnets := range apps {
 		if ns != constants.IPAMDefaultPoolKey || autoSign == "off" {
@@ -118,6 +126,44 @@ func main() {
 		}
 	}
 	fmt.Printf("FreeSubnets: %v\n", getFreeSubnets(autoSign, apps, utils))
+
+	// broken blocks
+	if listBrokenBlocks || fixBrokenBlocks {
+		utils, err = ipamClient.GetAndFixBrokenBlocks(args, fixBrokenBlocks)
+		if err != nil {
+			fmt.Printf("GetAndFixBrokenBlocks failed: %v\n", err)
+			return
+		}
+		fmt.Printf("\nBroken blocks for each ippool:\n")
+		for _, ippool := range utils {
+			fmt.Printf("\t%s: %v\n", ippool.Name, ippool.BrokenBlockNames)
+			if debug {
+				// print debug msg
+				for _, block := range ippool.BrokenBlocks {
+					for ipStr, podNames := range block.IpToPods {
+						if len(podNames) > 1 {
+							fmt.Printf("\t\tip %s was allocated more than noce to pods %v\n", ipStr, podNames)
+						}
+					}
+
+					for ipStr, podNames := range block.IpWithoutRecord {
+						fmt.Printf("\t\tip %s was allocated to pods %v, but not record in ipamblock\n", ipStr, podNames)
+					}
+
+					// for ipStr, podNames := range block.IpToPodsWithWrongRecord {
+					// 	if len(podNames) == 1 {
+					// 		fmt.Printf("\t\tip %s was recorded to wrong pods %v\n", ipStr, podNames)
+					// 	}
+					// }
+				}
+			}
+			if fixBrokenBlocks {
+				fmt.Printf("\tfix success: %v\n", ippool.BrokenBlockFixSucceed)
+			}
+			fmt.Println()
+		}
+
+	}
 }
 
 func getFreeSubnets(autoSign string, apps map[string][]string, ippool []*ipam.PoolBlocksUtilization) []string {
