@@ -261,7 +261,7 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 	for _, status := range a.nics {
 		if pod, ok := status.Pods[getContainterKey(args)]; ok {
 			if err := a.delNicPod(status.Nic, pod); err != nil {
-				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err)
+				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err) //HOSTNIC_TODO:the error was not return, why?
 			}
 			return status.Nic, pod.PodIP, nil
 		}

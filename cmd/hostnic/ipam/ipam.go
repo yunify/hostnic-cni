@@ -146,6 +146,7 @@ func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.IPAMMessage, error) {
 	} else {
 		if err := networkutils.NetworkHelper.CleanupPodNetwork(reply.Nic, reply.IP); err != nil {
 			logrus.Errorf("clean %v %s network failed: %v", reply.Nic, reply.IP, err)
+			//HOSTNIC_TODO: try to cleanup ebtables rules once there
 		}
 	}
 

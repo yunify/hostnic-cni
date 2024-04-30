@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"time"
 
@@ -25,9 +26,13 @@ const (
 	defaultWaitInterval = 5 * time.Second
 
 	reservedVIPCount              = 12
-	reservedVIPCountForVlan int64 = 7
+	reservedVIPCountForVlan int64 = 7 //reserve 1/7 ip for hostnic br
 
 	TunnelTypeVlan = "vlan"
+)
+
+var (
+	customReservedIPCount int64 = 0
 )
 
 type Options struct {
@@ -468,9 +473,19 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 				vxnetItem.TunnelType = *qcVxNet.TunnelType
 			}
 			if vxnetItem.TunnelType == TunnelTypeVlan {
-				vxnetItem.IPEnd = getIPEndAfterReservedForVlan(*qcVxNet.Router.DYNIPStart, *qcVxNet.Router.DYNIPEnd, reservedVIPCountForVlan)
+				// parse ip_network to get mask; if mask is 24, reserve more ip than specifc in config
+				_, ipNet, err := net.ParseCIDR(vxnetItem.Network)
+				if err != nil {
+					log.Errorf("parse ip_network to get mask error: %v", err)
+				}
+				maskLength, _ := ipNet.Mask.Size()
+				if maskLength == 24 {
+					log.Infof("vxnet %s ip network %s mask is 24, reserve another 64 ip", *qcVxNet.VxNetID, vxnetItem.Network)
+					customReservedIPCount = 64
+				}
+				vxnetItem.IPEnd = getIPEndAfterReservedForVlan(*qcVxNet.Router.DYNIPStart, *qcVxNet.Router.DYNIPEnd, reservedVIPCountForVlan, customReservedIPCount)
 			} else {
-				vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount)
+				vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount, customReservedIPCount)
 			}
 		} else {
 			return nil, fmt.Errorf("vxnet %s should bind to vpc", *qcVxNet.VxNetID)
@@ -746,15 +761,15 @@ func IPRangeCount(from, to string) int {
 	return int(big.NewInt(0).Sub(endInt, startInt).Int64() + 1)
 }
 
-func getIPEndAfterReserved(end string, reservedCount int64) string {
+func getIPEndAfterReserved(end string, reservedCount, customReservedCount int64) string {
 	e := cnet.ParseIP(end)
-	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount))
+	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount+customReservedCount))
 	return cnet.BigIntToIP(i).String()
 }
 
-func getIPEndAfterReservedForVlan(start, end string, reservedCount int64) string {
+func getIPEndAfterReservedForVlan(start, end string, reservedCount, customReservedCount int64) string {
 	s := cnet.ParseIP(start)
 	e := cnet.ParseIP(end)
-	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt((cnet.IPToBigInt(*e).Int64()-cnet.IPToBigInt(*s).Int64()+1)/reservedCount))
+	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt((cnet.IPToBigInt(*e).Int64()-cnet.IPToBigInt(*s).Int64()+1)/reservedCount+customReservedCount))
 	return cnet.BigIntToIP(i).String()
 }
