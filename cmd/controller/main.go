@@ -45,8 +45,6 @@ var qps, burst int
 
 func main() {
 	klog.InitFlags(goflag.CommandLine)
-	goflag.Set("logtostderr", "false")
-	goflag.Set("alsologtostderr", "true")
 	flag.IntVar(&qps, "k8s-api-qps", 80, "maximum QPS to k8s apiserver from this client.")
 	flag.IntVar(&burst, "k8s-api-burst", 100, "maximum burst for throttle from this client.")
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)

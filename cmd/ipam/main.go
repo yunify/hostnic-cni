@@ -47,8 +47,6 @@ var qps, burst, metricsPort int
 func main() {
 	//parse flag and setup klog
 	log.InitFlags(flag.CommandLine)
-	flag.Set("logtostderr", "false")
-	flag.Set("alsologtostderr", "true")
 	flag.IntVar(&qps, "k8s-api-qps", 80, "maximum QPS to k8s apiserver from this client.")
 	flag.IntVar(&burst, "k8s-api-burst", 100, "maximum burst for throttle from this client.")
 	flag.IntVar(&metricsPort, "metrics-port", 9191, "metrics port")
