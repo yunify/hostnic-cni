@@ -261,7 +261,9 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 	for _, status := range a.nics {
 		if pod, ok := status.Pods[getContainterKey(args)]; ok {
 			if err := a.delNicPod(status.Nic, pod); err != nil {
-				log.Errorf("delNicPod failed: %s %s %v", getNicKey(status.Nic), getPodKey(args), err) //HOSTNIC_TODO:the error was not return, why?
+				log.Errorf("delNicPod record failed: nic: %s, podkey: %s, err: %v", getNicKey(status.Nic), getPodKey(args), err) //HOSTNIC_TODO:the error was not return, why?
+			} else {
+				log.Infof("delNicPod record success, nic: %s, podkey: %s", getNicKey(status.Nic), getPodKey(args))
 			}
 			return status.Nic, pod.PodIP, nil
 		}
@@ -286,12 +288,20 @@ func (a *Allocator) HostNicCheck() {
 
 	for _, nic := range a.nics {
 		nicKey := getNicKey(nic.Nic)
-		if !nic.isOK() {
+
+		exists := true
+		_, err := networkutils.NetworkHelper.LinkByMacAddr(nic.Nic.ID)
+		if err == constants.ErrNicNotFound {
+			exists = false
+		}
+
+		if !nic.isOK() || !exists {
+			log.Infof("hostNic %s status: %s , exists: %t, try to repair it", nicKey, nic.getPhase(), exists)
 			phase, err := networkutils.NetworkHelper.CheckAndRepairNetwork(nic.Nic)
 			if err := a.setNicStatus(nic.Nic, phase); err != nil {
 				log.Errorf("setNicStatus failed: %s %s %v", nicKey, phase.String(), err)
 			}
-			log.Infof("Repair hostNic %s: %s %v", nicKey, nic.getPhase(), err)
+			log.Infof("Repair hostNic %s: %s, %v", nicKey, nic.getPhase(), err)
 		}
 	}
 }
@@ -306,9 +316,9 @@ func (a *Allocator) IPAddrReNew() {
 			// renew ip lease
 			err := networkutils.UpdateLinkIPAddrAndLease(nic.Nic)
 			if err != nil {
-				log.Errorf("update hostNic %s ip addr lease error: %v", nicKey, err)
+				log.Errorf("update hostNic %s bridge ip addr lease error: %v", nicKey, err)
 			}
-			log.Infof("update hostNic %s ip addr lease success!", nicKey)
+			log.Infof("update hostNic %s bridge ip addr lease success!", nicKey)
 		}
 	}
 }
@@ -354,15 +364,17 @@ func (a *Allocator) ClearFreeHostnic(force bool) error {
 	log.Infof("freeHostnic: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
 	for vxnet, status := range a.nics {
 		if len(status.Pods) == 0 {
+			nicKey := getNicKey(status.Nic)
+			log.Infof("vxnet %s has no pod left on this node, going to clear free Hostnic %s", vxnet, nicKey)
 			if err := a.freeHostnic(status.Nic); err != nil {
 				log.Errorf("freeHostnic for vxnet %s failed: nic %s %v", vxnet, status.Nic.ID, err)
 				// set status to init to repair nics which free failed
 				if err := a.setNicStatus(status.Nic, rpc.Phase_Init); err != nil {
-					log.Errorf("setNicStatus failed: %s %s %v", getNicKey(status.Nic), rpc.Phase_Init.String(), err)
+					log.Errorf("setNicStatus failed: %s %s %v", nicKey, rpc.Phase_Init.String(), err)
 				}
 			} else {
 				if err := a.delNic(vxnet); err != nil {
-					log.Errorf("delNic failed: %s %v", getNicKey(status.Nic), err)
+					log.Errorf("delNic failed: %s %v", nicKey, err)
 				}
 				log.Infof("freeHostnic for vxnet %s success: nic %s", vxnet, status.Nic.ID)
 			}
