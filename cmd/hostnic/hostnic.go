@@ -429,7 +429,7 @@ func checkIptables(conf *constants.NetConf) error {
 func cmdAdd(args *skel.CmdArgs) error {
 	var err error
 
-	logrus.Infof("cmdAdd args %+v", args)
+	klog.Infof("cmdAdd args %+v", args)
 	defer func() {
 		klog.Infof("cmdAdd for %s rst: %v", args.ContainerID, err)
 	}()
@@ -441,14 +441,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err = checkConf(&conf); err != nil {
 		return fmt.Errorf("failed to checkConf: %v", err)
 	}
-	logrus.Infof("cmdAdd for %s load and check netconf success, conf=%+v", args.ContainerID, conf)
+	klog.Infof("cmdAdd for %s load and check netconf success, conf=%+v", args.ContainerID, conf)
 
 	// run the IPAM plugin and get back the config to apply
 	ipamMsg, result, err := ipam2.AddrAlloc(args)
 	if err != nil {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
-	logrus.Infof("cmdAdd for %s AddrAlloc success, ipamMsg=%s,result=%s", args.ContainerID, spew.Sdump(ipamMsg), spew.Sdump(result))
+	klog.Infof("cmdAdd for %s AddrAlloc success, ipamMsg=%s,result=%s", args.ContainerID, spew.Sdump(ipamMsg), spew.Sdump(result))
 
 	podInfo := ipamMsg.Args
 	// podInfo.NicType is from annotation
@@ -466,19 +466,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	hostIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)
 	contIfName := args.IfName
-	logrus.Infof("HostNicType=%s,hostIfName=%s,contIfName=%s", conf.HostNicType, hostIfName, contIfName)
+	klog.Infof("HostNicType=%s,hostIfName=%s,contIfName=%s", conf.HostNicType, hostIfName, contIfName)
 
 	switch conf.HostNicType {
 	case constants.HostNicPassThrough:
-		logrus.Infof("go to excute cmdAddPassThrough")
+		klog.Infof("go to excute cmdAddPassThrough")
 		err = cmdAddPassThrough(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	default:
-		logrus.Infof("go to excute cmdAddVeth")
+		klog.Infof("go to excute cmdAddVeth")
 		err = cmdAddVeth(conf, hostIfName, contIfName, ipamMsg, result, netns)
 	}
 
 	if err != nil {
-		logrus.Errorf("add veth error:%v", err)
+		klog.Errorf("add veth error:%v", err)
 		return err
 	} else {
 		return types.PrintResult(result, conf.CNIVersion)
@@ -568,7 +568,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %v", err)
 	}
 	if err = checkConf(&conf); err != nil {
-		return err
+		return fmt.Errorf("failed to checkConf: %v", err)
 	}
 
 	ipamMsg, err := ipam2.AddrUnalloc(args, true)
@@ -576,8 +576,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err == constants.ErrNicNotFound {
 			return nil
 		}
-		return err
+		return fmt.Errorf("failed to unalloc addr: %v", err)
 	}
+	klog.Infof("cmdDel for %s AddrUnalloc success", args.ContainerID)
 
 	podInfo := ipamMsg.Args
 	conf.HostNicType = podInfo.NicType
@@ -589,7 +590,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		if strings.Contains(err.Error(), "no such file or directory") {
 			goto end
 		}
-		return err
+		return fmt.Errorf("getns for %s error: %v", args.Netns, err)
 	}
 	defer netns.Close()
 

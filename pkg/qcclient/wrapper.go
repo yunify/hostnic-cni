@@ -22,7 +22,7 @@ import (
 
 const (
 	instanceIDFile      = "/etc/qingcloud/instance-id"
-	defaultOpTimeout    = 180 * time.Second
+	defaultOpTimeout    = 300 * time.Second
 	defaultWaitInterval = 5 * time.Second
 
 	reservedVIPCount              = 12
@@ -252,7 +252,7 @@ func (q *qingcloudAPIWrapper) GetAttachedNics() ([]*rpc.HostNic, error) {
 	return result, nil
 }
 
-func (q *qingcloudAPIWrapper) AttachNics(nicIDs []string) (string, error) {
+func (q *qingcloudAPIWrapper) AttachNics(nicIDs []string, sync bool) (string, error) {
 	input := &service.AttachNicsInput{
 		Nics:     service.StringSlice(nicIDs),
 		Instance: &q.instanceID,
@@ -262,6 +262,12 @@ func (q *qingcloudAPIWrapper) AttachNics(nicIDs []string) (string, error) {
 	if err != nil {
 		log.Errorf("failed to AttachNics: input (%s) output (%s) %v", spew.Sdump(input), spew.Sdump(output), err)
 		return "", err
+	}
+
+	if sync {
+		return "", client.WaitJob(q.jobService, *output.JobID,
+			defaultOpTimeout,
+			defaultWaitInterval)
 	}
 
 	return *output.JobID, nil
@@ -356,7 +362,7 @@ func (q *qingcloudAPIWrapper) CreateNicsAndAttach(vxnet *rpc.VxNet, num int, ips
 	//may need to tag the card later.
 	q.attachNicTag(nics)
 
-	job, err := q.AttachNics(nics)
+	job, err := q.AttachNics(nics, false)
 	if err != nil {
 		_ = q.DeleteNics(nics)
 		return nil, "", err

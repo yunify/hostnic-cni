@@ -23,7 +23,7 @@ type QingCloudAPI interface {
 	GetNics(nics []string) (map[string]*rpc.HostNic, error)
 	DeleteNics(nicIDs []string) error
 	DeattachNics(nicIDs []string, sync bool) (string, error)
-	AttachNics(nicIDs []string) (string, error)
+	AttachNics(nicIDs []string, sync bool) (string, error)
 	GetAttachedNics() ([]*rpc.HostNic, error)
 	GetCreatedNicsByVxNet(vxnet string) ([]*rpc.HostNic, error)
 
