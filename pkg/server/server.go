@@ -213,10 +213,13 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	}()
 
 	handleID = podHandleKey(in.Args)
+	log.Infof("going to release ip by handleID %s", handleID)
 	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
-		log.Errorf("DelNetwork request (%v) release by %s failed: %v", in.Args, handleID, err)
+		log.Errorf("DelNetwork request (%v) release ip by %s failed: %v", in.Args, handleID, err)
 		(*s.oddPodCount).FreeFromPoolFailedCount = (*s.oddPodCount).FreeFromPoolFailedCount + 1
 	}
+
+	log.Infof("release ip by handleID %s success, going to clear pod record for hostnic", handleID)
 	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
 	if err != nil {
 		(*s.oddPodCount).FreeFromHostFailedCount = (*s.oddPodCount).FreeFromHostFailedCount + 1

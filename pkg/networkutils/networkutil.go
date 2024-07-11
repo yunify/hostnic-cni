@@ -13,6 +13,7 @@ import (
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/constants"
 	"github.com/yunify/hostnic-cni/pkg/qcclient"
@@ -86,6 +87,7 @@ func (n NetworkUtils) SetupNetwork(nic *rpc.HostNic) (rpc.Phase, error) {
 		}
 	} else {
 		// do nothing: nic has attached and bridge is ready
+		// hostnic_todo: should check if ip is ready for hostnic br or do this in the ip addr new timer
 	}
 
 	return rpc.Phase_Succeeded, nil
@@ -95,8 +97,39 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 	devName := constants.GetHostNicName(nic.VxNet.ID)
 	brName := constants.GetHostNicBridgeName(int(nic.RouteTableNum))
 	master, slave, err := n.getLinksByMacAddr(nic.HardwareAddr)
-	if master == nil && slave == nil {
-		return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v %v %v", nic.HardwareAddr, master, slave, err)
+
+	if err != nil {
+		if err != constants.ErrNicNotFound {
+			return rpc.Phase_Init, fmt.Errorf("failed to get link %s: %v", nic.HardwareAddr, err)
+		} else {
+			// slave link not found, try to attach again
+			nicKey := fmt.Sprintf("%s/%s", nic.VxNet.ID, nic.ID)
+
+			//describe nic to get status; if can be attached, then attach it to this node;
+			klog.Infof("hostNic %s was not found, try to attach it", nicKey)
+			nicCur, err := qcclient.QClient.GetNics([]string{nic.ID})
+			if err != nil {
+				return rpc.Phase_Init, fmt.Errorf("failed to get nic %s from api: %v", nicKey, err)
+			}
+			if nicCur[nic.ID].Using {
+				return rpc.Phase_Init, fmt.Errorf("nic %s status is in-use", nicKey)
+			}
+
+			//attach nic
+			klog.Infof("waiting for hostNic %s attach", nicKey)
+			_, err = qcclient.QClient.AttachNics([]string{nic.ID}, true)
+			if err != nil {
+				return rpc.Phase_Init, fmt.Errorf("attach hostNic %s error: %v", nicKey, err)
+			}
+
+			klog.Infof("attach hostNic %s success", nicKey)
+
+			//get link
+			slave, err = n.LinkByMacAddr(nic.ID)
+			if err != nil {
+				return rpc.Phase_Init, fmt.Errorf("failed to get hostNic %s after attach", nicKey)
+			}
+		}
 	}
 
 	if slave == nil {
@@ -311,6 +344,10 @@ func (n NetworkUtils) getLinksByMacAddr(macAddr string) (netlink.Link, netlink.L
 			}
 		}
 	}
+	// attention: br has the same mac addr with hostnic link
+	if master == nil && slave == nil {
+		return nil, nil, constants.ErrNicNotFound
+	}
 	return master, slave, nil
 }
 
@@ -398,7 +435,6 @@ func replaceLinkIPAddr(link netlink.Link, addres []netboot.AddrConf) error {
 		if err != nil {
 			return fmt.Errorf("replace addr %+v to link %s error: %v", addr, ifName, err)
 		}
-		return nil
 	}
 	return nil
 }
@@ -409,6 +445,7 @@ func UpdateLinkIPAddrAndLease(nic *rpc.HostNic) error {
 	la.Name = brName
 	br := &netlink.Bridge{LinkAttrs: la}
 
+	// 1. get an ip form dhcp server
 	bootConf, err := getIPAddrFromDHCPServer(brName)
 	if err != nil {
 		return fmt.Errorf("failed to get ip address for link %s: %v", brName, err)
