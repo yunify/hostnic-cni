@@ -339,6 +339,10 @@ func (a *Allocator) freeHostnic(nic *rpc.HostNic) error {
 	}
 
 	if _, err := qcclient.QClient.DeattachNics([]string{nic.ID}, true); err != nil {
+		if strings.Contains(err.Error(), constants.ResourceNotFound) {
+			log.Infof("nic %s/%s was not found from api, skip DeattachNics and DeleteNics", nic.VxNet.ID, nic.ID)
+			return nil
+		}
 		log.Errorf("DeattachNics for vxnet %s failed: nic %s failed: %v", nic.VxNet.ID, nic.ID, err)
 		return err
 	}
@@ -355,13 +359,14 @@ func (a *Allocator) ClearFreeHostnic(force bool) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	maxVxnetNicsCount := a.getVxnetMaxNicNum()
-	if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !force {
-		log.Infof("no hostnic to free: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
-		return nil
-	}
+	// maxVxnetNicsCount := a.getVxnetMaxNicNum()
+	// log.Infof("freeHostnic: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+	// if len(a.nics) < a.conf.NodeThreshold && maxVxnetNicsCount < a.conf.VxnetThreshold && !force {
+	// 	log.Infof("no hostnic to free: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+	// 	return nil
+	// }
 
-	log.Infof("freeHostnic: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
+	log.Infof("freeHostnic: %d", len(a.nics))
 	for vxnet, status := range a.nics {
 		if len(status.Pods) == 0 {
 			nicKey := getNicKey(status.Nic)
