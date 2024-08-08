@@ -111,8 +111,11 @@ func (n NetworkUtils) CheckAndRepairNetwork(nic *rpc.HostNic) (rpc.Phase, error)
 			if err != nil {
 				return rpc.Phase_Init, fmt.Errorf("failed to get nic %s from api: %v", nicKey, err)
 			}
+			if _, ok := nicCur[nic.ID]; !ok {
+				return rpc.Phase_Init, fmt.Errorf("nic %s was not found from api, can't repair this hostnic", nicKey)
+			}
 			if nicCur[nic.ID].Using {
-				return rpc.Phase_Init, fmt.Errorf("nic %s status is in-use", nicKey)
+				return rpc.Phase_Init, fmt.Errorf("nic %s status is in-use, please deattach it from other instance", nicKey)
 			}
 
 			//attach nic
