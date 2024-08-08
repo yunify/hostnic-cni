@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
@@ -228,6 +229,7 @@ func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName, tunnelType s
 		if err != nil {
 			return fmt.Errorf("failed to get ip address for link %s: %v", brName, err)
 		}
+		klog.Infof("get ip addr %+v success from dhcp server for link %s", bootConf.Addresses, brName)
 
 		// 2. replace addr to br
 		err = replaceLinkIPAddr(br, bootConf.Addresses)
@@ -410,7 +412,11 @@ func ExecuteCommand(command string) (string, error) {
 }
 
 func getIPAddrFromDHCPServer(ifname string) (*netboot.BootConf, error) {
-	client := client4.NewClient()
+	// client := client4.NewClient()
+	client := &client4.Client{
+		ReadTimeout:  client4.DefaultReadTimeout * 5,
+		WriteTimeout: client4.DefaultWriteTimeout * 5,
+	}
 	conv, err := client.Exchange(ifname)
 	if err != nil {
 		return nil, fmt.Errorf("dhcp client exchange error: %v", err)
@@ -424,11 +430,19 @@ func getIPAddrFromDHCPServer(ifname string) (*netboot.BootConf, error) {
 }
 
 func replaceLinkIPAddr(link netlink.Link, addres []netboot.AddrConf) error {
+	var shortestLeaseTime time.Duration
 	ifName := link.Attrs().Name
 	if len(addres) < 1 {
 		return fmt.Errorf("there is no avaliable addr for link %s", ifName)
 	}
 	for _, addrConf := range addres {
+		if shortestLeaseTime.Seconds() == 0 {
+			shortestLeaseTime = addrConf.ValidLifetime
+		}
+		if addrConf.ValidLifetime.Seconds() < shortestLeaseTime.Seconds() {
+			shortestLeaseTime = addrConf.ValidLifetime
+		}
+
 		addr := &netlink.Addr{
 			IPNet:       &addrConf.IPNet,
 			ValidLft:    int(addrConf.ValidLifetime.Seconds()),
@@ -439,6 +453,13 @@ func replaceLinkIPAddr(link netlink.Link, addres []netboot.AddrConf) error {
 			return fmt.Errorf("replace addr %+v to link %s error: %v", addr, ifName, err)
 		}
 	}
+
+	if shortestLeaseTime.Seconds()/2 != constants.LastIPAddrRenewPeriod.Seconds() && shortestLeaseTime != 0 {
+		klog.Infof("update LastIPAddrRenewPeriod from %v to %v", constants.LastIPAddrRenewPeriod, shortestLeaseTime/2)
+		constants.LastIPAddrRenewPeriod = shortestLeaseTime / 2
+		constants.IpAddrReNewTicker.Reset(shortestLeaseTime / 2)
+	}
+
 	return nil
 }
 
@@ -450,9 +471,10 @@ func UpdateLinkIPAddrAndLease(nic *rpc.HostNic) error {
 
 	// 1. get an ip form dhcp server
 	bootConf, err := getIPAddrFromDHCPServer(brName)
-	if err != nil {
+	if err != nil || bootConf.Addresses == nil {
 		return fmt.Errorf("failed to get ip address for link %s: %v", brName, err)
 	}
+	klog.Infof("get ip addr %+v success from dhcp server for link %s", bootConf.Addresses, brName)
 
 	// 2. replace addr to br
 	err = replaceLinkIPAddr(br, bootConf.Addresses)

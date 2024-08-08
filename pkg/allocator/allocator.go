@@ -311,14 +311,18 @@ func (a *Allocator) IPAddrReNew() {
 	defer a.lock.Unlock()
 
 	for _, nic := range a.nics {
-		nicKey := getNicKey(nic.Nic)
-		if nic.isOK() && nic.Nic.VxNet.TunnelType == qcclient.TunnelTypeVlan {
-			// renew ip lease
-			err := networkutils.UpdateLinkIPAddrAndLease(nic.Nic)
-			if err != nil {
-				log.Errorf("update hostNic %s bridge ip addr lease error: %v", nicKey, err)
+		if nic != nil {
+			nicKey := getNicKey(nic.Nic)
+			if nic.isOK() && nic.Nic.VxNet.TunnelType == qcclient.TunnelTypeVlan {
+				brName := constants.GetHostNicBridgeName(int(nic.Nic.RouteTableNum))
+				// renew ip lease
+				err := networkutils.UpdateLinkIPAddrAndLease(nic.Nic)
+				if err != nil {
+					log.Errorf("renew hostNic %s bridge %s ip addr lease error: %v", nicKey, brName, err)
+				} else {
+					log.Infof("renew hostNic %s bridge %s ip addr lease success!", nicKey, brName)
+				}
 			}
-			log.Infof("update hostNic %s bridge ip addr lease success!", nicKey)
 		}
 	}
 }
@@ -405,7 +409,7 @@ func (a *Allocator) getVxnetMaxNicNum() int {
 func (a *Allocator) run(stopCh <-chan struct{}) {
 	jobTimer := time.NewTicker(time.Duration(a.conf.Sync) * time.Second).C
 	freeTimer := time.NewTicker(time.Duration(a.conf.FreePeriod) * time.Minute).C
-	ipAddrReNewTimer := time.NewTicker(time.Duration(1) * time.Hour).C
+
 	for {
 		select {
 		case <-stopCh:
@@ -417,7 +421,7 @@ func (a *Allocator) run(stopCh <-chan struct{}) {
 		case <-freeTimer:
 			log.Infof("period free sync")
 			a.ClearFreeHostnic(false)
-		case <-ipAddrReNewTimer:
+		case <-constants.IpAddrReNewTicker.C:
 			log.Infof("ip addr renew sync")
 			a.IPAddrReNew()
 		}
