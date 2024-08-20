@@ -313,7 +313,7 @@ func (a *Allocator) IPAddrReNew() {
 	for _, nic := range a.nics {
 		if nic != nil {
 			nicKey := getNicKey(nic.Nic)
-			if nic.isOK() && nic.Nic.VxNet.TunnelType == qcclient.TunnelTypeVlan {
+			if nic.isOK() && nic.Nic.VxNet.TunnelType == constants.TunnelTypeVlan {
 				brName := constants.GetHostNicBridgeName(int(nic.Nic.RouteTableNum))
 				// renew ip lease
 				err := networkutils.UpdateLinkIPAddrAndLease(nic.Nic)

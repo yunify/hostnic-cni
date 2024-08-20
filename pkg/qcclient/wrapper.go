@@ -28,7 +28,6 @@ const (
 	reservedVIPCount              = 12
 	reservedVIPCountForVlan int64 = 7 //reserve 1/7 ip for hostnic br
 
-	TunnelTypeVlan = "vlan"
 )
 
 var (
@@ -478,7 +477,7 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 			if qcVxNet.TunnelType != nil {
 				vxnetItem.TunnelType = *qcVxNet.TunnelType
 			}
-			if vxnetItem.TunnelType == TunnelTypeVlan {
+			if vxnetItem.TunnelType == constants.TunnelTypeVlan {
 				// parse ip_network to get mask; if mask is 24, reserve more ip than specifc in config
 				_, ipNet, err := net.ParseCIDR(vxnetItem.Network)
 				if err != nil {

@@ -89,6 +89,11 @@ const (
 	EventDelete = "delete"
 
 	MetricsDummyNamespaceForSubnet = "Dummy-ns-for-unmapped-subnets"
+
+	TunnelTypeVlan = "vlan"
+
+	RouteExistsError    = "file exists"
+	RouteNotExistsError = "no such process"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {

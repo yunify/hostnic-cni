@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -222,7 +223,7 @@ func (n NetworkUtils) setupBridgeNetwork(link netlink.Link, brName, tunnelType s
 	if err != nil {
 		return fmt.Errorf("failed to set link %s up: %v", la.Name, err)
 	}
-	if tunnelType == qcclient.TunnelTypeVlan {
+	if tunnelType == constants.TunnelTypeVlan {
 		// get an ip addr and add to br
 		// 1.get an ip addr from dhcp server
 		bootConf, err := getIPAddrFromDHCPServer(brName)
@@ -284,9 +285,21 @@ func (n NetworkUtils) setupRouteTable(nic *rpc.HostNic) error {
 		},
 	}
 
-	for _, r := range routes {
-		if err := netlink.RouteAdd(&r); err != nil && !os.IsExist(err) {
-			return fmt.Errorf("failed to add route %v: %v", r, err)
+	// if tunnel type is vlan, clear route to repair hostnic
+	if nic.VxNet.TunnelType == constants.TunnelTypeVlan {
+		for _, r := range routes {
+			// netlink.RouteDel return error if route not exists: no such process
+			if err := netlink.RouteDel(&r); err != nil && !strings.Contains(err.Error(), constants.RouteNotExistsError) {
+				return fmt.Errorf("failed to del route %v: %v", r, err)
+			}
+		}
+
+	} else {
+		for _, r := range routes {
+			// netlink.RouteAdd return error if route already exists: file exists ; shouldn't use os.IsExist here
+			if err := netlink.RouteAdd(&r); err != nil && !strings.Contains(err.Error(), constants.RouteExistsError) {
+				return fmt.Errorf("failed to add route %v: %v", r, err)
+			}
 		}
 	}
 
