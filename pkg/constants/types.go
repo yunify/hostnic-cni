@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/yunify/hostnic-cni/pkg/rpc"
@@ -88,6 +89,11 @@ const (
 	EventDelete = "delete"
 
 	MetricsDummyNamespaceForSubnet = "Dummy-ns-for-unmapped-subnets"
+
+	TunnelTypeVlan = "vlan"
+
+	RouteExistsError    = "file exists"
+	RouteNotExistsError = "no such process"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {
@@ -149,4 +155,7 @@ type K8sArgs struct {
 var (
 	ErrNoAvailableNIC = errors.New("no free nic")
 	ErrNicNotFound    = errors.New("hostnic not found")
+
+	LastIPAddrRenewPeriod = 60 * 60 * time.Second //s, default 1h
+	IpAddrReNewTicker     = time.NewTicker(LastIPAddrRenewPeriod)
 )
