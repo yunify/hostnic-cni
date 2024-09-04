@@ -20,7 +20,6 @@ package ipam
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -29,7 +28,6 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 
@@ -39,10 +37,10 @@ import (
 )
 
 func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
-	conf := NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
-	}
+	// conf := NetConf{}
+	// if err := json.Unmarshal(args.StdinData, &conf); err != nil {
+	// 	return nil, nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
+	// }
 
 	k8sArgs := K8sArgs{}
 	if err := types.LoadArgs(args.Args, &k8sArgs); err != nil {
@@ -104,10 +102,10 @@ func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
 }
 
 func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.IPAMMessage, error) {
-	conf := NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
-	}
+	// conf := NetConf{}
+	// if err := json.Unmarshal(args.StdinData, &conf); err != nil {
+	// 	return nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
+	// }
 
 	k8sArgs := K8sArgs{}
 	if err := types.LoadArgs(args.Args, &k8sArgs); err != nil {
@@ -139,16 +137,18 @@ func AddrUnalloc(args *skel.CmdArgs, peek bool) (*rpc.IPAMMessage, error) {
 	c := rpc.NewCNIBackendClient(conn)
 	reply, err := c.DelNetwork(context.Background(), info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call DelNetwork")
+		return nil, fmt.Errorf("failed to call DelNetwork: %v", err)
 	}
-	if reply.Nic == nil || reply.Args.Containter != args.ContainerID {
-		return nil, ErrNicNotFound
-	} else {
-		if err := networkutils.NetworkHelper.CleanupPodNetwork(reply.Nic, reply.IP); err != nil {
-			logrus.Errorf("clean %v %s network failed: %v", reply.Nic, reply.IP, err)
-			//HOSTNIC_TODO: try to cleanup ebtables rules once there
-		}
-	}
+
+	//do this before clean db record which in ipam server DelNetwork function
+	// if reply.Nic == nil || reply.Args.Containter != args.ContainerID {
+	// 	return nil, ErrNicNotFound
+	// } else {
+	// 	if err := networkutils.NetworkHelper.CleanupPodNetwork(reply.Nic, reply.IP); err != nil {
+	// 		klog.Errorf("clean %v %s network failed: %v", reply.Nic, reply.IP, err)
+	// 		//HOSTNIC_TODO: try to cleanup ebtables rules once there
+	// 	}
+	// }
 
 	return reply, nil
 }
