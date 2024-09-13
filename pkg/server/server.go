@@ -213,18 +213,29 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 	}()
 
 	handleID = podHandleKey(in.Args)
-	log.Infof("going to release ip by handleID %s", handleID)
-	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
-		log.Errorf("DelNetwork request (%v) release ip by %s failed: %v", in.Args, handleID, err)
-		(*s.oddPodCount).FreeFromPoolFailedCount = (*s.oddPodCount).FreeFromPoolFailedCount + 1
+
+	//get pod ip and nic info here
+	in.Nic, in.IP, _ = allocator.Alloc.FreeHostNic(in.Args, true)
+	if in.Peek {
+		//only get pod ip info here and return
+		return in, nil
 	}
 
-	log.Infof("release ip by handleID %s success, going to clear pod record for hostnic", handleID)
-	in.Nic, in.IP, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
+	//release ip in ipamblock
+	log.Infof("going to release ip (%s) by handleID %s", in.IP, handleID)
+	if err = s.ipamclient.ReleaseByHandle(handleID); err != nil {
+		(*s.oddPodCount).FreeFromPoolFailedCount = (*s.oddPodCount).FreeFromPoolFailedCount + 1
+		return in, fmt.Errorf("release ip %s by handleID %s error: %v", in.IP, handleID, err)
+	}
+
+	//clear pod db record
+	log.Infof("release ip (%s) by handleID %s success, going to clear db record for hostnic", in.IP, handleID)
+	_, _, err = allocator.Alloc.FreeHostNic(in.Args, in.Peek)
 	if err != nil {
 		(*s.oddPodCount).FreeFromHostFailedCount = (*s.oddPodCount).FreeFromHostFailedCount + 1
+		return in, fmt.Errorf("clear pod db record error for %s: %v", handleID, err)
 	}
-	return in, err
+	return in, nil
 }
 
 func (s *IPAMServer) ShowNics(context context.Context, in *rpc.Nothing) (*rpc.NicInfoList, error) {

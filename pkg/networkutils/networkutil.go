@@ -53,17 +53,24 @@ func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
 	ip := net.ParseIP(podIP)
 	dstRules, err := getRuleListByDst(ip)
 	if err != nil {
-		return err
+		return fmt.Errorf("get rule list by ip %s error: %v", podIP, err)
 	}
 
 	for _, rule := range dstRules {
+		//delete not exists rule return: RTNETLINK answers: No such file or directory
 		err := netlink.RuleDel(&rule)
-		if err != nil && !os.IsExist(err) {
+		if err != nil && !strings.Contains(err.Error(), "no such file or directory") {
 			return fmt.Errorf("failed to del rule %v : %v", rule, err)
 		}
 	}
 
-	return setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), podIP, nic.HardwareAddr, "-D")
+	//delete not exists rule return: Sorry, rule does not exist.
+	err = setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), podIP, nic.HardwareAddr, "-D")
+	if err != nil && !strings.Contains(err.Error(), "rule does not exist") {
+		return fmt.Errorf("delete ebtables rule for ip %s error: %v", podIP, err)
+	}
+
+	return nil
 }
 
 // Note: setup NetworkManager to disable dhcp on nic

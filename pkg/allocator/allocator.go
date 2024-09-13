@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/klog/v2"
 	log "k8s.io/klog/v2"
 
 	"github.com/yunify/hostnic-cni/pkg/conf"
@@ -260,11 +261,19 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 
 	for _, status := range a.nics {
 		if pod, ok := status.Pods[getContainterKey(args)]; ok {
-			if err := a.delNicPod(status.Nic, pod); err != nil {
-				log.Errorf("delNicPod record failed: nic: %s, podkey: %s, err: %v", getNicKey(status.Nic), getPodKey(args), err) //HOSTNIC_TODO:the error was not return, why?
-			} else {
-				log.Infof("delNicPod record success, nic: %s, podkey: %s", getNicKey(status.Nic), getPodKey(args))
+			nicKey := getNicKey(status.Nic)
+			podKey := getPodKey(args)
+			if peek {
+				klog.Infof("found db record for pod %s[%s] , ip: %s", nicKey, podKey, pod.PodIP)
+				return status.Nic, pod.PodIP, nil
 			}
+
+			// delete nic pod record, this is the last step for delete a pod
+			err := a.delNicPod(status.Nic, pod)
+			if err != nil {
+				return status.Nic, pod.PodIP, fmt.Errorf("clean db record for pod %s[%s] error: %v", nicKey, podKey, err)
+			}
+			log.Infof("clean db record for pod %s[%s] success", nicKey, podKey)
 			return status.Nic, pod.PodIP, nil
 		}
 	}
@@ -278,7 +287,7 @@ func (a *Allocator) FreeHostNic(args *rpc.PodInfo, peek bool) (*rpc.HostNic, str
 		}
 		return result.Nic, nil
 	*/
-
+	klog.Infof("no db record for pod %s", getPodKey(args))
 	return nil, "", nil
 }
 

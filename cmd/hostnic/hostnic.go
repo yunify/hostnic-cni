@@ -448,7 +448,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
-	klog.Infof("cmdAdd for %s AddrAlloc success, ipamMsg=%s,result=%s", args.ContainerID, spew.Sdump(ipamMsg), spew.Sdump(result))
+	klog.Infof("cmdAdd for %s AddrAlloc success, ipamMsg=%s", args.ContainerID, spew.Sdump(ipamMsg))
 
 	podInfo := ipamMsg.Args
 	// podInfo.NicType is from annotation
@@ -558,7 +558,7 @@ func cmdDelPassThrough(svcIfName, contIfName string, netns ns.NetNS) error {
 func cmdDel(args *skel.CmdArgs) error {
 	var err error
 
-	klog.Infof("cmdDel args %v", args)
+	klog.Infof("cmdDel args %+v", args)
 	defer func() {
 		klog.Infof("cmdDel for %s rst: %v", args.ContainerID, err)
 	}()
@@ -571,26 +571,31 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to checkConf: %v", err)
 	}
 
+	//only get pod ip info here to delete ip rule and ebtable rule
 	ipamMsg, err := ipam2.AddrUnalloc(args, true)
-	if err != nil {
-		if err == constants.ErrNicNotFound {
-			return nil
-		}
-		return fmt.Errorf("failed to unalloc addr: %v", err)
-	}
-	klog.Infof("cmdDel for %s AddrUnalloc success", args.ContainerID)
-
 	podInfo := ipamMsg.Args
 	conf.HostNicType = podInfo.NicType
 	contIfName := args.IfName
 	svcIfName := generateHostVethName(conf.HostVethPrefix, podInfo.Namespace, podInfo.Name)
+	podKey := getPodKey(podInfo)
+
+	if err != nil {
+		return fmt.Errorf("get nic and ip info for pod %s error: %v", podKey, err)
+	}
+	if ipamMsg.Nic == nil {
+		// not found db record,  just return
+		klog.Infof("not found db record for pod %s, skip cleanup!", podKey)
+		return nil
+	}
+	klog.Infof(" get nic and ip info for pod %s success, ip: %v", podKey, ipamMsg.IP)
 
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {
+		klog.Errorf("getns %s for pod %s error: %v", args.Netns, podKey, err)
 		if strings.Contains(err.Error(), "no such file or directory") {
-			goto end
+			return cleanupRulesAndIP(args, ipamMsg)
 		}
-		return fmt.Errorf("getns for %s error: %v", args.Netns, err)
+		return fmt.Errorf("getns %s for pod %s error: %v", args.Netns, podKey, err)
 	}
 	defer netns.Close()
 
@@ -602,17 +607,39 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	if err != nil {
+		klog.Errorf("del nic for pod %s error: %v", podKey, err)
 		if strings.Contains(err.Error(), "no such file or directory") {
-			goto end
+			return cleanupRulesAndIP(args, ipamMsg)
 		}
-		return err
+		return fmt.Errorf("del nic for pod %s error: %v", podKey, err)
 	}
-end:
-	_, err = ipam2.AddrUnalloc(args, false)
-	if err == constants.ErrNicNotFound {
-		return nil
+	klog.Infof("del nic for pod %s success", podKey)
+
+	return cleanupRulesAndIP(args, ipamMsg)
+}
+
+func cleanupRulesAndIP(args *skel.CmdArgs, ipamMsg *rpc.IPAMMessage) error {
+	// clean up ip rule and ebtables
+	// delete rule and ebtables rule before delete db record, after delete db record, can not get pod ip and nic;
+	podInfo := ipamMsg.Args
+	podKey := getPodKey(podInfo)
+	klog.Infof("going to clean network rules and ip for pod %s", podKey)
+
+	if ipamMsg.Nic != nil {
+		err := networkutils.NetworkHelper.CleanupPodNetwork(ipamMsg.Nic, ipamMsg.IP)
+		if err != nil {
+			return fmt.Errorf("clean network rule for pod %s error: %v", podKey, err)
+		}
+		klog.Infof("clean network rule for pod %s success", podKey)
 	}
-	return err
+
+	// release ip and delet db record
+	_, err := ipam2.AddrUnalloc(args, false)
+	if err != nil {
+		return fmt.Errorf("ipam addr unalloc for pod %s error: %v", podKey, err)
+	}
+	klog.Infof("ipam addr unalloc for pod %s success", podKey)
+	return nil
 }
 
 // generateHostVethName returns a name to be used on the host-side veth device.
@@ -620,6 +647,10 @@ func generateHostVethName(prefix, namespace, podname string) string {
 	h := sha1.New()
 	h.Write([]byte(fmt.Sprintf("%s.%s", namespace, podname)))
 	return fmt.Sprintf("%s%s", prefix, hex.EncodeToString(h.Sum(nil))[:11])
+}
+
+func getPodKey(info *rpc.PodInfo) string {
+	return info.Namespace + "/" + info.Name + "/" + info.Containter
 }
 
 func main() {
