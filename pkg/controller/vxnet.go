@@ -439,7 +439,7 @@ func (c *VxNetPoolController) handleObject(obj interface{}) {
 // newIPPool creates a new IPPool for a vxnet resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the vxnet resource that 'owns' it.
-func (c *VxNetPoolController) createIPPool(name string, blockSize int, vxnet *rpc.VxNet) (*networkv1alpha1.IPPool, error) {
+func (c *VxNetPoolController) createIPPool(name string, blockSize int, customReservedIPCount int64, vxnet *rpc.VxNet) (*networkv1alpha1.IPPool, error) {
 	ippool := &networkv1alpha1.IPPool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -448,12 +448,13 @@ func (c *VxNetPoolController) createIPPool(name string, blockSize int, vxnet *rp
 			},
 		},
 		Spec: networkv1alpha1.IPPoolSpec{
-			Type:       networkv1alpha1.IPPoolTypeLocal,
-			CIDR:       vxnet.Network,
-			Gateway:    vxnet.Gateway,
-			BlockSize:  blockSize,
-			RangeStart: vxnet.IPStart,
-			RangeEnd:   vxnet.IPEnd,
+			Type:                  networkv1alpha1.IPPoolTypeLocal,
+			CIDR:                  vxnet.Network,
+			Gateway:               vxnet.Gateway,
+			BlockSize:             blockSize,
+			CustomReservedIPCount: customReservedIPCount,
+			RangeStart:            vxnet.IPStart,
+			RangeEnd:              vxnet.IPEnd,
 		},
 	}
 	return c.clientset.NetworkV1alpha1().IPPools().Create(context.TODO(), ippool, metav1.CreateOptions{})
@@ -535,7 +536,7 @@ func (c *VxNetPoolController) prepareK8SResource(pool *networkv1alpha1.VxNetPool
 			if errors.IsNotFound(err) {
 				// create ippool
 				if v, ok := c.getVxNetInfo(vxnet.Name); ok {
-					if _, err := c.createIPPool(vxnet.Name, pool.Spec.BlockSize, v); err != nil {
+					if _, err := c.createIPPool(vxnet.Name, pool.Spec.BlockSize, pool.Spec.CustomReservedIPCount, v); err != nil {
 						return false, err
 					} else {
 						// handle it's block at next event
@@ -623,7 +624,7 @@ func (c *VxNetPoolController) setJob(id, job string) {
 }
 
 func (c *VxNetPoolController) deleteVIPsByVxnetID(vxnetID string) {
-	vxnets, err := qcclient.QClient.GetVxNets([]string{vxnetID})
+	vxnets, err := qcclient.QClient.GetVxNets([]string{vxnetID}, 0)
 	if err != nil {
 		klog.Errorf("Get info for vxnet %s failed: %v\n", vxnetID, err)
 		return
@@ -681,7 +682,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 		}
 	}
 	if len(needUpdate) > 0 {
-		if result, err := qcclient.QClient.GetVxNets(needUpdate); err != nil {
+		if result, err := qcclient.QClient.GetVxNets(needUpdate, pool.Spec.CustomReservedIPCount); err != nil {
 			klog.Errorf("Get vxnet %v from QingCloud failed: %v", needUpdate, err)
 			return
 		} else {

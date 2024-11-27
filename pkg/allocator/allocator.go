@@ -163,7 +163,7 @@ func (a *Allocator) getVxnets(vxnet string) (*rpc.VxNet, error) {
 		}
 	}
 
-	result, err := qcclient.QClient.GetVxNets([]string{vxnet})
+	result, err := qcclient.QClient.GetVxNets([]string{vxnet}, 0)
 	if err != nil {
 		return nil, err
 	}

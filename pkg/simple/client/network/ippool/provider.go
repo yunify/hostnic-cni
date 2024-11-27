@@ -17,6 +17,8 @@ limitations under the License.
 package ippool
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sinformers "k8s.io/client-go/informers"
@@ -94,6 +96,9 @@ func (p provider) GetIPPoolStats(pool *networkv1alpha1.IPPool) (*networkv1alpha1
 	})
 	if err != nil {
 		return nil, err
+	}
+	if len(stats) == 0 {
+		return nil, fmt.Errorf("GetUtilization for ippool %s failed, no item found", pool.Name)
 	}
 
 	stat := stats[0]

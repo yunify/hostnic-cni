@@ -10,7 +10,7 @@ import (
 )
 
 func showVxNetInfo(vxnet string) *rpc.VxNet {
-	if vxnets, err := qcclient.QClient.GetVxNets([]string{vxnet}); err != nil {
+	if vxnets, err := qcclient.QClient.GetVxNets([]string{vxnet}, 0); err != nil {
 		fmt.Printf("Get info for vxnet %s failed: %v\n", vxnet, err)
 	} else {
 		if len(vxnets) == 0 {

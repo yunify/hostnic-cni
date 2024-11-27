@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net"
 	"os"
 	"time"
 
@@ -25,14 +24,14 @@ const (
 	defaultOpTimeout    = 300 * time.Second
 	defaultWaitInterval = 5 * time.Second
 
-	reservedVIPCount              = 12
-	reservedVIPCountForVlan int64 = 7 //reserve 1/7 ip for hostnic br
+	reservedVIPCountForVxlan int64 = 12
+	reservedVIPCountForVlan  int64 = 7 //reserve 1/7 ip for hostnic br
 
 )
 
-var (
-	customReservedIPCount int64 = 0
-)
+// var (
+// 	customReservedIPCount int64 = 0
+// )
 
 type Options struct {
 	Tag string
@@ -177,7 +176,7 @@ func (q *qingcloudAPIWrapper) GetCreatedNicsByName(name string) ([]*rpc.HostNic,
 
 	if len(netIDs) > 0 {
 		tmp := removeDupByMap(netIDs)
-		vxnets, err := q.GetVxNets(tmp)
+		vxnets, err := q.GetVxNets(tmp, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +216,7 @@ func (q *qingcloudAPIWrapper) GetCreatedNicsByVxNet(vxnet string) ([]*rpc.HostNi
 
 	if len(netIDs) > 0 {
 		tmp := removeDupByMap(netIDs)
-		vxnets, err := q.GetVxNets(tmp)
+		vxnets, err := q.GetVxNets(tmp, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -446,7 +445,7 @@ func (q *qingcloudAPIWrapper) DescribeNicJobs(ids []string) ([]string, map[strin
 	return left, working, nil
 }
 
-func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet, error) {
+func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool, customReservedIPCount int64) ([]*rpc.VxNet, error) {
 	input := &service.DescribeVxNetsInput{
 		VxNets: service.StringSlice(ids),
 		Limit:  service.Int(constants.NicNumLimit),
@@ -477,21 +476,23 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 			if qcVxNet.TunnelType != nil {
 				vxnetItem.TunnelType = *qcVxNet.TunnelType
 			}
+			var reservedIPCount int64
 			if vxnetItem.TunnelType == constants.TunnelTypeVlan {
-				// parse ip_network to get mask; if mask is 24, reserve more ip than specifc in config
-				_, ipNet, err := net.ParseCIDR(vxnetItem.Network)
-				if err != nil {
-					log.Errorf("parse ip_network to get mask error: %v", err)
+				totalCount := IPRangeCount(*qcVxNet.Router.DYNIPStart, *qcVxNet.Router.DYNIPEnd)
+				reservedIPCount = totalCount / reservedVIPCountForVlan
+				maxCustomReservedCount := totalCount - reservedIPCount - 1
+
+				if (customReservedIPCount >= 0 && maxCustomReservedCount < customReservedIPCount) || customReservedIPCount < 0 {
+					return nil, fmt.Errorf("invalid customReservedIPCount %d config in vxnetpool spec, should in range 0~%d", customReservedIPCount, maxCustomReservedCount)
 				}
-				maskLength, _ := ipNet.Mask.Size()
-				if maskLength == 24 {
-					log.Infof("vxnet %s ip network %s mask is 24, reserve another 64 ip", *qcVxNet.VxNetID, vxnetItem.Network)
-					customReservedIPCount = 64
-				}
-				vxnetItem.IPEnd = getIPEndAfterReservedForVlan(*qcVxNet.Router.DYNIPStart, *qcVxNet.Router.DYNIPEnd, reservedVIPCountForVlan, customReservedIPCount)
+				log.Infof("vxnet %s custom reserve ip count: %d", *qcVxNet.VxNetID, customReservedIPCount)
+
 			} else {
-				vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedVIPCount, customReservedIPCount)
+				reservedIPCount = reservedVIPCountForVxlan
+				customReservedIPCount = 0
 			}
+			vxnetItem.IPEnd = getIPEndAfterReserved(*qcVxNet.Router.DYNIPEnd, reservedIPCount, customReservedIPCount)
+
 		} else {
 			return nil, fmt.Errorf("vxnet %s should bind to vpc", *qcVxNet.VxNetID)
 		}
@@ -502,12 +503,12 @@ func (q *qingcloudAPIWrapper) getVxNets(ids []string, public bool) ([]*rpc.VxNet
 	return vxNets, nil
 }
 
-func (q *qingcloudAPIWrapper) GetVxNets(ids []string) (map[string]*rpc.VxNet, error) {
+func (q *qingcloudAPIWrapper) GetVxNets(ids []string, customReservedIPCount int64) (map[string]*rpc.VxNet, error) {
 	if len(ids) <= 0 {
 		return nil, errors.WithStack(fmt.Errorf("GetVxNets should not have empty input"))
 	}
 
-	vxnets, err := q.getVxNets(ids, false)
+	vxnets, err := q.getVxNets(ids, false, customReservedIPCount)
 	if err != nil {
 		return nil, err
 	}
@@ -523,7 +524,7 @@ func (q *qingcloudAPIWrapper) GetVxNets(ids []string) (map[string]*rpc.VxNet, er
 		}
 	}
 	if len(left) > 0 {
-		vxnets, err := q.getVxNets(left, true)
+		vxnets, err := q.getVxNets(left, true, customReservedIPCount)
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +572,7 @@ func (q *qingcloudAPIWrapper) attachNicTag(nics []string) {
 func (q *qingcloudAPIWrapper) CreateVIPs(vxnet *rpc.VxNet) (string, error) {
 	vipName := constants.NicPrefix + vxnet.ID
 	vipRange := fmt.Sprintf("%s-%s", vxnet.IPStart, vxnet.IPEnd)
-	count := IPRangeCount(vxnet.IPStart, vxnet.IPEnd)
+	count := int(IPRangeCount(vxnet.IPStart, vxnet.IPEnd))
 	input := &service.CreateVIPsInput{
 		Count:    &count,
 		VIPName:  &vipName,
@@ -758,23 +759,16 @@ func (q *qingcloudAPIWrapper) DescribeClusterNodes(clusterID string) ([]*rpc.Nod
 	return nodes, nil
 }
 
-func IPRangeCount(from, to string) int {
+func IPRangeCount(from, to string) int64 {
 	startIP := cnet.ParseIP(from)
 	endIP := cnet.ParseIP(to)
 	startInt := cnet.IPToBigInt(*startIP)
 	endInt := cnet.IPToBigInt(*endIP)
-	return int(big.NewInt(0).Sub(endInt, startInt).Int64() + 1)
+	return big.NewInt(0).Sub(endInt, startInt).Int64() + 1
 }
 
 func getIPEndAfterReserved(end string, reservedCount, customReservedCount int64) string {
 	e := cnet.ParseIP(end)
 	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt(reservedCount+customReservedCount))
-	return cnet.BigIntToIP(i).String()
-}
-
-func getIPEndAfterReservedForVlan(start, end string, reservedCount, customReservedCount int64) string {
-	s := cnet.ParseIP(start)
-	e := cnet.ParseIP(end)
-	i := big.NewInt(0).Sub(cnet.IPToBigInt(*e), big.NewInt((cnet.IPToBigInt(*e).Int64()-cnet.IPToBigInt(*s).Int64()+1)/reservedCount+customReservedCount))
 	return cnet.BigIntToIP(i).String()
 }

@@ -73,7 +73,7 @@ deploy:
 	kustomize build config/${TARGET} > ${DEPLOY}
 
 publish: build tools
-	hack/docker_build.sh ${TAG}
+	hack/docker_build.sh ${REPO} ${TAG}
 
 generate-prototype: 
 	protoc --go_out=. pkg/rpc/message.proto

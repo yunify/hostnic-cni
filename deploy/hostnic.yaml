@@ -181,6 +181,10 @@ spec:
                   description: The block size to use for IP address assignments from
                     this pool. Defaults to 26 for IPv4 and 112 for IPv6.
                   type: integer
+                customReservedIPCount:
+                  description: CustomReservedIPCount used to specify user custom reserved ip count. Defaults to 0
+                  type: integer
+                  format: int64
                 cidr:
                   description: The pool CIDR.
                   type: string
@@ -319,6 +323,9 @@ spec:
                 blockSize:
                   description: The block size to use for IP address assignments from
                     this pool. Defaults to 26 for IPv4 and 112 for IPv6.
+                  type: integer
+                customReservedIPCount:
+                  description: CustomReservedIPCount used to specify user custom reserved ip count. Defaults to 0
                   type: integer
                 vxnets:
                   description: vxnets in VxNetPool
@@ -474,7 +481,7 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
-          image: qingcloud/hostnic-plus:v1.0.7
+          image: qingcloud/hostnic-plus:v1.0.14
           imagePullPolicy: IfNotPresent
           name: hostnic-node
           ports:
@@ -513,7 +520,7 @@ spec:
             - /app/install_hostnic.sh
           command:
             - /bin/sh
-          image: qingcloud/hostnic-plus:v1.0.7
+          image: qingcloud/hostnic-plus:v1.0.14
           imagePullPolicy: IfNotPresent
           name: hostnic-init
           resources: {}
@@ -558,11 +565,11 @@ spec:
             name: hostnic-cfg-cm
           name: hostnic-cfg
         - name: apiaccesskey
-          secret:
+          configMap:
             items:
-              - key: config.yaml
-                path: config.yaml
-            secretName: qcsecret
+            - key: config.yaml
+              path: config.yaml
+            name: hostnic-qingcloud
         - hostPath:
             path: /etc/qingcloud
           name: qingcloud-cfg
@@ -588,7 +595,7 @@ spec:
     spec:
       containers:
         - name: hostnic-controller
-          image: qingcloud/hostnic-plus:v1.0.7
+          image: qingcloud/hostnic-plus:v1.0.14
           command:
             - /app/hostnic-controller
             - --v=5
@@ -608,12 +615,6 @@ spec:
       serviceAccountName: hostnic-node
       hostNetwork: true
       volumes:
-        - name: apiaccesskey
-          secret:
-            items:
-              - key: config.yaml
-                path: config.yaml
-            secretName: qcsecret
         - hostPath:
             path: /etc/qingcloud
           name: qingcloud-cfg
@@ -623,4 +624,10 @@ spec:
         - configMap:
             name: clusterconfig
           name: clusterconfig
+        - configMap:
+            items:
+            - key: config.yaml
+              path: config.yaml
+            name: hostnic-qingcloud
+          name: apiaccesskey
 
