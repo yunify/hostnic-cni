@@ -48,6 +48,10 @@ type VxNetPoolSpec struct {
 
 	// The block size to use for IP address assignments from this pool. Defaults to 26 for IPv4 and 112 for IPv6.
 	BlockSize int `json:"blockSize"`
+
+	// CustomReservedIPCount used to specify user custom reserved ip count. Defaults to 0
+	// +optional
+	CustomReservedIPCount int64 `json:"customReservedIPCount,omitempty"`
 }
 
 type PoolInfo struct {

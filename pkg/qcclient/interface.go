@@ -13,7 +13,7 @@ type QingCloudAPI interface {
 	GetCreatedNicsByName(name string) ([]*rpc.HostNic, error)
 
 	//vxnet info
-	GetVxNets([]string) (map[string]*rpc.VxNet, error)
+	GetVxNets(ids []string, customReservedIPCount int64) (map[string]*rpc.VxNet, error)
 
 	//job info
 	DescribeNicJobs(ids []string) ([]string, map[string]bool, error)

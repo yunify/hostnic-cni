@@ -106,6 +106,10 @@ type IPPoolSpec struct {
 	// The block size to use for IP address assignments from this pool. Defaults to 26 for IPv4 and 112 for IPv6.
 	BlockSize int `json:"blockSize,omitempty"`
 
+	// CustomReservedIPCount used to specify user custom reserved ip count. Defaults to 0
+	// +optional
+	CustomReservedIPCount int64 `json:"customReservedIPCount,omitempty"`
+
 	VLAN VLANConfig `json:"vlanConfig,omitempty"`
 
 	Gateway string  `json:"gateway,omitempty"`

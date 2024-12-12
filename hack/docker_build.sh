@@ -4,8 +4,9 @@ set -ex
 set -o pipefail
 
 # push to qingcloud with default latest tag
+REPO="$1"
 REPO=${REPO:-qingcloud}
-TAG="$1"
+TAG="$2"
 
 # hostnic
 docker build -f build/hostnic/Dockerfile -t $REPO/hostnic-plus:$TAG .
