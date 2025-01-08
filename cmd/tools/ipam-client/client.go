@@ -142,7 +142,7 @@ func main() {
 				for _, block := range ippool.BrokenBlocks {
 					for ipStr, podNames := range block.IpToPods {
 						if len(podNames) > 1 {
-							fmt.Printf("\t\tip %s was allocated more than noce to pods %v\n", ipStr, podNames)
+							fmt.Printf("\t\tip %s was allocated more than once to pods %v\n", ipStr, podNames)
 						}
 					}
 

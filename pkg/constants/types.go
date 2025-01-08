@@ -94,6 +94,9 @@ const (
 
 	RouteExistsError    = "file exists"
 	RouteNotExistsError = "no such process"
+
+	InstanceIDFile       = "/etc/qingcloud/instance-id"
+	InstanceIDAnnotation = "node.beta.kubernetes.io/instance-id"
 )
 
 func GetHostNicBridgeName(routeTableNum int) string {

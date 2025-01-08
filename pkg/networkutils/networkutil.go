@@ -384,6 +384,15 @@ func setArpReply(br string, ip string, macAddress string, action string) error {
 	return err
 }
 
+func ListArpReply() (string, error) {
+	cmd := fmt.Sprintf("flock %s /sbin/ebtables -t nat -L PREROUTING", ebtablesLock)
+	out, err := ExecuteCommand(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to list ebtables rules, execute command error: %s", err)
+	}
+	return out, err
+}
+
 func getRuleListByDst(dst net.IP) ([]netlink.Rule, error) {
 	var dstRuleList []netlink.Rule
 	ruleList, err := netlink.RuleList(unix.AF_INET)

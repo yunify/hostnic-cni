@@ -92,6 +92,7 @@ func NewIPAMClient(client versioned.Interface, typeStr string, informers informe
 	ipamhandleInformer := informers.Network().V1alpha1().IPAMHandles()
 	configMapInformer := k8sInformers.Core().V1().ConfigMaps()
 	podInformer := k8sInformers.Core().V1().Pods()
+	nodeInformer := k8sInformers.Core().V1().Nodes()
 	return IPAMClient{
 		typeStr:          typeStr,
 		client:           client,
@@ -105,6 +106,8 @@ func NewIPAMClient(client versioned.Interface, typeStr string, informers informe
 		configMapSynced:  configMapInformer.Informer().HasSynced,
 		podLister:        podInformer.Lister(),
 		podSynced:        podInformer.Informer().HasSynced,
+		nodeLister:       nodeInformer.Lister(),
+		nodeListerSynced: nodeInformer.Informer().HasSynced,
 	}
 }
 
@@ -127,11 +130,14 @@ type IPAMClient struct {
 
 	podLister corelisters.PodLister
 	podSynced cache.InformerSynced
+
+	nodeLister       corelisters.NodeLister
+	nodeListerSynced cache.InformerSynced
 }
 
 func (c IPAMClient) Sync(stopCh <-chan struct{}) error {
 	klog.Info("Waiting for ippools and ipamblocks caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.ipamblocksSynced, c.ipamhandleSynced, c.configMapSynced, c.podSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.ippoolsSynced, c.ipamblocksSynced, c.ipamhandleSynced, c.configMapSynced, c.podSynced, c.nodeListerSynced); !ok {
 		return fmt.Errorf("failed to wait for ippools and ipamblocks caches to sync")
 	}
 	return nil
@@ -1524,6 +1530,100 @@ func (c IPAMClient) setBlockAttributes(blockName string, block *networkv1alpha1.
 			}
 		}
 	}
+
+	return nil
+}
+
+func (c IPAMClient) ListInstancePods(instanceID string) (podsMap map[string]*corev1.Pod, err error) {
+
+	var nodeName string
+	podsMap = make(map[string]*corev1.Pod)
+	//list all nodes to find the node with instanceID
+	nodes, err := c.nodeLister.List(labels.NewSelector())
+	if err != nil {
+		return nil, fmt.Errorf("list nodes error: %v", err)
+	}
+	for _, node := range nodes {
+		if instanceIDAnnotation, ok := node.GetAnnotations()[constants.InstanceIDAnnotation]; ok && instanceIDAnnotation == instanceID {
+			nodeName = node.GetName()
+			break
+		}
+	}
+	if nodeName == "" {
+		return nil, fmt.Errorf("no such node with annotation %s=%s", constants.InstanceIDAnnotation, instanceID)
+	}
+
+	//list all pods on the node with nodeName
+	pods, err := c.podLister.List(labels.NewSelector())
+	if err != nil {
+		return nil, fmt.Errorf("list pods error: %v", err)
+	}
+	for _, pod := range pods {
+		if pod.Spec.NodeName == nodeName {
+			if pod.Status.PodIP == "" {
+				continue
+			}
+			podsMap[pod.Status.PodIP] = pod
+		}
+	}
+	return podsMap, nil
+}
+
+func (c IPAMClient) ReleaseByIP(ip string) error {
+	// get all pools
+	pools, err := c.getAllPools()
+	if err != nil {
+		return fmt.Errorf("get all pools error: %v", err)
+	}
+	//find which ippool the ip belongs to
+	var poolName string
+	for _, pool := range pools {
+		_, cidr, err := cnet.ParseCIDR(pool.Spec.CIDR)
+		if err != nil {
+			return fmt.Errorf("parse pool %s cidr err: %v", pool.Name, err)
+		}
+		if cidr.Contains(cnet.ParseIP(ip).IP) {
+			poolName = pool.Name
+		}
+	}
+	if poolName == "" {
+		return fmt.Errorf("ip %s not belong to any pool", ip)
+	}
+
+	//get all ipamblocks in the ippool
+	blocks, err := c.ListBlocks(poolName)
+	if err != nil {
+		return fmt.Errorf("list blocks error: %v", err)
+	}
+
+	//find which ipamblock the ip belongs to and get handle id for this ip
+	var handldID string
+	for _, block := range blocks {
+		_, cidr, err := cnet.ParseCIDR(block.Spec.CIDR)
+		if err != nil {
+			return fmt.Errorf("parse block %s cidr err: %v", block.Name, err)
+		}
+		if cidr.Contains(cnet.ParseIP(ip).IP) {
+			//get handle id for this ip
+			ordinal, err := block.IPToOrdinal(*cnet.ParseIP(ip))
+			if err != nil {
+				return fmt.Errorf("get ip %s ordinal err: %v", ip, err)
+			}
+			if block.Spec.Allocations[ordinal] == nil {
+				fmt.Printf("ip %s not allocated,skip release\n", ip)
+				return nil
+			}
+			attrIndex := *block.Spec.Allocations[ordinal]
+			handldID = block.Spec.Attributes[attrIndex].AttrPrimary
+		}
+	}
+
+	//release by handle id
+	err = c.ReleaseByHandle(handldID)
+	if err != nil {
+		return fmt.Errorf("ReleaseByHandle %s for ip %s error: %v", handldID, ip, err)
+	}
+	fmt.Printf("release ip %s by handle id %s success\n", ip, handldID)
 
 	return nil
 }
