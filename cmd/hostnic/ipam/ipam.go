@@ -36,7 +36,7 @@ import (
 	"github.com/yunify/hostnic-cni/pkg/rpc"
 )
 
-func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
+func AddrAlloc(args *skel.CmdArgs, nodeName string) (*rpc.IPAMMessage, *current.Result, error) {
 	// conf := NetConf{}
 	// if err := json.Unmarshal(args.StdinData, &conf); err != nil {
 	// 	return nil, nil, fmt.Errorf("failed to unmarshal netconf %s", spew.Sdump(args))
@@ -63,6 +63,7 @@ func AddrAlloc(args *skel.CmdArgs) (*rpc.IPAMMessage, *current.Result, error) {
 				Containter: string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID),
 				Netns:      args.Netns,
 				IfName:     args.IfName,
+				NodeName:   nodeName,
 			},
 		})
 	if err != nil {

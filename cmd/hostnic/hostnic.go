@@ -443,8 +443,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	klog.Infof("cmdAdd for %s load and check netconf success, conf=%+v", args.ContainerID, conf)
 
+	//get nodename
+	nodeName, err := os.Hostname()
+	if err != nil {
+		klog.Errorf("failed to get hostname: %v, ignore!", err)
+	}
+
 	// run the IPAM plugin and get back the config to apply
-	ipamMsg, result, err := ipam2.AddrAlloc(args)
+	ipamMsg, result, err := ipam2.AddrAlloc(args, nodeName)
 	if err != nil {
 		return fmt.Errorf("failed to alloc addr: %v", err)
 	}
@@ -582,12 +588,16 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return fmt.Errorf("get nic and ip info for pod %s error: %v", podKey, err)
 	}
-	if ipamMsg.Nic == nil {
-		// not found db record,  just return
-		klog.Infof("not found db record for pod %s, skip cleanup!", podKey)
-		return nil
+
+	if ipamMsg.IP != "" {
+		klog.Infof("get ip info for pod %s success, ip: %v", podKey, ipamMsg.IP)
 	}
-	klog.Infof(" get nic and ip info for pod %s success, ip: %v", podKey, ipamMsg.IP)
+
+	if ipamMsg.Nic == nil {
+		// not found db record and ip record, skip cleanup
+		klog.Infof("not found nic record for pod %s, try to clean up rules and release ip", podKey)
+		return cleanupRulesAndIP(args, ipamMsg)
+	}
 
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {

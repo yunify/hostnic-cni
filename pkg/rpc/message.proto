@@ -63,6 +63,7 @@ message PodInfo {
   string PodIP = 7;
   string HostNic = 8;
   string VxNet = 9;
+  string nodeName = 10;
 }
 
 message IPAMMessage {

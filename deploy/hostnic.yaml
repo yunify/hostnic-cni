@@ -481,7 +481,7 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
-          image: qingcloud/hostnic-plus:v1.0.14
+          image: qingcloud/hostnic-plus:v1.0.15
           imagePullPolicy: IfNotPresent
           name: hostnic-node
           ports:
@@ -520,7 +520,7 @@ spec:
             - /app/install_hostnic.sh
           command:
             - /bin/sh
-          image: qingcloud/hostnic-plus:v1.0.14
+          image: qingcloud/hostnic-plus:v1.0.15
           imagePullPolicy: IfNotPresent
           name: hostnic-init
           resources: {}
@@ -595,7 +595,7 @@ spec:
     spec:
       containers:
         - name: hostnic-controller
-          image: qingcloud/hostnic-plus:v1.0.14
+          image: qingcloud/hostnic-plus:v1.0.15
           command:
             - /app/hostnic-controller
             - --v=5
