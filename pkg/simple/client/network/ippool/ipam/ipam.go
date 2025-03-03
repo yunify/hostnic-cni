@@ -55,6 +55,13 @@ import (
 const (
 	// Number of retries when we have an error writing data to etcd.
 	datastoreRetries = 10
+
+	// Common attributes which may be set on allocations by clients.
+	IPAMBlockAttributePod       = "pod"
+	IPAMBlockAttributeNamespace = "namespace"
+	IPAMBlockAttributeNode      = "node"
+	IPAMBlockAttributeIP        = "ip"
+	IPAMBlockAttributeTimestamp = "timestamp"
 )
 
 var (
@@ -766,10 +773,18 @@ func (c IPAMClient) GetAndFixBrokenBlocks(args GetUtilizationArgs, fix bool) ([]
 									continue
 								}
 								// attr
+								attrs := map[string]string{
+									IPAMBlockAttributeNamespace: pod.Namespace,
+									IPAMBlockAttributePod:       pod.Name,
+									IPAMBlockAttributeNode:      pod.Spec.NodeName,
+									IPAMBlockAttributeIP:        pod.Status.PodIP,
+									IPAMBlockAttributeTimestamp: pod.CreationTimestamp.String(),
+								}
+
 								for index, unUsedOrdinal := range block.Spec.Unallocated {
 									if ordinal == unUsedOrdinal {
 										block.Spec.Unallocated = append(block.Spec.Unallocated[:index], block.Spec.Unallocated[index+1:]...)
-										attribute := updateAttribute(&block, handleID, nil)
+										attribute := updateAttribute(&block, handleID, attrs)
 										block.Spec.Allocations[ordinal] = &attribute
 									}
 								}
@@ -828,96 +843,6 @@ func (c IPAMClient) GetAndFixBrokenBlocks(args GetUtilizationArgs, fix bool) ([]
 	}
 
 	return usage, nil
-}
-
-// setBlockAttributes set attributes for already used ip in the block
-func (c IPAMClient) getAndFixBrokenBlocks(blockName string, block *networkv1alpha1.IPAMBlock) error {
-	// 1. get ns for this ipamblock from configmap
-	// 2. get ip being used in the ns, also get handle_id(pause container id for this pod) for this ip
-	// 3. update block  attributes
-
-	// 1. get configmap to get ns for this ipamblock
-	cm, err := c.configMapLister.ConfigMaps(constants.IPAMConfigNamespace).Get(constants.IPAMConfigName)
-	if err != nil {
-		klog.Errorf("Get configmap %s/%s failed: %v, skip set block %s attribute", constants.IPAMConfigNamespace, constants.IPAMConfigName, err, blockName)
-		return err
-	}
-	var apps map[string][]string
-	err = json.Unmarshal([]byte(cm.Data[constants.IPAMConfigDate]), &apps)
-	if err != nil {
-		klog.Errorf("unmarshal configmap %s/%s data failed: %v, skip set block %s attribute", constants.IPAMConfigNamespace, constants.IPAMConfigName, err, blockName)
-		return nil
-	}
-	// 2. get pod in ns
-	var blockNs string
-	for ns, blocks := range apps {
-		if utils.SliceContains(blocks, blockName) {
-			blockNs = ns
-			break
-		}
-	}
-	if blockNs == "" {
-		return nil
-	}
-
-	// 3. update block
-	pods, err := c.podLister.Pods(blockNs).List(labels.Everything())
-	if err != nil {
-		klog.Errorf("get pod for ns %s err: %v, skip set block %s attribute", blockNs, err, blockName)
-		return nil
-	}
-
-	ipamHandles, err := c.ipamhandleLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list ipam handle error: %v,  skip set block %s attribute", err, blockName)
-		return nil
-	}
-
-	// 4. check if pods ip belong to block
-	_, cidrNet, err := cnet.ParseCIDR(block.Spec.CIDR)
-	if err != nil {
-		klog.Errorf("parse block %s cidr err: %v, skip set block %s attribute", blockName, err, blockName)
-		return nil
-	}
-
-	for _, pod := range pods {
-		if pod != nil && pod.Status.PodIP != "" {
-			podIP := cnet.ParseIP(pod.Status.PodIP)
-			if cidrNet.Contains(podIP.IP) {
-				// get handle id,allocations index ,delete from unallocated slice
-				// handle id for ipamhandle
-				var handleID string
-				for _, ipamHandle := range ipamHandles {
-					if strings.Contains(ipamHandle.Name, pod.Namespace+"-"+pod.Name) {
-						handleID = ipamHandle.Name
-					}
-				}
-				if handleID == "" {
-					klog.Infof("ip %s of pod %s/%s belong to block %s, but can not found handle id, skip!", &pod.Status.PodIP, pod.Namespace, pod.Name, blockName)
-					continue
-				}
-
-				// get index
-				ordinal, err := block.IPToOrdinal(*podIP)
-				if err != nil {
-					klog.Errorf("get pod ip %s index err: %v, skip!", pod.Status.PodIP, err)
-					continue
-				}
-
-				// attr
-				for index, unUsedOrdinal := range block.Spec.Unallocated {
-					if ordinal == unUsedOrdinal {
-						block.Spec.Unallocated = append(block.Spec.Unallocated[:index], block.Spec.Unallocated[index+1:]...)
-						attribute := updateAttribute(block, handleID, nil)
-						block.Spec.Allocations[ordinal] = &attribute
-					}
-				}
-
-			}
-		}
-	}
-
-	return nil
 }
 
 // findUnclaimedBlock finds a block cidr which does not yet exist within the given list of pools. The provided pools
@@ -1279,13 +1204,14 @@ func IP2Resutl(ip *cnet.IPNet, pool *v1alpha1.IPPool) *current.Result {
 }
 
 // AssignFixIps fix ip form assign pool or block
-func (c IPAMClient) AssignFixIps(handleID string, ipList, pools, blocks []string, info *PoolInfo) (*current.Result, error) {
+func (c IPAMClient) AssignFixIps(handleID string, ipList, pools, blocks []string, info *PoolInfo, attrs map[string]string) (*current.Result, error) {
 	fixArgs := FixIpArgs{
 		AutoAssignArgs: AutoAssignArgs{
 			HandleID: handleID,
 			Pools:    pools,
 			Blocks:   blocks,
 			Info:     info,
+			Attrs:    attrs,
 		},
 		TarGetIpList: ipList,
 	}
@@ -1394,6 +1320,10 @@ func (c IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []s
 		return nil, fmt.Errorf("parse cidr err: %v", err)
 	}
 
+	if attrs == nil {
+		attrs = make(map[string]string)
+	}
+
 	for _, tarIp := range ipList {
 		ip := cnet.ParseIP(tarIp)
 		if ip != nil && !cidr.Contains(ip.IP) {
@@ -1403,6 +1333,9 @@ func (c IPAMClient) fixIP(block *v1alpha1.IPAMBlock, handleID string, ipList []s
 		if err != nil {
 			continue
 		}
+
+		// add ip to attr
+		attrs[IPAMBlockAttributeIP] = ip.String()
 
 		for j, unUsedIp := range block.Spec.Unallocated {
 			if ordinal == unUsedIp {
@@ -1462,21 +1395,33 @@ func (c IPAMClient) setBlockAttributes(blockName string, block *networkv1alpha1.
 		return nil
 	}
 	// 2. get pod in ns
-	var blockNs string
+	var blockNs []string
 	for ns, blocks := range apps {
 		if utils.SliceContains(blocks, blockName) {
-			blockNs = ns
-			break
+			blockNs = append(blockNs, ns)
+			// break //should not break here, need to check all ns, because one block may belong to multiple ns
 		}
 	}
-	if blockNs == "" {
+	if len(blockNs) == 0 {
+		klog.Infof("block %s not belong to any ns, skip set block attribute", blockName)
 		return nil
 	}
 
 	// 3. update block
-	pods, err := c.podLister.Pods(blockNs).List(labels.Everything())
-	if err != nil {
-		klog.Errorf("get pod for ns %s err: %v, skip set block %s attribute", blockNs, err, blockName)
+	allBlockPods := []*corev1.Pod{}
+	blockNSList := []string{}
+	for _, ns := range blockNs {
+		nsPods, err := c.podLister.Pods(ns).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("get pod for ns %s err: %v, skip set block %s attribute", ns, err, blockName)
+			continue
+		}
+		allBlockPods = append(allBlockPods, nsPods...)
+		blockNSList = append(blockNSList, ns)
+	}
+
+	if len(allBlockPods) == 0 {
+		klog.Infof("no pod in ns %v, skip set block %s attribute", blockNSList, blockName)
 		return nil
 	}
 
@@ -1493,7 +1438,7 @@ func (c IPAMClient) setBlockAttributes(blockName string, block *networkv1alpha1.
 		return nil
 	}
 
-	for _, pod := range pods {
+	for _, pod := range allBlockPods {
 		if pod != nil && pod.Status.PodIP != "" {
 			podIP := cnet.ParseIP(pod.Status.PodIP)
 			// should ignore comleted pod there
@@ -1519,10 +1464,17 @@ func (c IPAMClient) setBlockAttributes(blockName string, block *networkv1alpha1.
 				}
 
 				// attr
+				attrs := map[string]string{
+					IPAMBlockAttributeNamespace: pod.Namespace,
+					IPAMBlockAttributePod:       pod.Name,
+					IPAMBlockAttributeNode:      pod.Spec.NodeName,
+					IPAMBlockAttributeIP:        pod.Status.PodIP,
+					IPAMBlockAttributeTimestamp: pod.CreationTimestamp.String(),
+				}
 				for index, unUsedOrdinal := range block.Spec.Unallocated {
 					if ordinal == unUsedOrdinal {
 						block.Spec.Unallocated = append(block.Spec.Unallocated[:index], block.Spec.Unallocated[index+1:]...)
-						attribute := updateAttribute(block, handleID, nil)
+						attribute := updateAttribute(block, handleID, attrs)
 						block.Spec.Allocations[ordinal] = &attribute
 					}
 				}
@@ -1626,4 +1578,39 @@ func (c IPAMClient) ReleaseByIP(ip string) error {
 	fmt.Printf("release ip %s by handle id %s success\n", ip, handldID)
 
 	return nil
+}
+
+func (c IPAMClient) GetIPByHandleID(handleID string) (ips []string, err error) {
+	handle, err := c.queryHandle(handleID)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query handle %s error: %v", handleID, err)
+	}
+	for blockStr := range handle.Spec.Block {
+		blockName := v1alpha1.ConvertToBlockName(blockStr)
+		block, err := c.queryBlock(blockName)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Block doesn't exist, so all addresses are already
+				// unallocated.  This can happen when a handle is
+				// overestimating the number of assigned addresses.
+				return nil, nil
+			} else {
+				return nil, fmt.Errorf("query block %s error: %v", blockName, err)
+			}
+		}
+
+		ordinals := block.GetHandleOrdinals(handleID)
+		if len(ordinals) == 0 {
+			return nil, nil
+		}
+
+		for _, ordinal := range ordinals {
+			ip, _ := block.OrdinalToIP(ordinal)
+			ips = append(ips, ip.String())
+		}
+	}
+	return
 }

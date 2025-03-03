@@ -17,7 +17,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${CORE_BIN_DIR}/hostnic-c
 FROM alpine
 ARG CORE_BIN_DIR
 RUN apk --no-cache add ca-certificates \
-    && apk --no-cache add ebtables \
     && apk --no-cache add ipvsadm \
     && update-ca-certificates 2>/dev/null || true
 WORKDIR /app

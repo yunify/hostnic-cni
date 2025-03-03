@@ -40,6 +40,7 @@ const (
 	IPAMBlockAttributeNode         = "node"
 	IPAMBlockAttributePool         = "pool-name"
 	IPAMBlockAttributeType         = "pool-type"
+	IPAMBlockAttributeIP           = "ip"
 
 	ReservedHandle = "kubesphere-reserved-handle"
 	ReservedNote   = "kubesphere reserved"
@@ -95,12 +96,21 @@ func (b *IPAMBlock) AutoAssign(
 	// Create slice of IPs and perform the allocations.
 	ips := []cnet.IPNet{}
 	ip, mask, _ := cnet.ParseCIDR(b.Spec.CIDR)
+
+	if attrs == nil {
+		attrs = make(map[string]string)
+	}
+
 	for _, o := range ordinals {
-		attrIndex := b.findOrAddAttribute(handleID, attrs)
-		b.Spec.Allocations[o] = &attrIndex
 		ipNets := cnet.IPNet(*mask)
 		ipNets.IP = cnet.IncrementIP(*ip, big.NewInt(int64(o))).IP
 		ips = append(ips, ipNets)
+
+		// add ip to attrs
+		attrs[IPAMBlockAttributeIP] = ipNets.IP.String()
+
+		attrIndex := b.findOrAddAttribute(handleID, attrs)
+		b.Spec.Allocations[o] = &attrIndex
 	}
 
 	return ips
@@ -137,6 +147,12 @@ func (b *IPAMBlock) IPToOrdinal(ip cnet.IP) (int, error) {
 		return 0, fmt.Errorf("IP %s not in block %d-%s", ip, b.Spec.ID, b.Spec.CIDR)
 	}
 	return int(ord), nil
+}
+
+func (b *IPAMBlock) OrdinalToIP(ordinal int) (cnet.IP, error) {
+	netIP, _, _ := cnet.ParseCIDR(b.Spec.CIDR)
+	ip := cnet.IncrementIP(*netIP, big.NewInt(int64(ordinal)))
+	return ip, nil
 }
 
 func (b *IPAMBlock) NumFreeAddresses() int {
@@ -250,6 +266,26 @@ func (b *IPAMBlock) ReleaseByHandle(handleID string) int {
 		b.Spec.Unallocated = append(b.Spec.Unallocated, o)
 	}
 	return len(ordinals)
+}
+
+func (b *IPAMBlock) GetHandleOrdinals(handleID string) []int {
+	attrIndexes := b.attributeIndexesByHandle(handleID)
+	if len(attrIndexes) == 0 {
+		// Nothing to release.
+		return nil
+	}
+
+	// There are addresses to release.
+	ordinals := []int{}
+	var o int
+	for o = 0; o < b.NumAddresses(); o++ {
+		// Only check allocated ordinals.
+		if b.Spec.Allocations[o] != nil && intInSlice(*b.Spec.Allocations[o], attrIndexes) {
+			// Release this ordinal.
+			ordinals = append(ordinals, o)
+		}
+	}
+	return ordinals
 }
 
 func (b *IPAMBlock) findOrAddAttribute(handleID string, attrs map[string]string) int {

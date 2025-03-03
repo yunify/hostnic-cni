@@ -218,7 +218,7 @@ func (a *Allocator) AllocHostNic(args *rpc.PodInfo) (*rpc.HostNic, error) {
 	}
 	nics, _, err := qcclient.QClient.CreateNicsAndAttach(vxnet, 1, nil, 1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create and attach nic failed: %v", err)
 	}
 	log.Infof("create and attach nic %s", getNicKey(nics[0]))
 

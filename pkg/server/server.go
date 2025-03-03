@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/prometheus/client_golang/prometheus"
@@ -145,9 +146,16 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 		return nil, err
 	}
 
+	attrs := map[string]string{
+		ipam.IPAMBlockAttributeNamespace: in.Args.Namespace,
+		ipam.IPAMBlockAttributeNode:      in.Args.NodeName,
+		ipam.IPAMBlockAttributePod:       in.Args.Name,
+		ipam.IPAMBlockAttributeTimestamp: time.Now().UTC().String(),
+	}
+
 	if blocks := s.clusterConfig.GetBlocksForAPP(in.Args.Namespace); len(blocks) > 0 {
 		if len(ipList) > 0 {
-			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, nil, blocks, &info)
+			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, nil, blocks, &info, attrs)
 			if err != nil {
 				return nil, err
 			}
@@ -155,13 +163,14 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			HandleID: handleID,
 			Blocks:   blocks,
 			Info:     &info,
+			Attrs:    attrs,
 		}); err != nil {
 			(*s.oddPodCount).BlockFailedCount = (*s.oddPodCount).BlockFailedCount + 1
 			return nil, err
 		}
 	} else if pools := s.clusterConfig.GetDefaultIPPools(); len(pools) > 0 {
 		if len(ipList) > 0 {
-			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, pools, nil, &info)
+			rst, err = s.ipamclient.AssignFixIps(handleID, ipList, pools, nil, &info, attrs)
 			if err != nil {
 				return nil, err
 			}
@@ -169,6 +178,7 @@ func (s *IPAMServer) AddNetwork(context context.Context, in *rpc.IPAMMessage) (*
 			HandleID: handleID,
 			Pools:    pools,
 			Info:     &info,
+			Attrs:    attrs,
 		}); err != nil {
 			(*s.oddPodCount).PoolFailedCount = (*s.oddPodCount).PoolFailedCount + 1
 			return nil, err
@@ -209,15 +219,29 @@ func (s *IPAMServer) DelNetwork(context context.Context, in *rpc.IPAMMessage) (*
 
 	log.Infof("DelNetwork request (%v)", in.Args)
 	defer func() {
-		log.Infof("DelNetwork reply (%s): ip (%s) nic (%s) %v", handleID, in.IP, allocator.GetNicKey(in.Nic), err)
+		log.Infof("DelNetwork reply (%s): ip (%v) nic (%s) %v", handleID, in.IP, allocator.GetNicKey(in.Nic), err)
 	}()
 
 	handleID = podHandleKey(in.Args)
 
-	//get pod ip and nic info here
+	//get nic and pod ip info here
 	in.Nic, in.IP, _ = allocator.Alloc.FreeHostNic(in.Args, true)
+
+	// if no nic or pod record in db, get ip by handleID
+	// this ip only used for log
+	if in.IP == "" {
+		//get ip by handleID
+		ips, err := s.ipamclient.GetIPByHandleID(handleID)
+		if err != nil {
+			return in, fmt.Errorf("get ip by handleID %s error: %v", handleID, err)
+		}
+		if len(ips) > 0 {
+			in.IP = ips[0]
+			log.Infof("get ip %v by handleID %s success", ips, handleID)
+		}
+	}
+
 	if in.Peek {
-		//only get pod ip info here and return
 		return in, nil
 	}
 
