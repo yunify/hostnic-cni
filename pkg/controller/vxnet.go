@@ -693,7 +693,7 @@ func (c *VxNetPoolController) qingCloudSync() {
 			if len(result) == len(needUpdate) {
 				change = true
 			} else {
-				klog.Warningf("Get some vxnet from QingCloud failed: %v", needUpdate, result)
+				klog.Warningf("Get some vxnet from QingCloud failed: %v, %+v", needUpdate, result)
 			}
 		}
 	}

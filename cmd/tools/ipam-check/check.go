@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -27,13 +28,13 @@ var kubeconfig string
 var delete, debug bool
 
 func usage() {
-	fmt.Println("This tool is used to check leak ip arp rules and release ip, it will list all leak ip arp rules on this instance by default, if you want to delete them, please use '-delete' flag")
+	fmt.Println("This tool is used to check leak ip arp rules, it will list all leak ip arp rules on this instance by default, if you want to delete them, please use '-delete' flag")
 	flag.PrintDefaults()
 }
 
 func main() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "/root/.kube/config", "Path to a kubeconfig. Only required if out-of-cluster.If not set, use the default path")
-	flag.BoolVar(&delete, "delete", false, "delete leak ip arp rules and release ip")
+	flag.BoolVar(&delete, "delete", false, "delete leak ip arp rules")
 	flag.BoolVar(&debug, "debug", false, "show debug info")
 	flag.Usage = usage
 	flag.Parse()
@@ -100,26 +101,55 @@ func main() {
 	fmt.Printf("\n\n")
 
 	//get pods on the instance
-	podsMap, err := ipamClient.ListInstancePods(instanceID)
+	pods, nodeName, err := ipamClient.ListInstancePods(instanceID)
 	if err != nil {
 		fmt.Printf("ListInstancePods failed: %v\n", err)
 		return
 	}
 
+	podIPMap := make(map[string]*corev1.Pod)
+	podKeyPrefixMap := make(map[string]*corev1.Pod)
+
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" {
+			podIPMap[pod.Status.PodIP] = pod
+		}
+		podKeyPrefixMap[pod.Namespace+"-"+pod.Name] = pod
+	}
+
+	//get handld id for this ip
+
 	//check and gather leak ip arp rules
 	rulesToClear := []arpReplyInfo{}
 	for _, rule := range rules {
-		if _, ok := podsMap[rule.ip]; !ok {
+		var found bool
+		if _, ok := podIPMap[rule.ip]; !ok {
+			//should consider pod pending status
+			handldID, _ := ipamClient.GetHandleIDForIP(rule.ip)
+			if handldID != "" {
+				// ip is allocated in ipamblock, check if the pod is on this instance
+				for podKeyPrefix, pod := range podKeyPrefixMap {
+					if strings.Contains(handldID, podKeyPrefix) && pod.Status.Phase == corev1.PodPending {
+						// pod is on this instance
+						found = true
+						break
+					}
+				}
+			}
+			if found {
+				continue
+			}
+
 			rulesToClear = append(rulesToClear, rule)
 		}
 	}
 
 	if len(rulesToClear) == 0 {
-		fmt.Printf("no leak ip arp rules found on instance %s\n\n", instanceID)
+		fmt.Printf("no leak ip arp rules found on instance %s(%s)\n\n", instanceID, nodeName)
 		return
 	}
 
-	fmt.Printf("leak ip arp rules on instance %s: \n", instanceID)
+	fmt.Printf("leak ip arp rules on instance %s(%s): \n", instanceID, nodeName)
 	for _, rule := range rulesToClear {
 		fmt.Printf("\t%s\n", rule.rule)
 	}
@@ -131,17 +161,21 @@ func main() {
 
 	// delete leak ip arp rules and release ip
 	// should delete arp rules first, then release ip, or if release ip error,the rule will left but ip was released and will be allocated to other pod
-	fmt.Printf("going to delete leak ip arp rules and release ip\n\n")
+	fmt.Printf("going to delete leak ip arp rules\n\n")
 	for _, rule := range rulesToClear {
+		fmt.Printf("deleting leak ip arp rule: %s\n", rule.rule)
 		if err := clearArpReplyRule(rule); err != nil {
-			fmt.Printf("delete arp rule for leak ip %s error: %v, skip\n\n", rule.ip, err)
+			fmt.Printf("delete arp rule for leak ip %s failed: %v, skip\n\n", rule.ip, err)
 			continue
 		}
-		fmt.Printf("delete arp rule for leak ip %s success\n", rule.ip)
-		if err := ipamClient.ReleaseByIP(rule.ip); err != nil {
-			fmt.Printf("release leak ip %s error: %v, skip\n\n", rule.ip, err)
-		}
-		fmt.Printf("release leak ip %s success\n\n", rule.ip)
+		fmt.Printf("delete arp rule for leak ip %s success\n\n", rule.ip)
+
+		// TODO: should check if the ip is in use by other pods on other instances
+		// update: only clear arp rules in this tools, release ip in ipam-client
+		// if err := ipamClient.ReleaseByIP(rule.ip); err != nil {
+		// 	fmt.Printf("release leak ip %s failed: %v, skip\n\n", rule.ip, err)
+		// }
+		// fmt.Printf("release leak ip %s success\n\n", rule.ip)
 	}
 }
 

@@ -285,7 +285,13 @@ func (s *IPAMServer) ShowNics(context context.Context, in *rpc.Nothing) (*rpc.Ni
 
 func (s *IPAMServer) ClearNics(context context.Context, in *rpc.Nothing) (*rpc.Nothing, error) {
 	log.Info("ClearNics request")
-	err := allocator.Alloc.ClearFreeHostnic(true)
+	var err error
+	forceValue := context.Value(constants.ForceKey("force"))
+	if forceValue != nil && forceValue.(bool) {
+		err = allocator.Alloc.ClearFreeHostnic(true)
+	} else {
+		err = allocator.Alloc.ClearFreeHostnic(false)
+	}
 	return in, err
 }
 

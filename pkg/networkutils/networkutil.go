@@ -64,9 +64,10 @@ func (n NetworkUtils) CleanupPodNetwork(nic *rpc.HostNic, podIP string) error {
 		}
 	}
 
-	//delete not exists rule return: Sorry, rule does not exist.
+	//delete not exists rule return: Sorry, rule does not exist.(ebtables v2.0.11)
+	//delete not exists rule return: Bad rule (does a matching rule exist in that chain?) (ebtables v1.0.8)
 	err = setArpReply(constants.GetHostNicBridgeName(int(nic.RouteTableNum)), podIP, nic.HardwareAddr, "-D")
-	if err != nil && !strings.Contains(err.Error(), "rule does not exist") {
+	if err != nil && !strings.Contains(err.Error(), "rule does not exist") && !strings.Contains(err.Error(), "does a matching rule exist in that chain") {
 		return fmt.Errorf("delete ebtables rule for ip %s error: %v", podIP, err)
 	}
 

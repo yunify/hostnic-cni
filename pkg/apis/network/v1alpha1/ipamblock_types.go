@@ -268,6 +268,34 @@ func (b *IPAMBlock) ReleaseByHandle(handleID string) int {
 	return len(ordinals)
 }
 
+func (b *IPAMBlock) ReleaseByIP(ip string) error {
+
+	// get ip ordinal
+	ordinal, err := b.IPToOrdinal(*cnet.ParseIP(ip))
+	if err != nil {
+		return fmt.Errorf("parse ip to ordinal error: %v", err)
+	}
+
+	// There are addresses to release.
+	ordinals := []int{}
+	// Only check allocated ordinals.
+	if b.Spec.Allocations[ordinal] != nil {
+		// Release this ordinal.
+		ordinals = append(ordinals, ordinal)
+
+		attrIndexes := []int{*b.Spec.Allocations[ordinal]}
+		// Clean and reorder attributes.
+		b.deleteAttributes(attrIndexes, ordinals)
+	}
+
+	// Release the addresses.
+	for _, o := range ordinals {
+		b.Spec.Allocations[o] = nil
+		b.Spec.Unallocated = append(b.Spec.Unallocated, o)
+	}
+	return nil
+}
+
 func (b *IPAMBlock) GetHandleOrdinals(handleID string) []int {
 	attrIndexes := b.attributeIndexesByHandle(handleID)
 	if len(attrIndexes) == 0 {

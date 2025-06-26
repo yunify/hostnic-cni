@@ -103,9 +103,27 @@ type BrokenBlockUtilization struct {
 	// This block's name.
 	Name string
 
-	IpToPods                map[string][]string
-	IpWithoutRecord         map[string][]string // maybe allocated to more than one pod
-	IpToPodsWithWrongRecord map[string][]string
+	IpToPods              map[string][]string        //key:ip value:podname list
+	IpNotAllocExistsPod   map[string]UsedIPOption    //ip used by pod, but not record in ipamblock; key:ip value:podname;should check if handle exists
+	IpAllocNotExistsPod   map[string]string          //have allocated in ipamblock but pod not exist; key:ip value:podname
+	UsedHandlesMissing    map[string]string          //handle used in block, but handle resource not exists; key:ip value:handleID
+	IpAllocRecordNotMatch map[string]IPAllocatedInfo //handle used in block, but record handleID not match, ip was used by other pod, not record one; key:ip value:handleID
+}
+
+type IPAllocatedInfo struct {
+	RecordHandleID string
+	CurrentUsedPod UsedIPOption
+}
+
+type UsedIPOption struct {
+	PodNamespace string
+	PodName      string
+	NodeName     string
+	BlockName    string
+	HandleID     string
+}
+
+type LeakIPOption struct {
 }
 
 // FixIpArgs assign from config annotation

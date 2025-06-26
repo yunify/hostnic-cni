@@ -378,12 +378,23 @@ func (a *Allocator) ClearFreeHostnic(force bool) error {
 	// 	log.Infof("no hostnic to free: %d %d %d %d", len(a.nics), maxVxnetNicsCount, a.conf.NodeThreshold, a.conf.VxnetThreshold)
 	// 	return nil
 	// }
+	var freeCount int
+	var freeNics []string
+	log.Infof("freeHostnic: total nics for now %d", len(a.nics))
+	defer func() {
+		log.Infof("freeHostnic: total free nics count %d, nics: %v", freeCount, freeNics)
+	}()
 
-	log.Infof("freeHostnic: %d", len(a.nics))
 	for vxnet, status := range a.nics {
-		if len(status.Pods) == 0 {
+		if len(status.Pods) == 0 || force {
 			nicKey := getNicKey(status.Nic)
-			log.Infof("vxnet %s has no pod left on this node, going to clear free Hostnic %s", vxnet, nicKey)
+			if len(status.Pods) == 0 {
+				log.Infof("vxnet %s has no pod left on this node, going to clear free Hostnic %s", vxnet, nicKey)
+			}
+			if force {
+				log.Infof("vxnet %s has %d pods left on this node, force free Hostnic %s", vxnet, len(status.Pods), nicKey)
+			}
+
 			if err := a.freeHostnic(status.Nic); err != nil {
 				log.Errorf("freeHostnic for vxnet %s failed: nic %s %v", vxnet, status.Nic.ID, err)
 				// set status to init to repair nics which free failed
@@ -394,6 +405,8 @@ func (a *Allocator) ClearFreeHostnic(force bool) error {
 				if err := a.delNic(vxnet); err != nil {
 					log.Errorf("delNic failed: %s %v", nicKey, err)
 				}
+				freeCount++
+				freeNics = append(freeNics, nicKey)
 				log.Infof("freeHostnic for vxnet %s success: nic %s", vxnet, status.Nic.ID)
 			}
 		}

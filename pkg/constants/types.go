@@ -99,6 +99,11 @@ const (
 	InstanceIDAnnotation = "node.beta.kubernetes.io/instance-id"
 )
 
+type (
+	//ctx key
+	ForceKey string
+)
+
 func GetHostNicBridgeName(routeTableNum int) string {
 	return fmt.Sprintf("%s%d", BridgePrefix, routeTableNum)
 }
