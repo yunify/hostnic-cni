@@ -1,6 +1,6 @@
 module github.com/yunify/hostnic-cni
 
-go 1.19
+go 1.23
 
 require (
 	github.com/containernetworking/cni v0.8.0

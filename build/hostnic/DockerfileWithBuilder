@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine as builder
+FROM golang:1.23-alpine as builder
 ARG CORE_BIN_DIR
 ARG TOOLS_BIN_DIR
 WORKDIR /hostnic-cni
@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${CORE_BIN_DIR}/hostnic-c
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/hostnic-client ./cmd/tools/hostnic-client/client.go \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/vxnet-client ./cmd/tools/vxnet-client/client.go \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/patch-node ./cmd/tools/node-patch/patch.go \
-    && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o $(TOOLS_BIN_DIR)/dhcp-client ./cmd/tools/dhcp-client/client.go \
+    && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/dhcp-client ./cmd/tools/dhcp-client/client.go \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w" -o ${TOOLS_BIN_DIR}/ipam-check ./cmd/tools/ipam-check/check.go
 
 
